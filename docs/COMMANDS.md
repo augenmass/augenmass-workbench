@@ -316,6 +316,41 @@ To read a specific index and verify the signature, use:
   augenmass verify status-list --token <file> --key <pem> --index <n>
 ```
 
+### `decode mdoc`
+
+Decode an ISO/IEC 18013-5 mdoc (`mso_mdoc`), the other major EUDI credential format alongside SD-JWT VC. It accepts a `DeviceResponse`, a single `Document`, an `IssuerSigned`, or a bare `MobileSecurityObject`, given as raw CBOR bytes, hex, or base64/base64url. It surfaces the document type, the disclosed namespaces and elements (nested CBOR is rendered as JSON; a large byte value such as a portrait is shown as a length-tagged hex preview), the issuer authentication (the COSE_Sign1 algorithm and the X.509 chain, whose leaf `x509_hash` the engine computes), and the Mobile Security Object (validity window, per-namespace value-digest counts, and device key).
+
+This is decode only: the COSE signature is not verified and value digests are not recomputed. The output and the JSON `signatureVerified: false` say so.
+
+```
+Usage: augenmass decode mdoc [OPTIONS] <INPUT>
+```
+
+Arguments: `<INPUT>` (file path with raw or hex/base64 CBOR, inline hex/base64, or `-`).
+
+Exit code: 0 on success.
+
+Example:
+
+```
+augenmass decode mdoc fixtures/mdoc/issuer-signed.hex
+```
+
+```
+Decoded mdoc (IssuerSigned)
+Note: structure decoded only; COSE signature and value digests are NOT verified.
+namespace org.iso.18013.5.1 (6 element(s)):
+  family_name = Doe
+  ...
+issuerAuth alg: ES256
+issuerAuth x5chain: 1 cert(s), leaf subject C=US,CN=utopia ds, x509_hash t5eY67wMr7QGaDtgp1rXjfc1vDU14xFR2w4t_Eu5jTs
+MSO:
+  version: 1.0
+  digestAlgorithm: SHA-256
+  docType: org.iso.18013.5.1.mDL
+  ...
+```
+
 ---
 
 # PROPORTIONALITY

@@ -25,6 +25,7 @@ pub mod dcql;
 pub mod generator;
 pub mod http_target;
 pub mod jose;
+pub mod mdoc;
 pub mod output;
 pub mod render;
 pub mod serve;

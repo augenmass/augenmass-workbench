@@ -32,6 +32,7 @@ Defaults worth knowing before you type a command:
 | Read an OpenID4VP authorization request / signed JAR. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" decode request <input>` |
 | Read an OpenID4VCI credential offer (URI or JSON). | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" decode offer <input>` |
 | Read a token status list token. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" decode status-list <input>` |
+| Read an ISO 18013-5 mdoc (mso_mdoc): namespaces, elements, issuerAuth (COSE alg + x5chain), and the MSO. Decode only. CBOR, hex, or base64. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" decode mdoc <input>` |
 
 Exit code: 0 on a successful decode. These commands are for reading, not gating.
 

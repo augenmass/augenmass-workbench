@@ -34,8 +34,19 @@ wallet-interaction debugger.
   (PEM), and generic JWT/JWS.
 - Targeted `decode` subcommands for when you already know the type:
   `decode jwt`, `decode sd-jwt`, `decode regcert`, `decode request`,
-  `decode offer`, and `decode status-list`. These decode without verifying any
-  signature.
+  `decode offer`, `decode status-list`, and `decode mdoc`. These decode without
+  verifying any signature.
+- `decode mdoc`: decode an ISO/IEC 18013-5 mdoc (`mso_mdoc`), the other major
+  EUDI credential format alongside SD-JWT VC. It accepts a `DeviceResponse`, a
+  single `Document`, an `IssuerSigned`, or a bare `MobileSecurityObject`, given as
+  raw CBOR bytes, hex, or base64/base64url, and surfaces the document type, the
+  disclosed namespaces and elements (with nested CBOR rendered as JSON and large
+  byte values such as a portrait shown as a length-tagged hex preview), the issuer
+  authentication (the COSE_Sign1 algorithm and the X.509 chain, whose leaf
+  `x509_hash` the engine computes), and the Mobile Security Object (validity
+  window, per-namespace value-digest counts, and device key). `inspect` detects an
+  mdoc given as hex or base64. Decode only: the COSE signature is not verified and
+  value digests are not recomputed (the output says so).
 - `audit` command: lint an OpenID4VP request for over-asking against a curated
   purpose baseline. Takes `--request` (the value `minimal`, the value `overask`,
   or a path to a DCQL JSON file; defaults to `minimal`), `--purpose` (one of
@@ -153,8 +164,10 @@ wallet-interaction debugger.
   are planned. This does not affect the offline `verify` commands.
 - Licensed under Apache-2.0. Open source, framed as a developer tool.
 - Honest scope. `verify trust` checks that a leaf chains to a supplied anchor
-  within its validity window; it is not full X.509 path validation. mdoc (ISO/IEC
-  18013-5) is not yet decoded; the decoders cover SD-JWT VC, WRPRC, OpenID4VP
-  request/JAR, credential offer, status list, DCQL, registration body, X.509 PEM,
-  and generic JWT/JWS. The curated baselines are deliberate taste judgments, not
-  Rulebook derivations.
+  within its validity window; it is not full X.509 path validation. The decoders
+  cover SD-JWT VC, ISO 18013-5 mdoc (structure only; the COSE signature and value
+  digests are not verified), WRPRC, OpenID4VP request/JAR, credential offer,
+  status list, DCQL, registration body, X.509 PEM, and generic JWT/JWS.
+  Cryptographic mdoc verification (COSE_Sign1 plus value-digest matching plus
+  device binding) is later work, mirrored on the SD-JWT side by `verify`. The
+  curated baselines are deliberate taste judgments, not Rulebook derivations.

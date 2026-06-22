@@ -239,6 +239,7 @@ dependencies = [
  "axum",
  "base64 0.21.7",
  "chrono",
+ "ciborium",
  "clap",
  "dotenvy",
  "openid4vp",

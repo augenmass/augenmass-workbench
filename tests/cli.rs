@@ -449,3 +449,45 @@ fn doctor_flags_bad_request() {
         .failure()
         .stdout(contains("DOCTOR-X5C-STRING"));
 }
+
+// --- mdoc (ISO 18013-5) ----------------------------------------------------
+
+#[test]
+fn decode_mdoc_reveals_mdl_elements() {
+    bin()
+        .args(["decode", "mdoc", "fixtures/mdoc/issuer-signed.hex"])
+        .assert()
+        .success()
+        .stdout(contains("org.iso.18013.5.1"))
+        .stdout(contains("family_name = Doe"))
+        .stdout(contains("ES256"))
+        .stdout(contains("org.iso.18013.5.1.mDL"));
+}
+
+#[test]
+fn inspect_detects_mdoc() {
+    bin()
+        .args(["inspect", "fixtures/mdoc/issuer-signed.hex"])
+        .assert()
+        .success()
+        .stderr(contains("ISO 18013-5 mdoc"))
+        .stdout(contains("family_name"));
+}
+
+#[test]
+fn decode_mdoc_json_is_valid() {
+    let out = bin()
+        .args([
+            "--json",
+            "decode",
+            "mdoc",
+            "fixtures/mdoc/issuer-signed.hex",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("valid JSON");
+    assert_eq!(value["type"], "IssuerSigned");
+}

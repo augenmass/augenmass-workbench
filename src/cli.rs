@@ -15,6 +15,7 @@ use crate::commands::{
 };
 use crate::generator::GenerateOptions;
 use crate::http_target::Target;
+use crate::mdoc;
 use crate::output::{emit, OutputFormat};
 use crate::serve::{self, ServeArgs};
 use crate::{DEFAULT_PRIVACY_POLICY, DEFAULT_PURPOSE, DEFAULT_RP_ID, DEFAULT_SUPPORT_URI};
@@ -117,6 +118,8 @@ enum DecodeCmd {
     /// Decode a token status list token.
     #[command(name = "status-list")]
     StatusList { input: String },
+    /// Decode an ISO 18013-5 mdoc (DeviceResponse / IssuerSigned / MSO; CBOR, hex, or base64).
+    Mdoc { input: String },
 }
 
 #[derive(Subcommand)]
@@ -350,6 +353,7 @@ fn run_decode(what: DecodeCmd, fmt: OutputFormat) -> Result<()> {
         DecodeCmd::Request { input } => decode::decode_request(&read_input(&input)?)?,
         DecodeCmd::Offer { input } => decode::decode_offer(&read_input(&input)?)?,
         DecodeCmd::StatusList { input } => decode::decode_status_list(&read_input(&input)?)?,
+        DecodeCmd::Mdoc { input } => mdoc::decode_mdoc(&read_input_bytes(&input)?)?,
     };
     emit(fmt, &decoded.json, &decoded.text)?;
     Ok(())
@@ -422,6 +426,24 @@ fn read_input(arg: &str) -> Result<String> {
         return std::fs::read_to_string(path).with_context(|| format!("read {arg}"));
     }
     Ok(arg.to_string())
+}
+
+/// Resolve an input argument as raw bytes: `-` reads stdin, an existing file path
+/// is read as bytes (so binary CBOR works), anything else is the literal value's
+/// bytes. Used by decoders that accept binary input (mdoc).
+fn read_input_bytes(arg: &str) -> Result<Vec<u8>> {
+    if arg == "-" {
+        let mut buf = Vec::new();
+        std::io::stdin()
+            .read_to_end(&mut buf)
+            .context("read stdin")?;
+        return Ok(buf);
+    }
+    let path = Path::new(arg);
+    if path.is_file() {
+        return std::fs::read(path).with_context(|| format!("read {arg}"));
+    }
+    Ok(arg.as_bytes().to_vec())
 }
 
 #[cfg(test)]

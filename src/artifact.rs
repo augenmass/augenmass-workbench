@@ -31,6 +31,8 @@ pub enum ArtifactKind {
     RegistrationBody,
     /// An X.509 certificate (PEM).
     Certificate,
+    /// An ISO 18013-5 mdoc (CBOR, given as hex or base64).
+    Mdoc,
     /// Some other JSON document.
     Json,
     /// Could not classify.
@@ -51,6 +53,7 @@ impl ArtifactKind {
             ArtifactKind::DcqlQuery => "DCQL query",
             ArtifactKind::RegistrationBody => "registrar registration body",
             ArtifactKind::Certificate => "X.509 certificate (PEM)",
+            ArtifactKind::Mdoc => "ISO 18013-5 mdoc",
             ArtifactKind::Json => "JSON document",
             ArtifactKind::Unknown => "unknown",
         }
@@ -98,6 +101,12 @@ pub fn sniff(input: &str) -> ArtifactKind {
     // JSON documents.
     if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
         return classify_json(&value);
+    }
+
+    // ISO 18013-5 mdoc given as hex or base64/base64url of CBOR. (A raw binary
+    // mdoc is not text, so reach it with the explicit `decode mdoc`.)
+    if crate::mdoc::looks_like_mdoc(trimmed) {
+        return ArtifactKind::Mdoc;
     }
 
     ArtifactKind::Unknown
@@ -220,5 +229,12 @@ mod tests {
             sniff(r#"{"credentials":[{"id":"pid","format":"dc+sd-jwt"}]}"#),
             ArtifactKind::DcqlQuery
         );
+    }
+
+    #[test]
+    fn detects_mdoc_hex() {
+        let hex =
+            std::fs::read_to_string("fixtures/mdoc/issuer-signed.hex").expect("read mdoc fixture");
+        assert_eq!(sniff(hex.trim()), ArtifactKind::Mdoc);
     }
 }

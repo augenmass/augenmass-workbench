@@ -26,6 +26,7 @@ pub fn run(input: &str, format: OutputFormat) -> Result<()> {
         ArtifactKind::DcqlQuery => decode_dcql(input)?,
         ArtifactKind::RegistrationBody => decode_registration_body(input)?,
         ArtifactKind::Certificate => decode_certificate(input)?,
+        ArtifactKind::Mdoc => crate::mdoc::decode_mdoc(input.as_bytes())?,
         ArtifactKind::Json => decode_json(input)?,
         ArtifactKind::Unknown => {
             return Err(anyhow!(

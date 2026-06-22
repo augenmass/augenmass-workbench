@@ -8,7 +8,7 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
 - Repo: `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench-v2`, its own git repo on `main`.
 - A working, fully-tested Rust CLI `augenmass` (v0.2.0) plus a Claude Code skill and full docs.
 - Build green, zero warnings, clippy clean, `cargo fmt --check` clean.
-- Tests: 16 unit + 30 CLI integration + 1 serve integration = 47, all passing, against real committed offline fixtures.
+- Tests: 20 unit + 33 CLI integration + 1 serve integration = 54, all passing, against real committed offline fixtures.
 - Every command verified by hand against the real fixtures (verification, revocation, x509_hash, over-ask, the guarded clone write/read loop, the live serve flow).
 - HEADLINE capability now built: `augenmass serve`, a live wallet-interaction debugger (P2 done). See below.
 - P1 (harvest) done this round: 6 new repos in `../external/` + `external/HARVEST-NOTES.md`.
@@ -40,7 +40,7 @@ Standing directions for the next session:
 CLI binary `augenmass` (src/main.rs -> src/cli.rs). Global `--json` on read-only commands.
 Every artifact arg accepts a file path, an inline value, or `-` for stdin. Commands, grouped:
 
-- UNDERSTAND: `inspect <input>` (universal auto-detect + decode), `decode {jwt|sd-jwt|regcert|request|offer|status-list}`
+- UNDERSTAND: `inspect <input>` (universal auto-detect + decode), `decode {jwt|sd-jwt|regcert|request|offer|status-list|mdoc}` (mdoc = ISO 18013-5 mso_mdoc CBOR, src/mdoc.rs, decode-only; fixtures/mdoc/{issuer-signed,device-response}.hex)
 - PROPORTIONALITY: `check <body>` (registration-body gate: over-ask + format), `audit --request {minimal|overask|FILE} --purpose <id> [--cert FILE]`, `baselines [<id>]`
 - CRYPTO: `verify {presentation|trust|status|status-list}`, `x509-hash <input> [--client-id]`
 - PRODUCE: `generate {regbody|dcql}`
@@ -153,7 +153,15 @@ P2. DONE. `augenmass serve` wallet-interaction debugger shipped (see "What is bu
     and store the per-session private JWK (e.g. Mutex<HashMap<Uuid, JWK>> on AppState) to
     decrypt in verify_any. Other follow-ups: inline over-ask verdict on the trace page;
     a "replay last response" capture-to-file for offline re-verification.
-P3. Broaden decoders/verifiers: mdoc / mso_mdoc (ISO 18013-5) via `isomdl` + CBOR/COSE;
+P3. IN PROGRESS. mdoc / mso_mdoc (ISO 18013-5) DECODING done: `decode mdoc` +
+    inspect detection, src/mdoc.rs via `ciborium` (already transitive; no new deps),
+    fixtures from isomdl (the real Jane Doe mDL issuer-signed + a synthetic
+    device-response). Decode-only; COSE signature + value-digest verification is the
+    next mdoc step. Still to do in P3: full mdoc cryptographic VERIFY (COSE_Sign1 +
+    value-digest match + device binding); trust-list (ETSI) parse + validate against
+    `../external/test-trust-lists`; presentation_definition (legacy PE) decode +
+    PE->DCQL; OpenID4VCI issuer/wallet metadata; full JAR signature verification.
+    Original P3 note follows for reference: broaden decoders/verifiers: mdoc via `isomdl` + CBOR/COSE;
     trust-list (ETSI TS 119 612 / 119 475) parse + validate against `../external/test-trust-lists`;
     presentation_definition (legacy PE) decode + PE->DCQL conversion; OpenID4VCI issuer metadata
     and wallet metadata; full JAR signature verification (not just decode).

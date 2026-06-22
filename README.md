@@ -2,7 +2,7 @@
 
 A swiss-army CLI and Claude Code skill for the EUDI Wallet ecosystem.
 
-Augenmaß Workbench gives developers and auditors one tool to inspect, decode, audit over-ask, verify, generate, repair, and live-debug EUDI artifacts and flows: SD-JWT VC presentations, registration certificates, OpenID4VP requests and JARs, credential offers, status lists, DCQL queries, and the wallet-to-verifier presentation exchange itself. It is built on a single engine (`augenmass-core`, reused as-is from the verifier project). Everything runs fully offline except two paths that are network by nature: the registrar write path, and the live wallet-interaction debugger (`serve`), where a real wallet connects to the tool. Every read-only command takes `--json` so it drops cleanly into agents and CI.
+Augenmaß Workbench gives developers and auditors one tool to inspect, decode, audit over-ask, verify, generate, repair, and live-debug EUDI artifacts and flows: SD-JWT VC presentations, ISO 18013-5 mdoc credentials, registration certificates, OpenID4VP requests and JARs, credential offers, status lists, DCQL queries, and the wallet-to-verifier presentation exchange itself. It is built on a single engine (`augenmass-core`, reused as-is from the verifier project). Everything runs fully offline except two paths that are network by nature: the registrar write path, and the live wallet-interaction debugger (`serve`), where a real wallet connects to the tool. Every read-only command takes `--json` so it drops cleanly into agents and CI.
 
 It supersedes the v1 workbench (which had six commands: `generate`, `check`, `doctor`, `register`, `list`, `clone`) by surfacing the entire engine (verification, status, trust, disclosure, crypto) and adding net-new offline decoders behind one cohesive CLI.
 
@@ -113,7 +113,8 @@ augenmass serve
 
 UNDERSTAND
 - `inspect <input>`: sniff an artifact's type, then decode it ("what is this?").
-- `decode {jwt | sd-jwt | regcert | request | offer | status-list} <input>`: decode a known artifact type, no signature verification.
+- `decode {jwt | sd-jwt | regcert | request | offer | status-list | mdoc} <input>`: decode a known artifact type, no signature verification.
+- `decode mdoc <input>`: decode an ISO 18013-5 mdoc (`mso_mdoc`): the document type, the disclosed namespaces and elements, the issuer authentication (COSE_Sign1 algorithm and its X.509 chain), and the Mobile Security Object (validity window, value-digest counts, device key). Accepts raw CBOR bytes, hex, or base64/base64url. Decode only; the COSE signature and value digests are not verified.
 
 PROPORTIONALITY (the core IP)
 - `check <body>`: pre-write gate on a registration body for over-ask and format errors.
