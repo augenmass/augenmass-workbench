@@ -1012,7 +1012,7 @@ The `POST /response/:id` body is the wallet's `application/x-www-form-urlencoded
 
 ### Trace event codes
 
-The trace is a per-session, timestamped event log. Each event has `seq` (a monotonic process-wide sequence number), `at` (local time of day, `HH:MM:SS.mmm`), `at_unix_ms` (Unix milliseconds), `kind`, `code` (the stable string below), `level` (`info`, `good`, `warn`, or `bad`), `summary` (a one-line human-legible string), and an optional `detail` carrying the raw artifact at that step (the JAR header and payload, the raw response body, the decrypted `vp_token`, the reject reason, and so on).
+The trace is a per-session, timestamped event log. The JSON uses camelCase keys. Each event has `seq` (a monotonic process-wide sequence number), `at` (local time of day, `HH:MM:SS.mmm`), `atUnixMs` (Unix milliseconds), `kind`, `code` (the stable string below), `level` (`info`, `good`, `warn`, or `bad`), `summary` (a one-line human-legible string), and an optional `detail` carrying the raw artifact at that step (the JAR header and payload, the raw response body, the decrypted `vp_token`, the reject reason, and so on). The `/api/sessions` listing gives each session a `session`, an `eventCount`, and the `lastCode`/`lastLevel`/`lastAt` of its most recent event.
 
 The codes, in typical order:
 

@@ -138,6 +138,19 @@ wallet-interaction debugger.
   real wallet connects to it); its verification logic is the same offline engine,
   exercised by an integration test on an ephemeral port and a unit test against
   the committed oracle fixtures.
+- `serve` hardening (after an adversarial review of the new code): the
+  credential-controlled status-list URI fetch is guarded against SSRF (https
+  only, redirects disabled, a request timeout, and a deny list for loopback,
+  private, link-local, and other non-public addresses); a status-list transport
+  or signature failure is reported and traced as an infrastructure error, never
+  as a revocation; a revoked or suspended credential emits an explicit REJECTED
+  trace event so the timeline ends red; a multi-credential `vp_token` is flagged
+  loudly rather than silently reduced to the last presentation; the startup
+  banner always prints the real bind address and warns when `--public-url` does
+  not match it; and `--public-url` is normalised to end in '/'.
+- Known limitation: `serve` reuses one response-encryption key across requests.
+  HAIP prefers a fresh ephemeral key per Authorization Request; per-request keys
+  are planned. This does not affect the offline `verify` commands.
 - Licensed under Apache-2.0. Open source, framed as a developer tool.
 - Honest scope. `verify trust` checks that a leaf chains to a supplied anchor
   within its validity window; it is not full X.509 path validation. mdoc (ISO/IEC

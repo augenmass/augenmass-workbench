@@ -253,123 +253,207 @@ async fn verify_vp_token(
         Value::Object(map) => map.values().collect(),
         other => vec![other],
     };
+    // Flatten every presentation across the vp_token. The German PID profile is
+    // single-credential, so flag a multi-credential response loudly: each is
+    // still verified and traced, but only the last is surfaced to the inspector.
+    let mut presentations: Vec<&str> = Vec::new();
     for entry in entries {
-        let presentations: Vec<&str> = match entry {
-            Value::Array(arr) => arr.iter().filter_map(|v| v.as_str()).collect(),
-            Value::String(s) => vec![s.as_str()],
-            _ => continue,
+        match entry {
+            Value::Array(arr) => presentations.extend(arr.iter().filter_map(|v| v.as_str())),
+            Value::String(s) => presentations.push(s.as_str()),
+            _ => {}
+        }
+    }
+    if presentations.len() > 1 {
+        st.trace
+            .record_at(
+                sid,
+                TraceKind::Note,
+                TraceLevel::Warn,
+                format!(
+                    "received {} presentations; this German PID profile expects one, the inspector reflects the last verified credential (all are traced)",
+                    presentations.len()
+                ),
+                Some(json!({ "presentationCount": presentations.len() })),
+            )
+            .await;
+    }
+    for p in presentations {
+        let verified = match verify_pid_presentation_full(
+            p,
+            binding,
+            PID_VCT,
+            DEFAULT_MAX_AGE_SECS,
+            now_unix,
+            &TrustOptions {
+                anchors: st.trust_anchors.as_ref(),
+                status: StatusInput::None,
+            },
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                let reason = e.to_string();
+                st.trace
+                    .record_at(
+                        sid,
+                        TraceKind::Rejected,
+                        TraceLevel::Bad,
+                        format!("presentation rejected: {reason}"),
+                        Some(json!({ "reason": reason })),
+                    )
+                    .await;
+                return Err(reason);
+            }
         };
-        for p in presentations {
-            let verified = match verify_pid_presentation_full(
-                p,
-                binding,
-                PID_VCT,
-                DEFAULT_MAX_AGE_SECS,
-                now_unix,
-                &TrustOptions {
-                    anchors: st.trust_anchors.as_ref(),
-                    status: StatusInput::None,
-                },
-            ) {
-                Ok(v) => v,
-                Err(e) => {
-                    let reason = e.to_string();
-                    st.trace
-                        .record_at(
-                            sid,
-                            TraceKind::Rejected,
-                            TraceLevel::Bad,
-                            format!("presentation rejected: {reason}"),
-                            Some(json!({ "reason": reason })),
-                        )
-                        .await;
-                    return Err(reason);
-                }
-            };
 
-            let disclosed: Vec<String> = verified.view.disclosed.iter().map(|d| d.key()).collect();
-            st.trace
-                .record_at(
-                    sid,
-                    TraceKind::Verified,
-                    TraceLevel::Good,
-                    format!(
-                        "presentation verified: {} ({} claim(s) disclosed, holder binding {})",
-                        verified.vct,
-                        disclosed.len(),
-                        if verified.holder_bound {
-                            "ok"
-                        } else {
-                            "absent"
-                        }
-                    ),
-                    Some(json!({
-                        "vct": verified.vct,
-                        "disclosed": disclosed,
-                        "holderBound": verified.holder_bound,
-                    })),
-                )
-                .await;
+        let disclosed: Vec<String> = verified.view.disclosed.iter().map(|d| d.key()).collect();
+        st.trace
+            .record_at(
+                sid,
+                TraceKind::Verified,
+                TraceLevel::Good,
+                format!(
+                    "presentation verified: {} ({} claim(s) disclosed, holder binding {})",
+                    verified.vct,
+                    disclosed.len(),
+                    if verified.holder_bound {
+                        "ok"
+                    } else {
+                        "absent"
+                    }
+                ),
+                Some(json!({
+                    "vct": verified.vct,
+                    "disclosed": disclosed,
+                    "holderBound": verified.holder_bound,
+                })),
+            )
+            .await;
 
-            if st.live_status && st.trust_anchors.is_some() {
-                if let (Some(anchor_pem), Some(sref)) =
-                    (st.anchor_pem.as_ref(), verified.status_ref.as_ref())
-                {
-                    let jws = st
-                        .status_fetcher
-                        .fetch(&sref.uri)
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    let signer =
-                        status_signer_from_anchor(anchor_pem).map_err(|e| e.to_string())?;
-                    match check_status_list_token(&jws, &signer, sref).map_err(|e| e.to_string())? {
-                        CredentialStatus::Valid => {
-                            st.trace
-                                .record_at(
-                                    sid,
-                                    TraceKind::StatusChecked,
-                                    TraceLevel::Good,
-                                    format!("status-list entry {} is VALID", sref.idx),
-                                    Some(json!({ "status": "valid", "index": sref.idx, "uri": sref.uri })),
-                                )
-                                .await;
-                        }
-                        CredentialStatus::Revoked => {
-                            let reason =
-                                "credential is revoked (status-list entry is INVALID)".to_string();
-                            st.trace
-                                .record_at(
-                                    sid,
-                                    TraceKind::StatusChecked,
-                                    TraceLevel::Bad,
-                                    &reason,
-                                    Some(json!({ "status": "revoked", "index": sref.idx, "uri": sref.uri })),
-                                )
-                                .await;
-                            return Err(reason);
-                        }
-                        CredentialStatus::Suspended => {
-                            let reason =
-                                "credential is suspended (status-list entry is SUSPENDED); rejecting fail-closed"
-                                    .to_string();
-                            st.trace
-                                .record_at(
-                                    sid,
-                                    TraceKind::StatusChecked,
-                                    TraceLevel::Bad,
-                                    &reason,
-                                    Some(json!({ "status": "suspended", "index": sref.idx, "uri": sref.uri })),
-                                )
-                                .await;
-                            return Err(reason);
-                        }
+        if st.live_status && st.trust_anchors.is_some() {
+            if let (Some(anchor_pem), Some(sref)) =
+                (st.anchor_pem.as_ref(), verified.status_ref.as_ref())
+            {
+                // A transport or signature failure here is an INFRASTRUCTURE
+                // problem, not a revocation. Record it as an error and say so,
+                // so it is never confused with a genuine "revoked" outcome.
+                let jws = match st.status_fetcher.fetch(&sref.uri).await {
+                    Ok(j) => j,
+                    Err(e) => {
+                        let reason = format!(
+                            "status-list could not be retrieved (infrastructure failure, not a revocation): {e}"
+                        );
+                        st.trace
+                            .record_at(
+                                sid,
+                                TraceKind::Error,
+                                TraceLevel::Bad,
+                                &reason,
+                                Some(json!({ "uri": sref.uri, "error": e.to_string() })),
+                            )
+                            .await;
+                        return Err(reason);
+                    }
+                };
+                let signer = match status_signer_from_anchor(anchor_pem) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let reason = format!(
+                            "status-signer key could not be derived from the trust anchor: {e}"
+                        );
+                        st.trace
+                            .record_at(
+                                sid,
+                                TraceKind::Error,
+                                TraceLevel::Bad,
+                                &reason,
+                                Some(json!({ "error": e.to_string() })),
+                            )
+                            .await;
+                        return Err(reason);
+                    }
+                };
+                let status = match check_status_list_token(&jws, &signer, sref) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        let reason = format!("status-list token failed verification: {e}");
+                        st.trace
+                            .record_at(
+                                sid,
+                                TraceKind::Error,
+                                TraceLevel::Bad,
+                                &reason,
+                                Some(json!({ "error": e.to_string() })),
+                            )
+                            .await;
+                        return Err(reason);
+                    }
+                };
+                match status {
+                    CredentialStatus::Valid => {
+                        st.trace
+                            .record_at(
+                                sid,
+                                TraceKind::StatusChecked,
+                                TraceLevel::Good,
+                                format!("status-list entry {} is VALID", sref.idx),
+                                Some(json!({ "status": "valid", "index": sref.idx, "uri": sref.uri })),
+                            )
+                            .await;
+                    }
+                    CredentialStatus::Revoked => {
+                        let reason =
+                            "credential is revoked (status-list entry is INVALID)".to_string();
+                        st.trace
+                            .record_at(
+                                sid,
+                                TraceKind::StatusChecked,
+                                TraceLevel::Bad,
+                                &reason,
+                                Some(json!({ "status": "revoked", "index": sref.idx, "uri": sref.uri })),
+                            )
+                            .await;
+                        st.trace
+                            .record_at(
+                                sid,
+                                TraceKind::Rejected,
+                                TraceLevel::Bad,
+                                format!("presentation rejected: {reason}"),
+                                Some(json!({ "reason": reason })),
+                            )
+                            .await;
+                        return Err(reason);
+                    }
+                    CredentialStatus::Suspended => {
+                        let reason =
+                            "credential is suspended (status-list entry is SUSPENDED); rejecting fail-closed"
+                                .to_string();
+                        st.trace
+                            .record_at(
+                                sid,
+                                TraceKind::StatusChecked,
+                                TraceLevel::Bad,
+                                &reason,
+                                Some(json!({ "status": "suspended", "index": sref.idx, "uri": sref.uri })),
+                            )
+                            .await;
+                        st.trace
+                            .record_at(
+                                sid,
+                                TraceKind::Rejected,
+                                TraceLevel::Bad,
+                                format!("presentation rejected: {reason}"),
+                                Some(json!({ "reason": reason })),
+                            )
+                            .await;
+                        return Err(reason);
                     }
                 }
             }
-
-            record_over_ask(st, sid, &disclosed).await;
-            last = Some(verified);
         }
+
+        record_over_ask(st, sid, &disclosed).await;
+        last = Some(verified);
     }
     last.ok_or_else(|| "no SD-JWT VC presentation found".to_string())
 }

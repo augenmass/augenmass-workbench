@@ -74,6 +74,7 @@ impl TraceKind {
 
 /// One recorded step of a session's wallet interaction.
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TraceEvent {
     /// Monotonic process-wide sequence number (stable ordering across sessions).
     pub seq: u64,
@@ -94,6 +95,7 @@ pub struct TraceEvent {
 
 /// The full ordered trace for one session.
 #[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct SessionTrace {
     pub session: String,
     pub events: Vec<TraceEvent>,
@@ -101,9 +103,12 @@ pub struct SessionTrace {
 
 /// A short summary of a session for the `/api/sessions` listing.
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SessionSummary {
     pub session: String,
-    pub events: usize,
+    /// Number of recorded events (named distinctly from the `events` array that
+    /// `/api/trace/:id` returns, so the two endpoints do not collide on a key).
+    pub event_count: usize,
     pub last_code: &'static str,
     pub last_level: TraceLevel,
     pub last_at: String,
@@ -160,26 +165,29 @@ impl TraceStore {
         summary: impl Into<String>,
         detail: Option<Value>,
     ) {
-        let seq = self.seq.fetch_add(1, Ordering::SeqCst);
         let now = chrono::Local::now();
         let at = now.format("%H:%M:%S%.3f").to_string();
+        let at_unix_ms = now.timestamp_millis();
         let summary = summary.into();
-        let event = TraceEvent {
-            seq,
-            at_unix_ms: now.timestamp_millis(),
-            at: at.clone(),
-            kind,
-            code: kind.code(),
-            level,
-            summary: summary.clone(),
-            detail,
-        };
 
+        // Allocate the sequence number, print to the console, and append all
+        // under the same lock, so seq order, console order, and stored order
+        // agree even under concurrent recording.
+        let mut inner = self.inner.lock().await;
+        let seq = self.seq.fetch_add(1, Ordering::SeqCst);
         if self.console {
             self.console_line(session, &at, kind.code(), level, &summary);
         }
-
-        let mut inner = self.inner.lock().await;
+        let event = TraceEvent {
+            seq,
+            at_unix_ms,
+            at,
+            kind,
+            code: kind.code(),
+            level,
+            summary,
+            detail,
+        };
         let entry = inner.map.entry(session).or_insert_with(|| SessionTrace {
             session: session.to_string(),
             events: Vec::new(),
@@ -230,7 +238,7 @@ impl TraceStore {
                 let last = t.events.last();
                 SessionSummary {
                     session: t.session.clone(),
-                    events: t.events.len(),
+                    event_count: t.events.len(),
                     last_code: last.map(|e| e.code).unwrap_or(""),
                     last_level: last.map(|e| e.level).unwrap_or(TraceLevel::Info),
                     last_at: last.map(|e| e.at.clone()).unwrap_or_default(),

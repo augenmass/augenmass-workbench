@@ -59,7 +59,7 @@ pub struct ServeArgs {
     pub live_status: bool,
     /// Suppress the live per-step trace on the console (it still records and is
     /// served at /trace/:id and /api/trace/:id).
-    #[arg(long)]
+    #[arg(long, env = "QUIET", default_value_t = false)]
     pub quiet: bool,
 }
 
@@ -72,6 +72,20 @@ pub async fn run(args: ServeArgs) -> Result<()> {
                 .unwrap_or_else(|_| EnvFilter::new("warn,augenmass=info")),
         )
         .try_init();
+
+    // The public URL is baked into the request_uri, response_uri, QR, and every
+    // link the wallet and browser use, and the openid4vp builder joins paths onto
+    // it, so it must end in '/'. Auto-fix and say so rather than silently serving
+    // broken endpoints.
+    let mut args = args;
+    if !args.public_url.path().ends_with('/') {
+        let fixed = format!("{}/", args.public_url.path());
+        args.public_url.set_path(&fixed);
+        eprintln!(
+            "note: --public-url did not end in '/'; using {}",
+            args.public_url
+        );
+    }
 
     let source = match (args.key.as_ref(), args.leaf.as_ref()) {
         (Some(k), Some(l)) => {
@@ -99,6 +113,13 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     let enforce_trust = trust_anchors.is_some();
     let console_trace = !args.quiet;
 
+    // The listener binds to (host, port); everything the wallet sees is built
+    // from public_url. If they disagree, the wallet is told to reach an address
+    // we are not serving, and the exchange breaks silently. Detect and warn.
+    let advertised_host = args.public_url.host_str().unwrap_or_default().to_string();
+    let advertised_port = args.public_url.port_or_known_default();
+    let bind_mismatch = advertised_host != args.host || advertised_port != Some(args.port);
+
     let state = std::sync::Arc::new(
         AppState::new(
             args.public_url.clone(),
@@ -114,6 +135,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
 
     eprintln!("augenmass serve: wallet-interaction debugger");
     eprintln!("  open         : {}", state.public_url);
+    eprintln!("  listening    : http://{}:{}", args.host, args.port);
     eprintln!("  client_id    : {}", state.client_id);
     eprintln!(
         "  cert         : {}",
@@ -147,6 +169,23 @@ pub async fn run(args: ServeArgs) -> Result<()> {
             "quiet on console; at <base>/trace/<session> and /api/trace/<session>"
         }
     );
+    if bind_mismatch {
+        eprintln!();
+        eprintln!(
+            "  warning: binding {}:{} but --public-url advertises {} (port {}); a wallet will fetch the wrong address. Set --public-url to match the bind address.",
+            args.host,
+            args.port,
+            advertised_host,
+            advertised_port
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| "?".to_string()),
+        );
+    }
+    if is_loopback_host(&args.host) {
+        eprintln!(
+            "  note: bound to loopback; a phone wallet on your LAN cannot reach this. Use --host 0.0.0.0 with a --public-url that has your LAN IP, or a tunnel."
+        );
+    }
     eprintln!();
     eprintln!("  Open the URL above, scan the QR with a wallet, and watch the trace below.");
     eprintln!();
@@ -158,4 +197,8 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     tracing::info!("listening on http://{}:{}", args.host, args.port);
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    matches!(host, "127.0.0.1" | "::1" | "localhost")
 }

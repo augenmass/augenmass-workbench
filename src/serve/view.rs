@@ -82,7 +82,7 @@ pub fn landing_page(state: &AppState, session_id: &Uuid, auth_url: &str) -> Stri
          <p class=\"sub\">ERICA checks whether the protocol is valid. This checks whether the relying party is asking responsibly, and traces the whole exchange so you can debug it.</p></header>\
          <main>{mode}\
          <section class=\"card\"><h3>Scan to present</h3>\
-         <p class=\"blurb\">The minimal ask: given name, family name, and over-18. Nothing else.</p>\
+         <p class=\"blurb\">The minimal ask: given name, family name, and over-18. Nothing else. Reloading this page starts a fresh request (a new session and QR).</p>\
          <div class=\"qr\">{qr}</div>\
          <p class=\"mono\"><code>{auth}</code></p>\
          <p>client_id: <code>{cid}</code></p></section>\
@@ -235,13 +235,12 @@ pub fn trace_page(state: &AppState, session: &Uuid, trace: Option<&SessionTrace>
     let short = short_id(*session);
     let json_url = format!("{}api/trace/{}", state.public_url, session);
 
-    let (timeline, count, terminal) = match trace {
+    let (timeline, count) = match trace {
         None => (
             "<p class=\"blurb\">No events yet for this session. Scan the QR on the \
              <a href=\"../\">landing page</a> to present, then this timeline fills in live.</p>"
                 .to_string(),
             0usize,
-            false,
         ),
         Some(t) => {
             let mut out = String::new();
@@ -273,16 +272,15 @@ pub fn trace_page(state: &AppState, session: &Uuid, trace: Option<&SessionTrace>
                     detail = detail,
                 ));
             }
-            let terminal = t.events.iter().any(|e| {
-                matches!(e.level, TraceLevel::Good | TraceLevel::Bad) && is_outcome(e.code)
-            });
-            (
-                format!("<ul class=\"timeline\">{out}</ul>"),
-                t.events.len(),
-                terminal,
-            )
+            (format!("<ul class=\"timeline\">{out}</ul>"), t.events.len())
         }
     };
+
+    // Derive the outcome from the LAST terminal event, not merely any success: a
+    // revoked credential first VERIFIES and is then REJECTED, so keying off the
+    // last outcome event keeps the pill and refresh honest.
+    let last_outcome = trace.and_then(|t| t.events.iter().rev().find(|e| is_outcome(e.code)));
+    let terminal = last_outcome.is_some();
 
     // Refresh while the exchange is still in flight; stop once it reached an
     // outcome so a finished trace stays still and is easy to read.
@@ -297,10 +295,10 @@ pub fn trace_page(state: &AppState, session: &Uuid, trace: Option<&SessionTrace>
     } else {
         ""
     };
-    let live = if terminal {
-        "<span class=\"pill done\">exchange complete</span>"
-    } else {
-        "<span class=\"pill live\">live, refreshing</span>"
+    let live = match last_outcome {
+        Some(e) if e.code == "VERIFIED" => "<span class=\"pill done\">verified</span>",
+        Some(_) => "<span class=\"pill fail\">rejected</span>",
+        None => "<span class=\"pill live\">live, refreshing</span>",
     };
 
     let body = format!(
@@ -371,6 +369,7 @@ ul.legal{margin:.3rem 0;padding-left:1.1rem}
 .pill{display:inline-block;font-size:.75rem;font-weight:600;padding:.05rem .5rem;border-radius:999px;margin-left:.4rem}
 .pill.live{background:#e8eefc;color:var(--info)}
 .pill.done{background:#e9f7ef;color:var(--ok)}
+.pill.fail{background:#fdeceb;color:var(--over)}
 ul.timeline{list-style:none;padding:0;margin:0}
 li.evt{border-left:3px solid var(--line);padding:.5rem .25rem .5rem .9rem;margin:0 0 .4rem}
 li.evt.ok{border-color:var(--ok)}

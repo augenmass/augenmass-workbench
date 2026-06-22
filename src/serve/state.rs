@@ -8,7 +8,9 @@
 //! is observable end to end.
 
 use std::collections::HashMap;
+use std::net::{IpAddr, ToSocketAddrs};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use base64::prelude::*;
@@ -108,7 +110,35 @@ impl StatusFetcher {
                         url.scheme()
                     );
                 }
-                let jws = reqwest::get(url)
+                // SSRF guard: the status-list uri comes from the credential, so it
+                // is attacker-influenced. Resolve the host and refuse to fetch from
+                // loopback, private, link-local, or otherwise non-public addresses,
+                // and disable redirects so a public host cannot bounce us inward.
+                let host = url
+                    .host_str()
+                    .ok_or_else(|| anyhow::anyhow!("status-list uri has no host ({uri})"))?;
+                let port = url.port_or_known_default().unwrap_or(443);
+                let addrs: Vec<std::net::SocketAddr> = (host, port)
+                    .to_socket_addrs()
+                    .with_context(|| format!("resolve status-list host {host}"))?
+                    .collect();
+                if addrs.is_empty() {
+                    anyhow::bail!("status-list host {host} did not resolve ({uri})");
+                }
+                if let Some(addr) = addrs.iter().find(|a| is_non_public_ip(&a.ip())) {
+                    anyhow::bail!(
+                        "refusing to fetch status-list from non-public address {} ({uri})",
+                        addr.ip()
+                    );
+                }
+                let client = reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .timeout(Duration::from_secs(10))
+                    .build()
+                    .context("build status-list http client")?;
+                let jws = client
+                    .get(url)
+                    .send()
                     .await
                     .with_context(|| format!("fetch status-list token from {uri}"))?
                     .error_for_status()
@@ -128,6 +158,30 @@ impl StatusFetcher {
                 .trim()
                 .to_string())
             }
+        }
+    }
+}
+
+/// Is this address one we must not fetch from (the SSRF deny list): loopback,
+/// private, link-local, unspecified, or multicast?
+fn is_non_public_ip(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_multicast()
+        }
+        IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                // unique-local fc00::/7
+                || (v6.segments()[0] & 0xfe00) == 0xfc00
+                // link-local fe80::/10
+                || (v6.segments()[0] & 0xffc0) == 0xfe80
         }
     }
 }

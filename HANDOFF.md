@@ -140,10 +140,19 @@ P1. DONE (this round). Harvested 6 new repos into `../external/` via a backgroun
     animo-openid4vc-playground, animo-openid4vc-playground-funke; index at
     `external/HARVEST-NOTES.md`. More can be harvested later (walt.id, Procivis One,
     COKIT, the eudi-lib-* SDKs, EWC). Read `external/HARVEST-NOTES.md` first.
-P2. DONE. `augenmass serve` wallet-interaction debugger shipped (see "What is built").
-    Possible follow-ups: render the over-ask verdict inline on the trace page; add a
-    "replay last response" capture-to-file so a captured wallet response can be
-    re-verified offline; multi-credential vp_token handling beyond "last wins".
+P2. DONE. `augenmass serve` wallet-interaction debugger shipped (see "What is built"),
+    then hardened via an adversarial review workflow (13 confirmed findings fixed:
+    SSRF guard on the status fetch, infra-vs-revocation error distinction, REJECTED
+    event on revoke so the timeline ends red, loud multi-credential warning, bind/
+    public_url mismatch warning + always-shown bind address, public_url trailing-slash
+    normalisation, seq ordering under the trace lock, camelCase trace JSON + eventCount,
+    --quiet env, loopback note, landing reload note). ONE finding deferred (LOW): serve
+    reuses one response-encryption key across requests; HAIP prefers a fresh ephemeral
+    key per Authorization Request. To fix: move generate_encryption_key + build_client_metadata
+    into create_request, inject per-session client_metadata via .with_request_parameter,
+    and store the per-session private JWK (e.g. Mutex<HashMap<Uuid, JWK>> on AppState) to
+    decrypt in verify_any. Other follow-ups: inline over-ask verdict on the trace page;
+    a "replay last response" capture-to-file for offline re-verification.
 P3. Broaden decoders/verifiers: mdoc / mso_mdoc (ISO 18013-5) via `isomdl` + CBOR/COSE;
     trust-list (ETSI TS 119 612 / 119 475) parse + validate against `../external/test-trust-lists`;
     presentation_definition (legacy PE) decode + PE->DCQL conversion; OpenID4VCI issuer metadata
