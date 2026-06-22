@@ -2,7 +2,7 @@
 
 This is the complete reference for the `augenmass` CLI. Every command, subcommand, flag, exit code, and example here is verified against the built binary (`augenmass 0.2.0`) and the committed fixtures under `fixtures/`. Every example runs as written from the repository root.
 
-Augenmaß Workbench is a developer and auditor toolkit for the EUDI Wallet ecosystem. It decodes and inspects every common artifact (SD-JWT VC, registration certificate, authorization request/JAR, credential offer, status list), audits requests for over-asking against curated purpose baselines and a cited legal basis, verifies presentations cryptographically, and writes registrations under guardrails. Everything except the registrar write path runs fully offline.
+Augenmaß Workbench is a developer and auditor toolkit for the EUDI Wallet ecosystem. It decodes and inspects every common artifact (SD-JWT VC, registration certificate, authorization request/JAR, credential offer, status list), audits requests for over-asking against curated purpose baselines and a cited legal basis, verifies presentations cryptographically, writes registrations under guardrails, and live-debugs the wallet-to-verifier exchange. Everything runs fully offline except two paths that are network by nature: the registrar write path, and the live wallet-interaction debugger (`serve`), where a real wallet connects to the tool.
 
 ## How to read this reference
 
@@ -13,6 +13,7 @@ Commands are grouped by intent:
 - **CRYPTO**: signature, trust, and revocation verification, plus the x509_hash binding (`verify`, `x509-hash`).
 - **PRODUCE**: generate proportionate artifacts (`generate`).
 - **DIAGNOSE**: find verifier signed-request gotchas (`doctor`).
+- **DEBUG**: a live wallet-interaction debugger, a verifier-in-a-box a real wallet presents to (`serve`).
 - **WRITE**: guard-railed registrar writes and reads, plus the local clone store (`register`, `list`, `clone`).
 
 ## Global flag: `--json`
@@ -946,6 +947,101 @@ Signed-request findings:
     Fix: Wrap the certificate in an array: "x5c": ["MIIB..."].
   DOCTOR-CLIENT-ID-X509HASH [blocking]: client_id must be in the x509_hash form.
     Fix: Use "client_id": "x509_hash:<base64url(SHA-256(leaf-cert-DER))>". Compute it with `augenmass x509-hash`.
+```
+
+---
+
+# DEBUG
+
+## `serve`
+
+Run a live wallet-interaction debugger: a local OpenID4VP verifier (a verifier-in-a-box) for the German PID profile, so a real EUDI wallet can present to it (scan the QR, follow the deep link), and trace the whole exchange end to end. Unlike the other commands, which read static artifacts, `serve` debugs the actual wallet-to-verifier flow. The German PID profile it speaks: `vct urn:eudi:pid:de:1`, format `dc+sd-jwt`, response_mode `direct_post.jwt`, response encryption ECDH-ES (A128GCM or A256GCM), and the registration certificate embedded as `verifier_info`.
+
+This command runs until interrupted (Ctrl-C). It is zero-config: with no flags it mints a throwaway development certificate, so the verifier runs without a registrar-issued leaf. The `client_id` is then not the registered identity; pass `--key` and `--leaf` together to sign with the real registrar leaf so the `client_id` matches the registered identity.
+
+`serve` is one of the two network paths in the tool (the other is the registrar write path): a real wallet connects to it, and `--live-status` resolves a status list over the network.
+
+```
+Usage: augenmass serve [OPTIONS]
+```
+
+Options (all optional):
+
+- `--port <PORT>` (env `PORT`): the listen port. Default `8080`.
+- `--host <HOST>` (env `HOST`): the host/interface to bind. Default `127.0.0.1`.
+- `--public-url <PUBLIC_URL>` (env `PUBLIC_URL`): the public base URL baked into the `request_uri` and `response_uri` the wallet uses. It must end in `/`. Default `http://127.0.0.1:8080/`.
+- `--key <KEY>` (env `RP_KEY_PATH`): an EC private key PEM (PKCS#8 or SEC1) for the registrar-issued leaf. Pass it together with `--leaf`.
+- `--leaf <LEAF>` (env `RP_LEAF_PATH`): the leaf certificate PEM matching `--key`. Pass it together with `--key`.
+- `--purpose <PURPOSE>` (env `PURPOSE`): the purpose baseline id for the over-ask inspector. Default `event_checkin`.
+- `--trust-anchor <TRUST_ANCHOR>` (env `TRUST_ANCHOR_PATH`): a PID issuer trust anchor PEM. When set, the response path rejects issuers that do not chain to it; when unset, issuer trust is not enforced.
+- `--live-status` (env `LIVE_STATUS`): resolve the token-status-list over the network on the response path and reject a revoked or suspended PID. Default `false` (offline-friendly). Only takes effect when `--trust-anchor` is also set.
+- `--quiet`: suppress the live per-step trace on the console. The trace still records and is served at `/trace/<session>` and `/api/trace/<session>`.
+
+Runtime behavior: this command does not exit on its own and does not use `--json`. It binds the listener and serves until Ctrl-C. On startup it prints the open URL, the computed `client_id`, whether the cert is throwaway or the registrar leaf, whether issuer trust is enforced, whether status checks are live, and where the trace is served.
+
+```
+augenmass serve
+```
+
+```
+augenmass serve: wallet-interaction debugger
+  open         : http://127.0.0.1:8080/
+  client_id    : x509_hash:...
+  cert         : throwaway (development); set --key + --leaf for the real registrar leaf
+  issuer trust : not enforced (set --trust-anchor to anchor PID issuers)
+  status check : offline (set --live-status to resolve token-status-list revocation)
+  trace        : live on this console; also at <base>/trace/<session> and /api/trace/<session>
+
+  Open the URL above, scan the QR with a wallet, and watch the trace below.
+```
+
+### HTTP endpoints
+
+| Method | Path | What it does |
+|---|---|---|
+| `GET` | `/` | Landing page: mints a fresh session and renders a QR / deep-link to present, plus links to inspect and trace. |
+| `GET` | `/request/:id` | The signed request object (the JAR / `request_uri`) the wallet fetches. Content-type `application/oauth-authz-req+jwt`. |
+| `POST` | `/response/:id` | The wallet response (`direct_post.jwt`): decrypt, verify, trace. Returns JSON (see below). |
+| `GET` | `/inspect/:id` | The over-ask inspector HTML for this session. The `?demo=overask` variant inspects an over-asking request shape. |
+| `GET` | `/trace/:id` | The human-readable wallet-interaction timeline (HTML). It auto-refreshes while the exchange is in flight and stays still once the session reaches a terminal outcome. |
+| `GET` | `/api/trace/:id` | The same trace as JSON, for programmatic debugging. |
+| `GET` | `/api/sessions` | A JSON list of the sessions seen this run. |
+| `GET` | `/health` | Health check; returns `{ "status": "ok", "service": "augenmass serve" }`. |
+
+The `POST /response/:id` body is the wallet's `application/x-www-form-urlencoded` authorization response. The response is JSON shaped `{ "status": "verified" | "rejected", "reason"?, "inspect", "trace" }`: `status` is `verified` (HTTP 200) or `rejected` (HTTP 422), `reason` carries the rejection reason when rejected, and `inspect` and `trace` are absolute URLs to this session's inspector and timeline.
+
+### Trace event codes
+
+The trace is a per-session, timestamped event log. Each event has `seq` (a monotonic process-wide sequence number), `at` (local time of day, `HH:MM:SS.mmm`), `at_unix_ms` (Unix milliseconds), `kind`, `code` (the stable string below), `level` (`info`, `good`, `warn`, or `bad`), `summary` (a one-line human-legible string), and an optional `detail` carrying the raw artifact at that step (the JAR header and payload, the raw response body, the decrypted `vp_token`, the reject reason, and so on).
+
+The codes, in typical order:
+
+| Code | When |
+|---|---|
+| `SESSION_CREATED` | A fresh presentation session is minted. |
+| `REQUEST_BUILT` | The minimal-disclosure authorization request is built (carries the `nonce`, `client_id`, and DCQL). |
+| `REQUEST_OBJECT_FETCHED` | The wallet fetches the signed request object (the JAR); the decoded header and payload are attached. |
+| `RESPONSE_RECEIVED` | The wallet posts its response; the raw body is captured. |
+| `RESPONSE_DECRYPTED` | The JWE response is decrypted (ECDH-ES) and the `vp_token` is attached (or noted as plaintext when unencrypted). |
+| `VERIFIED` or `REJECTED` | The SD-JWT VC issuer signature, the KB-JWT holder binding, the nonce and audience, the `vct`, and freshness are checked; on failure the exact reason is recorded. |
+| `STATUS_CHECKED` | Only with `--live-status` plus a trust anchor: the token-status-list is resolved and a revoked or suspended credential is rejected fail-closed. |
+| `OVER_ASK_ANALYZED` | What the wallet actually disclosed is run through the over-ask inspector. |
+| `NOTE` | An informational annotation. |
+| `ERROR` | An error step. |
+
+The same trace is available three ways: live on the console (ANSI color only when stderr is a TTY; suppressed with `--quiet`), the browser timeline at `/trace/:id`, and JSON at `/api/trace/:id`.
+
+Sign with the real registrar leaf so the `client_id` matches the registered identity, and enforce issuer trust with revocation:
+
+```
+augenmass serve --key rp-key.pem --leaf rp-leaf.pem \
+  --trust-anchor pid-issuer-anchor.pem --live-status
+```
+
+Bind on all interfaces so a wallet on a phone can reach the tool (the `--public-url` must be reachable from the phone, not `127.0.0.1`):
+
+```
+augenmass serve --host 0.0.0.0 --public-url http://192.0.2.10:8080/
 ```
 
 ---

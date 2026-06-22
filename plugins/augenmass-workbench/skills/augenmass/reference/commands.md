@@ -147,6 +147,35 @@ Example pipeline (generate, then gate):
 
 `doctor` inspects an OpenID4VP signed request (the JAR, a different document from the registration body) and flags the traps that get requests rejected: `x5c` must be a list of strings even for a single cert; `client_id` must be `x509_hash:<base64url(SHA-256(leaf-cert-DER))>` (compute it with `x509-hash`); set `Content-Type: application/json` on every POST. It exits 1 when it finds problems and 0 when the request is clean.
 
+## DEBUG: run a verifier-in-a-box and trace a live wallet interaction
+
+`serve` runs a local OpenID4VP verifier for the German PID profile so a real EUDI wallet can present to it, and records the whole exchange as a per-session trace. It is the one command that debugs the live wallet-to-verifier flow rather than a static artifact, and it runs until interrupted (Ctrl-C). It is zero-config: with no flags it mints a throwaway development certificate, so the `client_id` is not the registered identity (pass `--key` and `--leaf` together for the real registrar leaf).
+
+| Intent (plain English) | Command | Notes |
+| --- | --- | --- |
+| Run the wallet-interaction debugger (zero-config). | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" serve` | Throwaway dev cert; runs until Ctrl-C |
+| Sign with the real registrar leaf so client_id matches. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" serve --key <KEY> --leaf <LEAF>` | Pass both together |
+| Enforce issuer trust and live revocation. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" serve --trust-anchor <PEM> --live-status` | `--live-status` needs a trust anchor |
+| Make it reachable from a phone wallet. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" serve --host 0.0.0.0 --public-url <URL>` | `--public-url` must end in `/` and be reachable from the phone |
+| Suppress the live console trace. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" serve --quiet` | Still served at `/trace/:id` and `/api/trace/:id` |
+
+Flags (all optional, each with an env var): `--port` (`PORT`, default 8080), `--host` (`HOST`, default 127.0.0.1), `--public-url` (`PUBLIC_URL`, default `http://127.0.0.1:8080/`, must end in `/`), `--key` (`RP_KEY_PATH`, EC private key PEM), `--leaf` (`RP_LEAF_PATH`, leaf cert PEM), `--purpose` (`PURPOSE`, default `event_checkin`), `--trust-anchor` (`TRUST_ANCHOR_PATH`, PID issuer anchor PEM; when set, the response path rejects issuers that do not chain to it), `--live-status` (`LIVE_STATUS`, default false; resolve the token-status-list over the network and reject revoked/suspended, only effective with a trust anchor), and `--quiet` (suppress the live console trace). This command does not use `--json` and does not exit on its own.
+
+HTTP endpoints: `GET /` (landing page and QR/deep-link), `GET /request/:id` (the signed JAR, content-type `application/oauth-authz-req+jwt`), `POST /response/:id` (the wallet's `direct_post.jwt`, returning JSON `{ status: "verified" | "rejected", reason?, inspect, trace }`), `GET /inspect/:id` (the over-ask inspector, with a `?demo=overask` variant), `GET /trace/:id` (the HTML timeline, auto-refreshing while in flight), `GET /api/trace/:id` (the trace as JSON), `GET /api/sessions` (the sessions seen this run), and `GET /health`.
+
+Trace event codes, in typical order: `SESSION_CREATED`, `REQUEST_BUILT`, `REQUEST_OBJECT_FETCHED`, `RESPONSE_RECEIVED`, `RESPONSE_DECRYPTED`, `VERIFIED` or `REJECTED`, `STATUS_CHECKED` (only with `--live-status` plus a trust anchor), `OVER_ASK_ANALYZED`, plus `NOTE` and `ERROR`. Each event carries `seq`, `at`, `at_unix_ms`, `kind`, `code`, `level` (`info`/`good`/`warn`/`bad`), a one-line `summary`, and an optional `detail` with the raw artifact at that step. The trace is available three ways: live on the console (ANSI color only when stderr is a TTY), the browser timeline, and JSON.
+
+Example:
+
+```sh
+# Run it, then open the printed URL and scan the QR with a wallet.
+"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" serve
+# augenmass serve: wallet-interaction debugger
+#   open      : http://127.0.0.1:8080/
+#   client_id : x509_hash:...
+#   ...        SESSION_CREATED / REQUEST_BUILT / REQUEST_OBJECT_FETCHED / ...
+```
+
 ## WRITE: register under guardrails, read back, run the local clone
 
 These are the only commands that can leave the machine (the `sandbox` target). Writes are dry-run by default.
@@ -193,6 +222,7 @@ Example:
 | `x509-hash` (no `--client-id`) | computed | (no comparison) |
 | `x509-hash --client-id` | match | mismatch |
 | `doctor` | no findings | findings |
+| `serve` | runs until Ctrl-C | (server; no gating) |
 | `register` | dry-run or write succeeds | over-ask without `--force`, or a blocking format error |
 | `list`, `generate`, `clone serve` | success | (no gating) |
 

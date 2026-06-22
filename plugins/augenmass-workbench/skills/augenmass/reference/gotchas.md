@@ -325,6 +325,48 @@ The fixtures `erica-vp-WRONG_NONCE.sdjwt`, `erica-vp-WRONG_AUDIENCE.sdjwt`, and 
 
 ---
 
+## Part 4: live wallet-interaction debugger gotchas (`serve`)
+
+`augenmass serve` is a verifier-in-a-box: a local OpenID4VP verifier for the German PID profile that a real EUDI wallet presents to, recording the exchange as a per-session trace. It runs until interrupted (Ctrl-C). Unlike the offline commands, it is a network path: a wallet connects to it, and `--live-status` resolves a status list over the network. The traps below are about wiring the wallet to the right verifier, not about a malformed document.
+
+### 4.1 the zero-config client_id is not the registered identity
+
+Mistake: assuming the `client_id` `serve` prints is the one you registered with the sandbox.
+
+Why it happens: `serve` is zero-config. With no flags it mints a throwaway development certificate so it runs without a registrar-issued leaf, and the `client_id` is the `x509_hash` of that throwaway cert, not of your registered leaf. A wallet that pins or checks the registered identity will see a different `client_id`.
+
+Fix: pass `--key` and `--leaf` together (or set `RP_KEY_PATH` and `RP_LEAF_PATH`) to sign with the real registrar-issued leaf, so the `client_id` matches the registered identity. The startup banner says which cert is in use (`throwaway (development)` versus `registrar-issued leaf`).
+
+### 4.2 --public-url must match how the wallet reaches the tool
+
+Mistake: leaving `--public-url` at the `http://127.0.0.1:8080/` default when the wallet runs on a different device (a phone).
+
+Why it happens: the default works when the wallet and the tool share a host. But the `--public-url` is baked into the `request_uri` and `response_uri` the wallet is handed, so `127.0.0.1` tells a phone wallet to call back to itself, and the exchange stalls after the QR scan.
+
+Fix: bind all interfaces and set a base URL the wallet can actually reach. The `--public-url` must end in `/`:
+
+```
+augenmass serve --host 0.0.0.0 --public-url http://192.0.2.10:8080/
+```
+
+### 4.3 you cannot replay a static or fixture wallet response
+
+Mistake: trying to POST a captured or fixture `direct_post.jwt` to a running `serve` to reproduce a flow.
+
+Why it happens: it is natural to want a static request/response pair for a test. But each `serve` run generates a fresh ephemeral encryption key and a per-session nonce. The wallet must encrypt its response to this run's key and echo this run's nonce, so a response captured from an earlier run will not decrypt (wrong key) or will fail the nonce binding. The trace shows where it breaks: `RESPONSE_DECRYPTED` fails, or `REJECTED` on the nonce.
+
+Fix: drive a live wallet against the running instance rather than replaying a recording. For static, deterministic checks, use `verify presentation` on the captured presentation with the matching `--nonce` and `--aud` instead.
+
+### 4.4 --live-status needs an anchor and supports a single issuer only
+
+Mistake: passing `--live-status` alone, or pointing `--trust-anchor` at a multi-certificate anchor PEM, and expecting live revocation.
+
+Why it happens: `--live-status` reads as a standalone switch, but it only takes effect when a `--trust-anchor` is also set (it is off by default so the service stays offline-friendly). And live status binds the status-list signature to a single issuer anchor key, so a PEM carrying more than one certificate is ambiguous and fails closed rather than silently picking the first.
+
+Fix: set both `--trust-anchor <PEM>` and `--live-status`, and supply a single-issuer anchor PEM. With them set, the trace gains a `STATUS_CHECKED` step and a revoked or suspended credential is rejected fail-closed.
+
+---
+
 ## Quick reference: mistake to command
 
 | Mistake | Document | Command | Finding / signal |
@@ -344,3 +386,7 @@ The fixtures `erica-vp-WRONG_NONCE.sdjwt`, `erica-vp-WRONG_AUDIENCE.sdjwt`, and 
 | `x509_san_dns` on sandbox | signed request / JAR | n/a | sandbox supports `x509_hash` only |
 | mdoc vs SD-JWT claim path shape | request / body | `check` (array shape) | format must match credential |
 | nonce / aud binding | presentation | `verify presentation` | exit 1 if unbound |
+| zero-config client_id is throwaway | live debugger | `serve` | pass `--key` + `--leaf` for the registered identity |
+| `--public-url` unreachable from the wallet | live debugger | `serve` | `--host 0.0.0.0` + a reachable `--public-url` ending in `/` |
+| replaying a static wallet response | live debugger | `serve` | fresh ephemeral key + nonce per run; drive a live wallet |
+| `--live-status` without an anchor or multi-cert anchor | live debugger | `serve` | needs `--trust-anchor`; single issuer anchor only (fails closed) |

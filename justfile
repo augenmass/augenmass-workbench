@@ -41,6 +41,8 @@ verify:
     cargo run --quiet -- verify trust fixtures/presentations/erica-vp-VALID.sdjwt --anchor fixtures/certs/erica-trust-anchor.pem --now 1780435200
     # the x509_hash binding matches the captured leaf
     cargo run --quiet -- x509-hash fixtures/certs/access-leaf.pem --client-id x509_hash:VE3qp3vLVkU8JyVmXkjL7CSDVxVoTFdTv5fAEwmjKOI
+    # the wallet-interaction debugger wires up (help exits without binding a port)
+    cargo run --quiet -- serve --help > /dev/null
 
 # Bundle the release binary into the plugin (Apple Silicon macOS).
 bundle: release
@@ -50,3 +52,7 @@ bundle: release
 # Demo: run the local clone store.
 demo:
     cargo run -- clone serve --db ./demo.sqlite --port 8080
+
+# Debug a live wallet interaction: the verifier-in-a-box with a full trace.
+serve:
+    cargo run -- serve

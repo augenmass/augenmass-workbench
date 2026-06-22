@@ -8,19 +8,20 @@ description: >-
   registration certificate (WRPRC) or relying party registration to read,
   write, or repair against the registrar schema, a DCQL query or OpenID4VP
   authorization request (JAR) to lint for over-ask or diagnose (x5c, client_id
-  x509_hash), an OpenID4VCI credential offer or status list to decode, or a
-  proportionate registration to generate. It checks data minimisation against
+  x509_hash), an OpenID4VCI credential offer or status list to decode, a
+  proportionate registration to generate, or a live wallet-to-verifier exchange
+  to debug against a verifier-in-a-box. It checks data minimisation against
   curated purpose baselines and the legal basis (eIDAS, GDPR, ARF), computes the
   x509_hash binding, and writes only under guardrails. Triggers: EUDI, EUDI
   Wallet, SD-JWT VC, mdoc, registration certificate, WRPRC, relying party,
   registrar, over-ask, data minimisation, DCQL, OpenID4VP, OpenID4VCI,
   credential offer, authorization request, JAR, x5c, x509_hash, status list,
-  trust anchor, PID, sandbox.
+  trust anchor, PID, sandbox, wallet debugger, verifier-in-a-box, serve.
 ---
 
 # Augenmaß Workbench
 
-This skill drives the bundled `augenmass` binary at `${CLAUDE_PLUGIN_ROOT}/bin/augenmass`, a developer and auditor toolkit for the EUDI Wallet ecosystem. It decodes and inspects every common artifact, audits requests for over-asking against curated purpose baselines and the legal basis, verifies presentations cryptographically, and writes registrations under guardrails. Everything except the registrar write path runs fully offline.
+This skill drives the bundled `augenmass` binary at `${CLAUDE_PLUGIN_ROOT}/bin/augenmass`, a developer and auditor toolkit for the EUDI Wallet ecosystem. It decodes and inspects every common artifact, audits requests for over-asking against curated purpose baselines and the legal basis, verifies presentations cryptographically, writes registrations under guardrails, and live-debugs the wallet-to-verifier exchange. Everything runs fully offline except two paths that are network by nature: the registrar write path, and the live wallet-interaction debugger (`serve`), where a real wallet connects to the tool.
 
 Claude Code adds the plugin `bin/` directory to PATH, so a bare `augenmass` works too. The `${CLAUDE_PLUGIN_ROOT}/bin/augenmass` form is the safe explicit path; use whichever is convenient.
 
@@ -34,6 +35,7 @@ Claude Code adds the plugin `bin/` directory to PATH, so a bare `augenmass` work
 - Compute (or check) the x509_hash client_id binding for a JAR or certificate.
 - Generate a proportionate registration body or a DCQL query from claim paths.
 - Diagnose a verifier signed request / JAR: x5c shape, client_id x509_hash, content type.
+- Debug a live wallet interaction: run a verifier-in-a-box (`serve`) so a real EUDI wallet presents to it, and trace every step of the exchange (request built, JAR fetched, response decrypted, verified, trust, revocation, over-ask) on the console, in a browser timeline, and as JSON.
 - Write a registration to the local clone or the sandbox registrar, read it back, or run the local clone store.
 
 ## The one rule that matters
@@ -69,6 +71,7 @@ Writes are guarded. Reason before you write.
 | Generate a proportionate registration body | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass generate regbody [--use-case age-check --over-broad --rp --support-uri --privacy-policy --purpose]` |
 | Generate a DCQL query from claim paths | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass generate dcql --claim <path> [--claim <path> ...]` |
 | Diagnose a signed request / JAR | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass doctor <request>` |
+| Debug a live wallet interaction (verifier-in-a-box) | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass serve [--port --host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet]` |
 | Write a registration (dry-run by default) | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass register <body> --target {clone\|sandbox} [--yes --force]` |
 | Read registrations back for one relying party | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass list --target {clone\|sandbox} [--rp <id>]` |
 | Run the local registrar-compatible clone store | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass clone serve [--db --port]` |

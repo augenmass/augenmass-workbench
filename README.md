@@ -2,7 +2,7 @@
 
 A swiss-army CLI and Claude Code skill for the EUDI Wallet ecosystem.
 
-Augenmaß Workbench gives developers and auditors one tool to inspect, decode, audit over-ask, verify, generate, and repair EUDI artifacts: SD-JWT VC presentations, registration certificates, OpenID4VP requests and JARs, credential offers, status lists, and DCQL queries. It is built on a single engine (`augenmass-core`, reused as-is from the verifier project) and runs fully offline, the only exception being the registrar write path. Every read-only command takes `--json` so it drops cleanly into agents and CI.
+Augenmaß Workbench gives developers and auditors one tool to inspect, decode, audit over-ask, verify, generate, repair, and live-debug EUDI artifacts and flows: SD-JWT VC presentations, registration certificates, OpenID4VP requests and JARs, credential offers, status lists, DCQL queries, and the wallet-to-verifier presentation exchange itself. It is built on a single engine (`augenmass-core`, reused as-is from the verifier project). Everything runs fully offline except two paths that are network by nature: the registrar write path, and the live wallet-interaction debugger (`serve`), where a real wallet connects to the tool. Every read-only command takes `--json` so it drops cleanly into agents and CI.
 
 It supersedes the v1 workbench (which had six commands: `generate`, `check`, `doctor`, `register`, `list`, `clone`) by surfacing the entire engine (verification, status, trust, disclosure, crypto) and adding net-new offline decoders behind one cohesive CLI.
 
@@ -91,6 +91,24 @@ Generate a proportionate registration body (the minimal age check by default):
 augenmass generate regbody --json
 ```
 
+Debug a live wallet interaction: run a local verifier, scan the QR with a real EUDI wallet, and watch every step of the exchange in the terminal and the browser:
+
+```sh
+augenmass serve
+# augenmass serve: wallet-interaction debugger
+#   open      : http://127.0.0.1:8080/
+#   client_id : x509_hash:...
+#   trace     : live on this console; also at <base>/trace/<session>
+#
+#   23:20:51.551  29bbb9a0  SESSION_CREATED         new presentation session created
+#   23:20:51.551  29bbb9a0  REQUEST_BUILT           built the authorization request (minimal German PID query)
+#   23:20:51.608  29bbb9a0  REQUEST_OBJECT_FETCHED  wallet fetched the signed request object (JAR)
+#   ...           ...       RESPONSE_RECEIVED       wallet posted its response (direct_post.jwt)
+#   ...           ...       RESPONSE_DECRYPTED      decrypted the JWE response (ECDH-ES)
+#   ...           ...       VERIFIED                presentation verified: urn:eudi:pid:de:1
+#   ...           ...       OVER_ASK_ANALYZED       ...
+```
+
 ## The toolbox
 
 UNDERSTAND
@@ -116,6 +134,9 @@ PRODUCE
 DIAGNOSE
 - `doctor <request>`: diagnose verifier signed-request and JAR gotchas (x5c shape, client_id binding).
 
+DEBUG (live wallet interaction)
+- `serve [--port --host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet]`: run a local OpenID4VP verifier (a verifier-in-a-box) so a real EUDI wallet can present to it, and trace the whole exchange. The trace streams to the console, renders as a live browser timeline at `/trace/<session>`, and serializes at `/api/trace/<session>`.
+
 WRITE (guard-railed)
 - `register <body> --target {clone | sandbox} [--yes --force]`: write a registration under guardrails.
 - `list --target --rp`: read registrations back for one relying party, decoded.
@@ -130,6 +151,22 @@ Over-ask is the central concern: a relying party must not request more personal 
 3. EUDI ARF, registration certificate, RPRC_07: the wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
 
 The curated purpose baselines (`age_gate_18`, `event_checkin`, `car_rental`, `bank_kyc`) are taste judgments, not Rulebook derivations. See `augenmass baselines`.
+
+## Debug the wallet interaction
+
+`augenmass serve` is a verifier-in-a-box for debugging the actual wallet exchange, not just static artifacts. It runs a local OpenID4VP verifier for the German PID profile (x509_hash client_id, signed request object by reference, `direct_post.jwt` encrypted response, the registration certificate embedded as `verifier_info`), and records the whole flow as a per-session trace:
+
+1. `SESSION_CREATED` and `REQUEST_BUILT`: a fresh session and the minimal-disclosure authorization request (carrying the nonce, client_id, and DCQL).
+2. `REQUEST_OBJECT_FETCHED`: the wallet pulls the signed request object (the JAR); the trace shows the decoded header and payload it received.
+3. `RESPONSE_RECEIVED`: the wallet posts its response; the raw body is captured.
+4. `RESPONSE_DECRYPTED`: the JWE is decrypted (ECDH-ES) and the `vp_token` is shown.
+5. `VERIFIED` or `REJECTED`: the SD-JWT VC issuer signature, the KB-JWT holder binding, the nonce/audience, and the vct are checked; on failure the exact reason is recorded.
+6. `STATUS_CHECKED` (with `--live-status` and a trust anchor): the token-status-list is resolved and a revoked or suspended credential is rejected fail-closed.
+7. `OVER_ASK_ANALYZED`: what the wallet actually disclosed is run through the over-ask inspector.
+
+Every event carries the raw artifact at that step, so you can see exactly what the wallet sent and where the exchange succeeded or broke. The same trace is available three ways: live on the console (color-coded), as a browser timeline at `/trace/<session>` (refreshes while the exchange is in flight), and as JSON at `/api/trace/<session>` for programmatic debugging. `/api/sessions` lists every session seen this run.
+
+Zero-config, it runs on a throwaway development certificate (the client_id is then not the registered identity). To sign with the real registrar-issued leaf so the client_id matches the registration, pass `--key` and `--leaf` (or set `RP_KEY_PATH` and `RP_LEAF_PATH`). To enforce issuer trust, pass `--trust-anchor`; add `--live-status` to resolve revocation over the network.
 
 ## Safety
 

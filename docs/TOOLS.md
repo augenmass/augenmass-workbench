@@ -2,7 +2,7 @@
 
 A cookbook for developers and auditors working in the EUDI (European Digital Identity) Wallet ecosystem. The premise is simple: you are holding some EUDI artifact, a blob of base64 or a JSON body or a deep link, and you need to know what it is, what is inside it, and whether it is correct. This guide is organized by artifact. For each one you get a one-line "what it is", the command to decode it, the command to verify or audit it where that applies, and the gotchas that actually bite people.
 
-Every command below works as written against the `augenmass` binary. All decoding runs fully offline; only `verify` does cryptography, and only `register`/`list --target sandbox` and `clone serve` touch a network or store. Throughout, every artifact argument accepts a file path, an inline value, or `-` for stdin.
+Every command below works as written against the `augenmass` binary. All decoding runs fully offline; only `verify` does cryptography, and only `register`/`list --target sandbox`, `clone serve`, and `serve` (the live wallet-interaction debugger, where a real wallet connects) touch a network or store. Throughout, every artifact argument accepts a file path, an inline value, or `-` for stdin.
 
 If you only remember one command, remember this one:
 
@@ -377,6 +377,27 @@ That prints the binding to put in `client_id`. To assert it in CI, pass `--clien
 augenmass x509-hash fixtures/requests/eudiplo-request.jwt \
   --client-id x509_hash:7zvIjJaM1KQPpN7IZBuVLuh8anw1gcbZ0a6Wj3M9i4w
 ```
+
+## Debug a live wallet interaction
+
+The commands above read static artifacts. When you need to debug the actual wallet-to-verifier exchange, `augenmass serve` is a verifier-in-a-box: a local OpenID4VP verifier for the German PID profile (`vct urn:eudi:pid:de:1`, format `dc+sd-jwt`, response_mode `direct_post.jwt`, response encryption ECDH-ES, the registration certificate embedded as `verifier_info`) that a real EUDI wallet presents to. It records the whole exchange as a per-session trace.
+
+Run it (zero-config; it runs until Ctrl-C):
+
+```
+augenmass serve
+```
+
+Open the printed URL, scan the QR with a wallet, and watch the trace. The trace is available three ways: live on the console (color-coded; suppress it with `--quiet`), as a browser timeline at `/trace/<session>` (it auto-refreshes while the exchange is in flight), and as JSON at `/api/trace/<session>` for programmatic debugging. `/api/sessions` lists every session this run. The session endpoints are `GET /` (landing page and QR), `GET /request/:id` (the signed JAR the wallet fetches, content-type `application/oauth-authz-req+jwt`), `POST /response/:id` (the wallet's `direct_post.jwt`, returning JSON `{ status: "verified" | "rejected", reason?, inspect, trace }`), `GET /inspect/:id` (the over-ask inspector, with a `?demo=overask` variant), and `GET /health`.
+
+The trace event codes, in typical order, are `SESSION_CREATED`, `REQUEST_BUILT`, `REQUEST_OBJECT_FETCHED`, `RESPONSE_RECEIVED`, `RESPONSE_DECRYPTED`, `VERIFIED` or `REJECTED`, `STATUS_CHECKED` (only with `--live-status` and a trust anchor), and `OVER_ASK_ANALYZED`, plus `NOTE` and `ERROR`. Every event carries the raw artifact at that step, so you see exactly what the wallet sent and where the exchange succeeded or broke.
+
+Common gotchas:
+
+- Zero-config runs on a throwaway development certificate, so the `client_id` is not the registered sandbox identity. Pass `--key` and `--leaf` together (or set `RP_KEY_PATH` and `RP_LEAF_PATH`) to sign with the real registrar leaf and make the `client_id` match the registration.
+- `--public-url` is baked into the `request_uri` and `response_uri`, so it must match how the wallet reaches the tool. For a phone wallet on another device, `127.0.0.1` will not work: bind `--host 0.0.0.0` and set a `--public-url` reachable from the phone, for example `http://192.0.2.10:8080/` (it must end in `/`).
+- A static or fixture wallet response cannot be replayed against a running server. Each run generates a fresh ephemeral encryption key and nonce, so the wallet must encrypt to this run's key and echo this run's nonce.
+- `--live-status` only takes effect when a `--trust-anchor` is also set, and currently supports a single issuer anchor; a multi-certificate anchor PEM fails closed.
 
 ## CI notes
 

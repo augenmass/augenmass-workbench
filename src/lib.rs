@@ -27,4 +27,5 @@ pub mod http_target;
 pub mod jose;
 pub mod output;
 pub mod render;
+pub mod serve;
 pub mod x509util;

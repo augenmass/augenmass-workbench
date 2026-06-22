@@ -538,6 +538,61 @@ Set Content-Type: application/json on every POST; the client does this for you.
 
 The third trap `doctor` reminds you of is the transport one: set `Content-Type: application/json` on every POST. Watch out, too, for base64url-no-pad versus base64-standard when copying x5c entries and hashes by hand; the `x509_hash` value is base64url without padding.
 
+## 6. Debug a live wallet interaction with a verifier-in-a-box
+
+The first five walkthroughs read static artifacts. This one debugs the actual exchange. `augenmass serve` runs a local OpenID4VP verifier for the German PID profile (`vct urn:eudi:pid:de:1`, format `dc+sd-jwt`, response_mode `direct_post.jwt`, response encryption ECDH-ES, the registration certificate embedded as `verifier_info`), so a real EUDI wallet can present to it, and it records the whole exchange as a per-session trace. It runs until interrupted (Ctrl-C), so run it in its own terminal.
+
+Start it zero-config. With no flags it mints a throwaway development certificate, so the verifier runs without a registrar-issued leaf:
+
+```
+augenmass serve
+```
+
+```
+augenmass serve: wallet-interaction debugger
+  open         : http://127.0.0.1:8080/
+  client_id    : x509_hash:...
+  cert         : throwaway (development); set --key + --leaf for the real registrar leaf
+  issuer trust : not enforced (set --trust-anchor to anchor PID issuers)
+  status check : offline (set --live-status to resolve token-status-list revocation)
+  trace        : live on this console; also at <base>/trace/<session> and /api/trace/<session>
+
+  Open the URL above, scan the QR with a wallet, and watch the trace below.
+```
+
+Open the printed URL in a browser. The landing page (`GET /`) mints a fresh session and shows a QR / deep-link to present, plus links to inspect and trace. Scan the QR with a wallet and watch the trace fill in. The events, in typical order, are `SESSION_CREATED`, `REQUEST_BUILT`, `REQUEST_OBJECT_FETCHED` (the wallet fetched the signed JAR from `GET /request/:id`), `RESPONSE_RECEIVED` (the wallet posted `direct_post.jwt` to `POST /response/:id`), `RESPONSE_DECRYPTED` (the JWE decrypted, ECDH-ES), then `VERIFIED` or `REJECTED`, then `OVER_ASK_ANALYZED`:
+
+```
+  23:20:51.551  29bbb9a0  SESSION_CREATED         new presentation session created
+  23:20:51.551  29bbb9a0  REQUEST_BUILT           built the authorization request (minimal German PID query)
+  23:20:51.608  29bbb9a0  REQUEST_OBJECT_FETCHED  wallet fetched the signed request object (JAR)
+  ...           29bbb9a0  RESPONSE_RECEIVED       wallet posted its response (direct_post.jwt (encrypted))
+  ...           29bbb9a0  RESPONSE_DECRYPTED      decrypted the JWE response (ECDH-ES)
+  ...           29bbb9a0  VERIFIED                presentation verified: urn:eudi:pid:de:1
+  ...           29bbb9a0  OVER_ASK_ANALYZED       ...
+```
+
+`POST /response/:id` returns JSON `{ status: "verified" | "rejected", reason?, inspect, trace }`: HTTP 200 with `status` "verified", or HTTP 422 with `status` "rejected" and a `reason`. The `inspect` and `trace` fields are absolute URLs to this session's over-ask inspector and timeline.
+
+The same trace is available three ways: live on this console (color-coded; suppress it with `--quiet`), as a browser timeline at `/trace/<session>` (it auto-refreshes while the exchange is in flight and stays still once the session reaches a terminal outcome), and as JSON at `/api/trace/<session>` for programmatic debugging. `/api/sessions` lists every session this run. Every event carries the raw artifact at that step (the JAR header and payload, the raw response body, the decrypted `vp_token`, the reject reason), so you can see exactly what the wallet sent and where the exchange broke. The over-ask inspector is at `/inspect/<session>`, with a `?demo=overask` variant that inspects an over-asking request shape.
+
+To make the `client_id` the registered identity, sign with the real registrar leaf by passing `--key` and `--leaf` together (or set `RP_KEY_PATH` and `RP_LEAF_PATH`). To enforce issuer trust and reject revoked credentials, add `--trust-anchor` and `--live-status`:
+
+```
+augenmass serve --key rp-key.pem --leaf rp-leaf.pem \
+  --trust-anchor pid-issuer-anchor.pem --live-status
+```
+
+With `--live-status` plus an anchor, the trace gains a `STATUS_CHECKED` step before the over-ask analysis, and a revoked or suspended credential is rejected fail-closed.
+
+For a phone wallet on another device, `127.0.0.1` will not work: the `--public-url` is baked into the `request_uri` and `response_uri`, so bind all interfaces and set a base URL the phone can reach (it must end in `/`):
+
+```
+augenmass serve --host 0.0.0.0 --public-url http://192.0.2.10:8080/
+```
+
+A note on replay: you cannot post a static or fixture wallet response to a running server. Each run generates a fresh ephemeral encryption key and nonce, so the wallet must encrypt to this run's key and echo this run's nonce; a captured response from an earlier run will not decrypt or will fail the nonce binding.
+
 ## Quick reference: commands and exit codes
 
 | Goal | Command | Non-zero exit when |
@@ -554,6 +609,7 @@ The third trap `doctor` reminds you of is the transport one: set `Content-Type: 
 | Compute or check x509_hash | `x509-hash <input> [--client-id ...]` | client_id mismatch |
 | Produce a body or query | `generate {regbody\|dcql} ...` | (producer) |
 | Diagnose a JAR | `doctor <request>` | findings |
+| Debug a live wallet interaction | `serve [--port --host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet]` | (server; runs until Ctrl-C) |
 | Write a registration | `register <body> --target <clone\|sandbox> [--yes --force]` | over-ask without `--force`, or blocking format error |
 | Read registrations back | `list --target <clone\|sandbox> [--rp <id>]` | (read-only) |
 | Run the local clone store | `clone serve [--db <path> --port <n>]` | (server) |

@@ -15,8 +15,11 @@ single cohesive command-line toolkit over the whole EUDI Wallet artifact surface
 for developers and auditors alike. The v1 workbench shipped six commands
 (`generate`, `check`, `doctor`, `register`, `list`, `clone`) and used only part
 of the engine. Version 2 surfaces the entire `augenmass-core` engine behind one
-CLI and adds net-new offline decoders. Everything except the registrar write path
-runs fully offline.
+CLI and adds net-new offline decoders. It also adds `serve`, a live
+wallet-interaction debugger so a real EUDI wallet can present to the tool over
+OpenID4VP and the whole exchange is traced. Everything runs fully offline except
+two paths that are network by nature: the registrar write path, and the live
+wallet-interaction debugger.
 
 ### Added
 
@@ -76,6 +79,25 @@ runs fully offline.
   verify (SD-JWT VC and KB-JWT verification with an injectable clock), status
   (token status list revocation), trust (X.509 leaf chains-to-anchor plus validity
   window), and crypto (JWE decrypt, x5c to JWK, leaf_cert_hash).
+- `serve`: a live wallet-interaction debugger (a verifier-in-a-box). It runs a
+  local OpenID4VP verifier for the German PID profile (x509_hash client_id, signed
+  request object by reference, `direct_post.jwt` ECDH-ES encrypted response, the
+  registration certificate embedded as `verifier_info`) so a real EUDI wallet can
+  present to it, and records the whole exchange as a per-session trace:
+  SESSION_CREATED, REQUEST_BUILT, REQUEST_OBJECT_FETCHED, RESPONSE_RECEIVED,
+  RESPONSE_DECRYPTED, VERIFIED or REJECTED, STATUS_CHECKED (with `--live-status`
+  and a trust anchor), and OVER_ASK_ANALYZED. Every event carries the raw artifact
+  at that step. The trace is available three ways: live on the console
+  (color-coded on a TTY), as a browser timeline at `/trace/<session>` that
+  refreshes while the exchange is in flight, and as JSON at
+  `/api/trace/<session>`; `/api/sessions` lists the sessions seen this run. Flags:
+  `--port`, `--host`, `--public-url`, `--key` and `--leaf` (sign with the real
+  registrar leaf so the client_id matches the registration; otherwise a throwaway
+  development certificate is used), `--purpose`, `--trust-anchor` (enforce PID
+  issuer trust), `--live-status` (resolve token-status-list revocation over the
+  network), and `--quiet`. This is the headline new capability: the tool now
+  debugs the actual wallet interaction, not just static artifacts. It is adapted
+  from the verifier project's `verifier-service`, reusing the same engine.
 
 ### Changed
 
@@ -109,9 +131,13 @@ runs fully offline.
 
 ### Notes
 
-- Offline and deterministic: every command except the registrar write path runs
-  fully offline, with no network calls. Verification accepts an injectable clock
-  (`--now`) so results are reproducible against the committed fixtures.
+- Offline and deterministic: every command except the registrar write path and
+  the `serve` wallet-interaction debugger runs fully offline, with no network
+  calls. Verification accepts an injectable clock (`--now`) so results are
+  reproducible against the committed fixtures. `serve` is network by nature (a
+  real wallet connects to it); its verification logic is the same offline engine,
+  exercised by an integration test on an ephemeral port and a unit test against
+  the committed oracle fixtures.
 - Licensed under Apache-2.0. Open source, framed as a developer tool.
 - Honest scope. `verify trust` checks that a leaf chains to a supplied anchor
   within its validity window; it is not full X.509 path validation. mdoc (ISO/IEC

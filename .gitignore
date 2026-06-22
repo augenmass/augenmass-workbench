@@ -10,3 +10,6 @@ secrets*.md
 # never commit private signing keys; only the public verify key is a fixture
 *signing-key*
 .DS_Store
+# stray dir from a background harvest run whose path arg did not resolve; the
+# repos were relocated to ../external/. Never track it.
+/undefined/

@@ -1,4 +1,4 @@
-# HANDOFF — augenmass-workbench-v2
+# HANDOFF: augenmass-workbench-v2
 
 This file is the cross-session memory for the build. Read it first in any new session.
 It records what exists, what is verified, the (expanded) goal, and the prioritized next work.
@@ -8,9 +8,11 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
 - Repo: `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench-v2`, its own git repo on `main`.
 - A working, fully-tested Rust CLI `augenmass` (v0.2.0) plus a Claude Code skill and full docs.
 - Build green, zero warnings, clippy clean, `cargo fmt --check` clean.
-- Tests: 15 unit + 30 integration, all passing, against real committed offline fixtures.
-- Every command verified by hand against the real fixtures (verification, revocation, x509_hash, over-ask, the guarded clone write/read loop).
-- This is committed as the foundation. The work is NOT finished: see "The real goal" below.
+- Tests: 16 unit + 30 CLI integration + 1 serve integration = 47, all passing, against real committed offline fixtures.
+- Every command verified by hand against the real fixtures (verification, revocation, x509_hash, over-ask, the guarded clone write/read loop, the live serve flow).
+- HEADLINE capability now built: `augenmass serve`, a live wallet-interaction debugger (P2 done). See below.
+- P1 (harvest) done this round: 6 new repos in `../external/` + `external/HARVEST-NOTES.md`.
+- The work is NOT finished: P3, P4, P5, P6 remain. See "Next work" below.
 
 ## The real goal (corrected and expanded by the user)
 
@@ -43,7 +45,26 @@ Every artifact arg accepts a file path, an inline value, or `-` for stdin. Comma
 - CRYPTO: `verify {presentation|trust|status|status-list}`, `x509-hash <input> [--client-id]`
 - PRODUCE: `generate {regbody|dcql}`
 - DIAGNOSE: `doctor <request>` (JAR x5c/client_id gotchas)
+- DEBUG (live): `serve` (verifier-in-a-box; a real wallet presents and the whole OpenID4VP exchange is traced)
 - WRITE (guard-railed): `register <body> --target {clone|sandbox} [--yes --force]`, `list`, `clone serve`
+
+The `serve` command (src/serve/{mod,state,handlers,view,trace}.rs) is the headline
+wallet-interaction debugger, ported and extended from `verifier/verifier-service`.
+Endpoints: GET / (mints a session, QR + links), GET /request/:id (signed JAR,
+content-type application/oauth-authz-req+jwt), POST /response/:id (wallet
+direct_post.jwt -> decrypt -> verify -> trust -> status -> over-ask), GET
+/inspect/:id, GET /trace/:id (live HTML timeline), GET /api/trace/:id (JSON), GET
+/api/sessions, GET /health. The NEW part vs the old service is src/serve/trace.rs:
+a per-session, timestamped TraceStore (event codes SESSION_CREATED, REQUEST_BUILT,
+REQUEST_OBJECT_FETCHED, RESPONSE_RECEIVED, RESPONSE_DECRYPTED, VERIFIED/REJECTED,
+STATUS_CHECKED, OVER_ASK_ANALYZED, NOTE, ERROR), each carrying the raw artifact,
+mirrored live to the console (ANSI on a TTY), the browser, and JSON. Flags: --port
+--host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet.
+Zero-config uses a throwaway dev cert (client_id is then NOT the registered one);
+--key + --leaf use the real registrar leaf. A live wallet response cannot be
+replayed from a fixture (fresh ephemeral enc key + nonce per run), which is why the
+verify path is unit-tested via verify_vp_token against the oracle fixtures and the
+request/trace path is integration-tested on an ephemeral port (tests/serve.rs).
 
 Exit codes are CI-friendly: non-zero on the "bad" outcome (over-ask, blocking format error,
 verification reject, untrusted, revoked, x509_hash mismatch, doctor findings).
@@ -101,20 +122,28 @@ just bundle                # release build -> plugins/augenmass-workbench/bin/au
   jwt nested) and the DCQL WRAPPER (`{dcql_query: {...}}`), not only bare forms. (Done.)
 - Doc agents over-escaped `<`/`>`/`&` as HTML entities; persist step unescapes them.
 - `verifier-core` src is byte-identical across the verifier/ and v1 workbench trees.
+- The `serve` port needed p256 feature `ecdsa` (for `p256::ecdsa::SigningKey` /
+  `P256Signer`) plus new deps rcgen, qrcode, rand, tower-http, tracing,
+  tracing-subscriber. The bundled RC is `include_str!`'d from
+  `fixtures/regcert/rc-by-id.json` (NOT `../fixtures/live/...` like the old service).
+- Workflow `args` quirk: in the harvest Workflow run, `args.externalDir` arrived as
+  `undefined` inside the script, so agents cloned into `augenmass-workbench-v2/undefined/`
+  instead of `../external/`. The 6 new repos were relocated to `../external/` by hand;
+  the leftover `undefined/` (2 duplicate shallow clones) is gitignored and can be rm'd
+  by the user. If you pass `args` to a Workflow, verify it actually reaches the script
+  (log it early), or hardcode absolute paths in the script.
 
 ## Next work, prioritized (for the next session)
 
-P1. Harvest. Clone hackathon-competitor tools and other useful EUDI repos + docs into
-    `../external/` (e.g. walt.id, Sphereon, Procivis One, oid4vc-dev, COKIT, whoidentifies.me
-    if not already; the eudi-lib-* SDKs; EWC; potential wallet-debug tools other teams showed).
-    Use WebSearch / the search skills to find the current ones, then `git clone`. Document each
-    in a short note. Goal: learn the ecosystem and find reusable code/specs.
-P2. Wallet-interaction debug server: `augenmass serve` (a verifier-in-a-box). Port
-    `verifier/verifier-service` (axum) into this repo as a command: mint a signed JAR, serve
-    request_uri, render a QR / deep link, accept the wallet's direct_post(.jwt) response,
-    JWE-decrypt, run verify + over-ask + trust + revocation, and emit a full TRACE (text + --json).
-    This is the headline "debug the actual wallet" capability. It needs rcgen (ephemeral cert),
-    qrcode, the openid4vp request builder, and crypto::decrypt_jwe (all already in the ecosystem).
+P1. DONE (this round). Harvested 6 new repos into `../external/` via a background
+    Workflow: openeudi-openid4vp, sd-jwt-io, sphereon-oid4vc-demo, owf-sd-jwt-js,
+    animo-openid4vc-playground, animo-openid4vc-playground-funke; index at
+    `external/HARVEST-NOTES.md`. More can be harvested later (walt.id, Procivis One,
+    COKIT, the eudi-lib-* SDKs, EWC). Read `external/HARVEST-NOTES.md` first.
+P2. DONE. `augenmass serve` wallet-interaction debugger shipped (see "What is built").
+    Possible follow-ups: render the over-ask verdict inline on the trace page; add a
+    "replay last response" capture-to-file so a captured wallet response can be
+    re-verified offline; multi-credential vp_token handling beyond "last wins".
 P3. Broaden decoders/verifiers: mdoc / mso_mdoc (ISO 18013-5) via `isomdl` + CBOR/COSE;
     trust-list (ETSI TS 119 612 / 119 475) parse + validate against `../external/test-trust-lists`;
     presentation_definition (legacy PE) decode + PE->DCQL conversion; OpenID4VCI issuer metadata

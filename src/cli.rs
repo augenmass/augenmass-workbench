@@ -16,6 +16,7 @@ use crate::commands::{
 use crate::generator::GenerateOptions;
 use crate::http_target::Target;
 use crate::output::{emit, OutputFormat};
+use crate::serve::{self, ServeArgs};
 use crate::{DEFAULT_PRIVACY_POLICY, DEFAULT_PURPOSE, DEFAULT_RP_ID, DEFAULT_SUPPORT_URI};
 
 #[derive(Parser)]
@@ -96,6 +97,8 @@ enum Command {
         #[command(subcommand)]
         command: CloneCmd,
     },
+    /// Serve a live wallet-interaction debugger (verifier-in-a-box + trace).
+    Serve(ServeArgs),
 }
 
 #[derive(Subcommand)]
@@ -334,6 +337,7 @@ pub async fn run() -> Result<()> {
         Command::Clone { command } => match command {
             CloneCmd::Serve { db, port } => clone::serve(&db, port).await?,
         },
+        Command::Serve(args) => serve::run(args).await?,
     }
     Ok(())
 }
