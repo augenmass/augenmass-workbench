@@ -1,0 +1,23 @@
+Augenmaß Workbench
+Copyright 2026 Augenmaß
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Reused components
+-----------------
+
+crates/augenmass-core is the data-minimisation and verification engine, reused
+as-is from the Augenmaß / Klartext verifier project (also Apache-2.0). It is
+HTTP-free and pure; this repository vendors it so the toolkit builds standalone.
+
+The engine and the CLI depend on, among others:
+- openid4vp (Spruce Systems) for the OpenID4VP / DCQL types
+- ssi (Spruce Systems) for SD-JWT, JWK, and token-status-list primitives
+- josekit (the cobward fork) for JWE / JOSE operations
+- x509-cert, p256, sha2 for certificate and key handling
+
+Test fixtures under fixtures/ are TEST ONLY material captured from local oracle
+services (ERICA and EUDIPLO) and from deterministic generators. The included
+keys are test keys; no production key material is committed. The private
+status-list signing key is intentionally absent (only the public verification
+key is included).

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "augenmass-workbench",
+  "version": "0.2.0",
+  "description": "A swiss-army CLI and Claude Code skill for the EUDI Wallet ecosystem: inspect, decode, audit over-ask, verify, generate, and repair EUDI artifacts.",
+  "author": {
+    "name": "Augenmaß"
+  },
+  "homepage": "https://github.com/augenmass/augenmass-workbench",
+  "repository": "https://github.com/augenmass/augenmass-workbench",
+  "license": "Apache-2.0"
+}

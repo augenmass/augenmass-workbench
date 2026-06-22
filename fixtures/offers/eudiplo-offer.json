@@ -1,0 +1,5 @@
+{
+  "uri": "openid4vp://?client_id=x509_hash%3A7zvIjJaM1KQPpN7IZBuVLuh8anw1gcbZ0a6Wj3M9i4w&request_uri=http%3A%2F%2Flocalhost%3A3002%2Fpresentations%2Ff6d6d27a-adc9-40f5-baee-27be994d65ec%2Foid4vp%2Frequest&request_uri_method=get",
+  "crossDeviceUri": "openid4vp://?client_id=x509_hash%3A7zvIjJaM1KQPpN7IZBuVLuh8anw1gcbZ0a6Wj3M9i4w&request_uri=http%3A%2F%2Flocalhost%3A3002%2Fpresentations%2Ff6d6d27a-adc9-40f5-baee-27be994d65ec%2Foid4vp%2Frequest%2Fno-redirect&request_uri_method=get",
+  "session": "a0a402fe-9dac-4db5-8a7d-bb023c8a4f28"
+}

@@ -1,0 +1,12 @@
+/target
+**/target
+*.sqlite
+*.sqlite-journal
+.env
+.env.*
+!.env.example
+secrets*.md
+*.pem.key
+# never commit private signing keys; only the public verify key is a fixture
+*signing-key*
+.DS_Store

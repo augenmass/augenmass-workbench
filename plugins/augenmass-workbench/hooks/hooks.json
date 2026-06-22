@@ -1,0 +1,15 @@
+{
+  "description": "Defensive setup for the bundled Augenmaß Workbench binary.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "chmod +x \"${CLAUDE_PLUGIN_ROOT}/bin/augenmass\" 2>/dev/null || true; if command -v xattr >/dev/null 2>&1; then xattr -dr com.apple.quarantine \"${CLAUDE_PLUGIN_ROOT}/bin/augenmass\" 2>/dev/null || true; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

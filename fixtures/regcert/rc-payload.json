@@ -1,0 +1,67 @@
+{
+  "name": "Hackathon - Reza",
+  "sub_ln": "Hackathon - Reza",
+  "sub": "EORDE-DE123456789012345",
+  "country": "DE",
+  "registry_uri": "https://sandbox.eudi-wallet.org",
+  "srv_description": [
+    [
+      {
+        "lang": "en",
+        "content": "Web Relying Party"
+      }
+    ]
+  ],
+  "entitlements": [
+    "https://uri.etsi.org/19475/Entitlement/Service_Provider"
+  ],
+  "privacy_policy": "https://example.org/privacy",
+  "info_uri": "https://sandbox.eudi-wallet.org",
+  "support_uri": "https://example.org/support",
+  "supervisory_authority": {
+    "email": "poststelle@bfdi.bund.de",
+    "phone": "+49 (0)228-997799-0",
+    "uri": "https://www.bfdi.bund.de/EN/Home/home_node.html"
+  },
+  "iat": 1780430615,
+  "status": {
+    "status_list": {
+      "idx": 8428,
+      "uri": "https://sandbox.eudi-wallet.org/status-management/status-list"
+    }
+  },
+  "purpose": [
+    {
+      "lang": "en-US",
+      "content": "Demonstration: age-over-18 verification for an event check-in."
+    }
+  ],
+  "credentials": [
+    {
+      "format": "dc+sd-jwt",
+      "meta": {
+        "vct_values": [
+          "urn:eudi:pid:de:1"
+        ]
+      },
+      "claim": [
+        {
+          "path": [
+            "given_name"
+          ]
+        },
+        {
+          "path": [
+            "family_name"
+          ]
+        },
+        {
+          "path": [
+            "age_equal_or_over",
+            "18"
+          ]
+        }
+      ]
+    }
+  ]
+}

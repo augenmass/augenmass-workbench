@@ -1,0 +1,88 @@
+{
+  "header": {
+    "typ": "oauth-authz-req+jwt",
+    "alg": "ES256",
+    "x5c": [
+      "MIIBsjCCAVigAwIBAgIRANujXnPtH6HSK3oZzfseb2QwCgYIKoZIzj0EAwIwLzELMAkGA1UEBhMCREUxIDAeBgNVBAMTF1ZlcmlmaWVyIEZpeHR1cmUgVGVuYW50MB4XDTI2MDYwMjIxMTYxMloXDTI3MDYwMjIxMTYxMlowLzELMAkGA1UEBhMCREUxIDAeBgNVBAMTF1ZlcmlmaWVyIEZpeHR1cmUgVGVuYW50MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEDuOnQFGl1hDu5QLy9J/UKsL4kmnqC0m2U9gGAvvwZlgbfiT4JbelFHnMVXGp/s7G1gPK8Af+saHeaC0d8XsLL6NVMFMwFAYDVR0RBA0wC4IJbG9jYWxob3N0MAwGA1UdEwEB/wQCMAAwDgYDVR0PAQH/BAQDAgWgMB0GA1UdDgQWBBTiRbThNtE7/PrC6mfJ18pL9QQYNDAKBggqhkjOPQQDAgNIADBFAiBeVzbYA3sFcUMcNomuvOXAAtq7bPIJCRwgdjvmQ0b/qAIhAM/Q21izjxAexuMf266rM3ha/xYo3VYFqhNFxLo+19az"
+    ],
+    "kid": "7a3cea9f-611a-4d49-bc95-d2ef3ba6ebea-active"
+  },
+  "payload": {
+    "response_type": "vp_token",
+    "client_id": "x509_hash:7zvIjJaM1KQPpN7IZBuVLuh8anw1gcbZ0a6Wj3M9i4w",
+    "response_uri": "http://localhost:3002/presentations/f6d6d27a-adc9-40f5-baee-27be994d65ec/oid4vp",
+    "response_mode": "direct_post.jwt",
+    "nonce": "b4ba2623-76a2-486b-a1f6-f1656025d07b",
+    "dcql_query": {
+      "credentials": [
+        {
+          "id": "pid",
+          "format": "dc+sd-jwt",
+          "claims": [
+            {
+              "path": [
+                "given_name"
+              ]
+            },
+            {
+              "path": [
+                "family_name"
+              ]
+            },
+            {
+              "path": [
+                "age_equal_or_over",
+                "18"
+              ]
+            }
+          ],
+          "meta": {
+            "vct_values": [
+              "urn:eudi:pid:de:1"
+            ]
+          }
+        }
+      ]
+    },
+    "client_metadata": {
+      "jwks": {
+        "keys": [
+          {
+            "kty": "EC",
+            "x": "7xYGYxUpBQp7MTZR8Oh8pMqMIFd4hjbG_i4Nd4Nu854",
+            "y": "ZAUyM0sOvJH7TVMYWv-NGTRpihTljZ9xx7AKVqq-Vfc",
+            "crv": "P-256",
+            "alg": "ECDH-ES",
+            "kid": "1fb8eca1-7670-426e-9b92-1f85616bcce0",
+            "use": "enc"
+          }
+        ]
+      },
+      "vp_formats_supported": {
+        "mso_mdoc": {
+          "alg": [
+            "ES256"
+          ]
+        },
+        "dc+sd-jwt": {
+          "kb-jwt_alg_values": [
+            "ES256"
+          ],
+          "sd-jwt_alg_values": [
+            "ES256"
+          ]
+        }
+      },
+      "encrypted_response_enc_values_supported": [
+        "A128GCM",
+        "A256GCM"
+      ]
+    },
+    "state": "f6d6d27a-adc9-40f5-baee-27be994d65ec",
+    "aud": "https://self-issued.me/v2",
+    "exp": 1780438572,
+    "iat": 1780434972
+  },
+  "signaturePresent": true,
+  "segments": 3
+}

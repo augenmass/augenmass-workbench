@@ -1,0 +1,1097 @@
+# Augenmaß Workbench v2: Command Reference
+
+This is the complete reference for the `augenmass` CLI. Every command, subcommand, flag, exit code, and example here is verified against the built binary (`augenmass 0.2.0`) and the committed fixtures under `fixtures/`. Every example runs as written from the repository root.
+
+Augenmaß Workbench is a developer and auditor toolkit for the EUDI Wallet ecosystem. It decodes and inspects every common artifact (SD-JWT VC, registration certificate, authorization request/JAR, credential offer, status list), audits requests for over-asking against curated purpose baselines and a cited legal basis, verifies presentations cryptographically, and writes registrations under guardrails. Everything except the registrar write path runs fully offline.
+
+## How to read this reference
+
+Commands are grouped by intent:
+
+- **UNDERSTAND**: figure out what an artifact is and read its contents (`inspect`, `decode`).
+- **PROPORTIONALITY**: the over-ask engine, the core of the tool (`check`, `audit`, `baselines`).
+- **CRYPTO**: signature, trust, and revocation verification, plus the x509_hash binding (`verify`, `x509-hash`).
+- **PRODUCE**: generate proportionate artifacts (`generate`).
+- **DIAGNOSE**: find verifier signed-request gotchas (`doctor`).
+- **WRITE**: guard-railed registrar writes and reads, plus the local clone store (`register`, `list`, `clone`).
+
+## Global flag: `--json`
+
+Read-only commands accept `--json` to emit machine-readable JSON instead of the text rendering. This is the contract for agents and CI. The flag is accepted both before the command and as a trailing flag on the command itself; both forms are equivalent:
+
+```
+augenmass --json check examples/min.json
+augenmass check examples/min.json --json
+```
+
+The text rendering goes to stdout. With `--json`, the structured object goes to stdout instead. The write commands (`register`, `clone serve`) also accept `--json` where it is meaningful.
+
+## Input ergonomics: file path, inline value, or stdin
+
+Every artifact argument accepts three input forms, used identically across `inspect`, `decode`, `check`, `verify`, `x509-hash`, `doctor`, and `register`:
+
+- a **file path**: `augenmass inspect fixtures/presentations/erica-vp-VALID.sdjwt`
+- an **inline value**: the artifact passed directly as the argument (a compact JWT string, an `openid4vp://` URI, inline JSON, a PEM block)
+- **stdin** via `-`: `cat fixtures/presentations/erica-vp-VALID.sdjwt | augenmass inspect -`
+
+Where a command takes a key or anchor (`--key`, `--anchor`, `--token`, `--status-key`, `--cert`), that input is read the same way: a file path or an inline value.
+
+## Exit codes
+
+Commands exit non-zero on the "bad" outcome so they slot into CI without extra parsing:
+
+| Command | Exit 1 (non-zero) when | Exit 0 when |
+|---|---|---|
+| `check` | over-ask or a blocking format error | clean |
+| `audit` | over-ask vs the purpose baseline | within baseline |
+| `verify presentation` | not verified (signature, KB-JWT, nonce/aud, vct, freshness, or any requested trust/status check fails) | verified |
+| `verify trust` | issuer does not chain to an anchor, or the validity window fails | trusted |
+| `verify status` | revoked, or an error resolving status (fail-closed) | valid |
+| `verify status-list` | the read index is revoked, or verification errors | the index is valid |
+| `x509-hash --client-id` | the claimed `client_id` does not match the computed binding | match (or no `--client-id` given) |
+| `doctor` | any blocking finding | no findings |
+| `register` | over-ask without `--force`, or a blocking format error | clean (dry-run or written) |
+
+Commands that purely read and render (`inspect`, `decode`, `baselines`, `generate`, `list`) exit 0 on success.
+
+---
+
+# UNDERSTAND
+
+## `inspect`
+
+Auto-detect an artifact and decode it. This is the "what is this?" entry point: it sniffs the type, then dispatches to the right decoder. No signature is verified.
+
+```
+Usage: augenmass inspect [OPTIONS] <INPUT>
+```
+
+Arguments:
+
+- `<INPUT>`: a file path, an inline value, or `-` for stdin.
+
+Options:
+
+- `--json`: emit JSON instead of the text rendering.
+- `-h, --help`: print help.
+
+It recognises SD-JWT VC presentations, WRPRC registration certificates, OpenID4VP authorization requests / JARs, OpenID4VP request URIs (`openid4vp://`), OpenID4VCI credential offers, token status lists, DCQL queries, registrar registration bodies, X.509 PEM certificates, and generic JWT/JWS.
+
+Exit code: 0 on success.
+
+Example:
+
+```
+augenmass inspect fixtures/presentations/erica-vp-VALID.sdjwt
+```
+
+```
+Detected: SD-JWT VC presentation
+SD-JWT VC presentation (no signature verified)
+  vct: urn:eudi:pid:de:1
+  issuer alg: ES256
+  holder binding (KB-JWT): true
+  disclosed claims: 2
+
+Disclosed claims:
+  family_name = Mustermann
+  given_name = Erika
+
+Key Binding JWT:
+  nonce: b4ba2623-76a2-486b-a1f6-f1656025d07b
+  aud: https://self-issued.me/v2
+```
+
+The same auto-detection works on a status list, a JAR, a registration certificate entry, and from stdin:
+
+```
+augenmass inspect fixtures/status/status-list-CLEAR.jwt
+augenmass inspect fixtures/requests/eudiplo-request.jwt
+augenmass inspect fixtures/regcert/rc-by-id.json
+cat fixtures/presentations/erica-vp-VALID.sdjwt | augenmass inspect -
+```
+
+## `decode`
+
+Decode a specific artifact type when you already know what it is. No signature verification. Use `decode` (not `inspect`) when you want to force a particular decoder, for example to read a JWT generically rather than as its sniffed type.
+
+```
+Usage: augenmass decode [OPTIONS] <COMMAND>
+```
+
+Subcommands: `jwt`, `sd-jwt`, `regcert`, `request`, `offer`, `status-list`.
+
+Options on the `decode` group: `--json`, `-h, --help`.
+
+### `decode jwt`
+
+Decode a JWT/JWS into its header and payload (and report whether a signature segment is present).
+
+```
+Usage: augenmass decode jwt [OPTIONS] <INPUT>
+```
+
+Arguments: `<INPUT>` (file path, inline value, or `-`).
+
+Exit code: 0 on a parseable JWT.
+
+Example (decoding the signed request fixture as a generic JWT):
+
+```
+augenmass decode jwt fixtures/requests/eudiplo-request.jwt
+```
+
+```
+JWT / JWS (no signature verified)
+  typ: oauth-authz-req+jwt
+  alg: ES256
+  segments: 3   signature present: true
+
+Header:
+  {
+    "typ": "oauth-authz-req+jwt",
+    "alg": "ES256",
+    "x5c": [ ... ],
+    "kid": "7a3cea9f-611a-4d49-bc95-d2ef3ba6ebea-active"
+  }
+Payload:
+  { ... }
+```
+
+### `decode sd-jwt`
+
+Decode an SD-JWT VC: issuer claims, disclosures, KB-JWT, and the resolved (disclosed) view.
+
+```
+Usage: augenmass decode sd-jwt [OPTIONS] <INPUT>
+```
+
+Arguments: `<INPUT>` (file path, inline value, or `-`).
+
+Exit code: 0 on success.
+
+Example:
+
+```
+augenmass decode sd-jwt fixtures/presentations/erica-vp-VALID.sdjwt
+```
+
+```
+SD-JWT VC presentation (no signature verified)
+  vct: urn:eudi:pid:de:1
+  issuer alg: ES256
+  holder binding (KB-JWT): true
+  disclosed claims: 2
+
+Disclosed claims:
+  family_name = Mustermann
+  given_name = Erika
+
+Key Binding JWT:
+  nonce: b4ba2623-76a2-486b-a1f6-f1656025d07b
+  aud: https://self-issued.me/v2
+```
+
+### `decode regcert`
+
+Decode a WRPRC registration certificate (`typ rc-wrp+jwt`), payload-only. The input is a compact registration-certificate JWT, or a registrar entry that wraps one under a `jwt` field.
+
+```
+Usage: augenmass decode regcert [OPTIONS] <INPUT>
+```
+
+Arguments: `<INPUT>` (file path, inline value, or `-`).
+
+Exit code: 0 on success.
+
+Use `fixtures/regcert/rc-by-id.json`, which is a registrar entry carrying a real compact certificate under `jwt`:
+
+```
+augenmass decode regcert fixtures/regcert/rc-by-id.json
+```
+
+```
+WRPRC registration certificate (payload-only, no signature verified)
+  purpose: "Demonstration: age-over-18 verification for an event check-in."
+  privacy_policy: https://example.org/privacy
+  support_uri: https://example.org/support
+  credentials: 1
+    format dc+sd-jwt  vct urn:eudi:pid:de:1
+      claim given_name
+      claim family_name
+      claim age_equal_or_over.18
+```
+
+Note: `fixtures/regcert/rc-payload.json` is a raw payload view (a plain JSON object), not a compact JWT, so it is not a valid input to `decode regcert`.
+
+### `decode request`
+
+Decode an OpenID4VP authorization request, either a signed JAR (`typ oauth-authz-req+jwt`) or a plain request object.
+
+```
+Usage: augenmass decode request [OPTIONS] <INPUT>
+```
+
+Arguments: `<INPUT>` (file path, inline value, or `-`).
+
+Exit code: 0 on success.
+
+Example:
+
+```
+augenmass decode request fixtures/requests/eudiplo-request.jwt
+```
+
+```
+OpenID4VP authorization request / JAR (no signature verified)
+  typ: oauth-authz-req+jwt
+  alg: ES256
+  x5c present: true
+  client_id: x509_hash:7zvIjJaM1KQPpN7IZBuVLuh8anw1gcbZ0a6Wj3M9i4w
+  client_id scheme: x509_hash
+  response_type: vp_token
+  response_mode: direct_post.jwt
+  nonce: b4ba2623-76a2-486b-a1f6-f1656025d07b
+  state: f6d6d27a-adc9-40f5-baee-27be994d65ec
+  query: dcql_query present
+```
+
+### `decode offer`
+
+Decode an OpenID4VCI credential offer (an `openid-credential-offer://` URI or its JSON form). It also reads the OpenID4VP request URI form (`openid4vp://`) used to hand a verifier request to a wallet.
+
+```
+Usage: augenmass decode offer [OPTIONS] <INPUT>
+```
+
+Arguments: `<INPUT>` (file path, inline value, or `-`).
+
+Exit code: 0 on success.
+
+The committed offer fixtures carry an `openid4vp://` request URI, so the decoder renders it as a request URI:
+
+```
+augenmass decode offer fixtures/offers/eudiplo-offer-uri.txt
+```
+
+```
+OpenID4VP request URI
+  scheme: openid4vp
+  client_id: x509_hash:7zvIjJaM1KQPpN7IZBuVLuh8anw1gcbZ0a6Wj3M9i4w
+  request_uri: http://localhost:3002/presentations/f6d6d27a-adc9-40f5-baee-27be994d65ec/oid4vp/request
+  request_uri_method: get
+```
+
+The JSON form (`fixtures/offers/eudiplo-offer.json`, which holds the same URI under `uri`) decodes identically.
+
+### `decode status-list`
+
+Decode a token status list token (`typ statuslist+jwt`): issuer, subject, bits per entry, and list size. No signature is verified here; use `verify status-list` to verify the signature and read a specific index.
+
+```
+Usage: augenmass decode status-list [OPTIONS] <INPUT>
+```
+
+Arguments: `<INPUT>` (file path, inline value, or `-`).
+
+Exit code: 0 on success.
+
+Example:
+
+```
+augenmass decode status-list fixtures/status/status-list-CLEAR.jwt
+```
+
+```
+Token status list (no signature verified)
+  typ: statuslist+jwt
+  alg: ES256
+  iss: https://verifier.example/status
+  sub: https://verifier.example/status/pid-de/1
+  bits per entry: 1
+  compressed list length (base64 chars): 16
+
+To read a specific index and verify the signature, use:
+  augenmass verify status-list --token <file> --key <pem> --index <n>
+```
+
+---
+
+# PROPORTIONALITY
+
+This is the core of the tool: the same over-ask engine that audits the EUDI registry helps a developer avoid over-asking before they register. Every over-ask finding cites a legal basis (see `baselines`).
+
+## `check`
+
+Gate a registrar registration body before a write. It runs two evaluations at once: over-ask (requested claims vs the purpose-minimal baseline) and registration-body format (the registrar DTO shape). It is the pre-write gate that `register` runs internally.
+
+```
+Usage: augenmass check [OPTIONS] <BODY>
+```
+
+Arguments:
+
+- `<BODY>`: a registration body as a file path, inline JSON, or `-` for stdin.
+
+Options: `--json`, `-h, --help`.
+
+Format findings this command catches (grounded in the registrar DTO):
+
+- `claims[].path` must be an **array** of segments, not a string (`["age_equal_or_over","18"]`, not `"age_equal_or_over.18"`).
+- requested claims live under `credentials`, not `provided_attestations`.
+- `purpose` is a list of `{lang, content}` objects, not a bare string.
+- `privacy_policy` must be a valid URL.
+- `support_uri` is any non-empty contact string (email, phone, or URL); it is not over-validated as a URL.
+
+Exit code: 1 on over-ask or a blocking format error; 0 if clean.
+
+Clean body:
+
+```
+augenmass check examples/min.json
+```
+
+```
+OK: no over-ask, no format errors. examples/min.json is ready to register.
+```
+
+Over-ask body (exit 1). The text rendering lists each requested claim, the suggested minimal request, and the legal basis:
+
+```
+augenmass check examples/over.json
+```
+
+```
+OVER-ASK: Over-ask vs purpose: 6 of 6 requested claims exceed the stated purpose.
+Purpose: Age verification   Baseline: Age gate (over 18)
+
+Requested claims:
+  [over]  given_name                   Registered, but beyond what the stated purpose needs.
+  ...
+Suggested minimal request:
+  age_equal_or_over.18
+
+Legal basis:
+  eIDAS Regulation (EU) 2024/1183, Art. 5b(3)
+    Relying parties shall not request users to provide data other than that indicated for their intended use.
+  GDPR (EU) 2016/679, Art. 5(1)(c)
+    Personal data shall be adequate, relevant and limited to what is necessary (data minimisation).
+  EUDI ARF, registration certificate, RPRC_07
+    The wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
+```
+
+Blocking format error (exit 1):
+
+```
+augenmass check examples/bad-path.json
+```
+
+```
+Format findings:
+  CHECK-PATH-STRING [blocking]: claims[].path must be an array of segments, not a string.
+    Fix: Change "path": "age_equal_or_over" to "path": ["age_equal_or_over", "18"].
+```
+
+JSON shape (for CI and agents): the object exposes `overAsk`, `blockingFormatError`, `block`, and a `report` with per-claim `status` and `rationale`:
+
+```
+augenmass check examples/min.json --json
+```
+
+## `audit`
+
+Audit an OpenID4VP request for over-asking against a purpose baseline. Unlike `check`, this lints a request (its DCQL), not a registration body. With `--cert` it also confirms the requested claims sit within a registration certificate.
+
+```
+Usage: augenmass audit [OPTIONS]
+```
+
+Options:
+
+- `--request <REQUEST>`: `"minimal"`, `"overask"`, or a path to a DCQL JSON file. Default `minimal`. The two keywords are built-in synthetic requests; the minimal one asks for `given_name`, `family_name`, `age_equal_or_over.18`, and the overask one asks for a broad PID set.
+- `--purpose <PURPOSE>`: purpose baseline id (`age_gate_18`, `event_checkin`, `car_rental`, `bank_kyc`). Default `event_checkin`.
+- `--cert <CERT>`: path to a registration certificate (compact JWT, entity JSON, or array) to cross-check the request against.
+- `--vct <VCT>`: override the expected `vct` (defaults to the German PID, `urn:eudi:pid:de:1`).
+- `--json`, `-h, --help`.
+
+Exit code: 1 on over-ask vs the chosen baseline; 0 otherwise.
+
+Clean (the built-in minimal request is within the `event_checkin` baseline), exit 0:
+
+```
+augenmass audit --request minimal --purpose event_checkin
+```
+
+```
+OK: Within the purpose-minimal baseline; registration not evaluated.
+Purpose: not stated   Baseline: Event check-in
+
+Requested claims:
+  [ok]  given_name                   Within the purpose-minimal baseline.
+  [ok]  family_name                  Within the purpose-minimal baseline.
+  [ok]  age_equal_or_over.18         Within the purpose-minimal baseline.
+```
+
+Over-ask. The same minimal request audited against the much tighter `age_gate_18` baseline flags `given_name` and `family_name`, exit 1:
+
+```
+augenmass audit --request minimal --purpose age_gate_18
+```
+
+```
+OVER-ASK: Over-ask vs purpose: 2 of 3 requested claims exceed the stated purpose.
+Purpose: not stated   Baseline: Age gate (over 18)
+
+Requested claims:
+  [over]  given_name                   Beyond what the stated purpose needs; registration not evaluated.
+  [over]  family_name                  Beyond what the stated purpose needs; registration not evaluated.
+  [ok]  age_equal_or_over.18         Within the purpose-minimal baseline.
+```
+
+Audit a real DCQL file against a baseline:
+
+```
+augenmass audit --request fixtures/dcql/eudiplo-haip-pid-de.dcql.json --purpose age_gate_18
+```
+
+## `baselines`
+
+List the curated purpose baselines and the legal basis, or show one baseline in detail. These baselines are curated taste judgments, not Rulebook derivations; they are the yardstick `check` and `audit` measure against.
+
+```
+Usage: augenmass baselines [OPTIONS] [ID]
+```
+
+Arguments:
+
+- `[ID]`: a baseline id to show in detail. Omit to list all.
+
+Options: `--json`, `-h, --help`.
+
+The four baselines:
+
+- `age_gate_18` ("Age gate (over 18)"): `age_equal_or_over.18`
+- `event_checkin` ("Event check-in"): `given_name`, `family_name`, `age_equal_or_over.18`
+- `car_rental` ("Car rental (over 21, named)"): `given_name`, `family_name`, `age_equal_or_over.21`
+- `bank_kyc` ("Bank onboarding (KYC)"): `given_name`, `family_name`, `birthdate`, `address.resident_street`, `address.resident_city`, `address.resident_postal_code`, `address.resident_country`
+
+Exit code: 0 on success.
+
+List all (also prints the legal basis cited on every over-ask finding):
+
+```
+augenmass baselines
+```
+
+Show one as JSON:
+
+```
+augenmass baselines age_gate_18 --json
+```
+
+```
+{
+  "id": "age_gate_18",
+  "label": "Age gate (over 18)",
+  "minimal_keys": [
+    "age_equal_or_over.18"
+  ],
+  "note": "Curated minimal baseline (a taste judgment, not a Rulebook derivation)."
+}
+```
+
+### Legal basis (cited verbatim on every over-ask finding)
+
+1. eIDAS Regulation (EU) 2024/1183, Art. 5b(3): "Relying parties shall not request users to provide data other than that indicated for their intended use."
+2. GDPR (EU) 2016/679, Art. 5(1)(c): data minimisation ("adequate, relevant and limited to what is necessary").
+3. EUDI ARF, registration certificate, RPRC_07: the wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
+
+---
+
+# CRYPTO
+
+These commands actually verify signatures and chains, using the vendored `augenmass-core` engine. They run offline; you provide the anchors, keys, and tokens. The verification clock is injectable via `--now` so fixtures verify deterministically. For the committed presentation fixtures, use `--now 1780435200`.
+
+## `verify presentation`
+
+Verify an SD-JWT VC presentation end to end: issuer signature, KB-JWT (holder binding), the nonce and audience echoed by the KB-JWT, the credential `vct`, and KB-JWT freshness. Optionally also anchor the issuer to a trust anchor and check revocation.
+
+```
+Usage: augenmass verify presentation [OPTIONS] --nonce <NONCE> --aud <AUD> <INPUT>
+```
+
+Arguments:
+
+- `<INPUT>`: the presentation (`SD-JWT VC ~ ... ~ KB-JWT`) as a file path, inline value, or `-`.
+
+Options:
+
+- `--nonce <NONCE>` (required): the Authorization Request nonce the KB-JWT must echo.
+- `--aud <AUD>` (required): the audience the KB-JWT must bind to (the verifier `client_id`).
+- `--vct <VCT>`: the expected credential `vct` (defaults to the German PID).
+- `--max-age <MAX_AGE>`: KB-JWT freshness window in seconds. Default `300`.
+- `--now <NOW>`: verification clock in Unix seconds; omit to use the system clock.
+- `--trust-anchor <TRUST_ANCHOR>`: a trust anchor PEM to anchor the issuer (optional; otherwise the leaf key is used).
+- `--status-token <STATUS_TOKEN>`: a status-list token to check revocation against (needs `--status-key`).
+- `--status-key <STATUS_KEY>`: the status-signer public key PEM (needs `--status-token`).
+- `--json`, `-h, --help`.
+
+Exit code: 1 if any check fails (signature, KB-JWT, nonce, audience, vct, freshness, or a requested trust/status check); 0 if verified.
+
+Verified, exit 0:
+
+```
+augenmass verify presentation fixtures/presentations/erica-vp-VALID.sdjwt \
+  --nonce b4ba2623-76a2-486b-a1f6-f1656025d07b \
+  --aud https://self-issued.me/v2 \
+  --now 1780435200
+```
+
+```
+VERIFIED
+  vct: urn:eudi:pid:de:1
+  holder binding: true
+  trust anchored: false
+  status checked: false
+  disclosed claims:
+    family_name = Mustermann
+    given_name = Erika
+```
+
+Rejected. The wrong-nonce fixture fails the KB-JWT nonce check, exit 1:
+
+```
+augenmass verify presentation fixtures/presentations/erica-vp-WRONG_NONCE.sdjwt \
+  --nonce b4ba2623-76a2-486b-a1f6-f1656025d07b \
+  --aud https://self-issued.me/v2 \
+  --now 1780435200
+```
+
+```
+REJECTED [NonceMismatch]: KB-JWT nonce does not match the request
+```
+
+The negative fixtures each exercise one failure mode: `erica-vp-WRONG_AUDIENCE.sdjwt` (audience), `erica-vp-MISSING_HOLDER_BINDING.sdjwt` (no KB-JWT), `erica-vp-EXPIRED.sdjwt` (freshness), `erica-vp-OVER_DISCLOSURE.sdjwt` (disclosures beyond what was requested).
+
+Full verification in one call: anchor the issuer and check revocation at the same time:
+
+```
+augenmass verify presentation fixtures/presentations/synthetic-pid-with-status.sdjwt \
+  --nonce b4ba2623-76a2-486b-a1f6-f1656025d07b \
+  --aud https://self-issued.me/v2 \
+  --now 1780435200 \
+  --trust-anchor fixtures/certs/synthetic-pid-anchor.pem \
+  --status-token fixtures/status/status-list-CLEAR.jwt \
+  --status-key fixtures/status/status-list-verify-key.pub.pem
+```
+
+## `verify trust`
+
+Check whether a presentation's issuer chains to a trust anchor and falls inside the certificate validity window. This is a leaf-chains-to-anchor check plus a validity-window check, not full RFC 5280 path validation.
+
+```
+Usage: augenmass verify trust [OPTIONS] --anchor <ANCHOR> <INPUT>
+```
+
+Arguments:
+
+- `<INPUT>`: the presentation as a file path, inline value, or `-`.
+
+Options:
+
+- `--anchor <ANCHOR>` (required): trust anchor PEM (one or more certificates), as a file path or inline.
+- `--now <NOW>`: verification clock in Unix seconds; omit to use the system clock.
+- `--json`, `-h, --help`.
+
+Exit code: 1 if the issuer does not chain to an anchor or the validity window fails; 0 if trusted.
+
+Example (ERICA's leaf chains to `erica-trust-anchor.pem`), exit 0:
+
+```
+augenmass verify trust fixtures/presentations/erica-vp-VALID.sdjwt \
+  --anchor fixtures/certs/erica-trust-anchor.pem \
+  --now 1780435200
+```
+
+```
+TRUSTED: the issuer chains to one of 1 anchor(s).
+```
+
+## `verify status`
+
+Check a presentation's revocation status against a status-list token. The status check is fail-closed and offline: it reads the index the credential points at and reports it.
+
+```
+Usage: augenmass verify status [OPTIONS] --token <TOKEN> --key <KEY> <INPUT>
+```
+
+Arguments:
+
+- `<INPUT>`: the presentation as a file path, inline value, or `-`.
+
+Options:
+
+- `--token <TOKEN>` (required): the status-list token (`statuslist+jwt`), as a file path or inline.
+- `--key <KEY>` (required): the status-signer public key (SPKI or certificate PEM).
+- `--json`, `-h, --help`.
+
+Exit code: 1 if revoked or on a status-resolution error; 0 if valid.
+
+Valid against the clear list, exit 0:
+
+```
+augenmass verify status fixtures/presentations/synthetic-pid-with-status.sdjwt \
+  --token fixtures/status/status-list-CLEAR.jwt \
+  --key fixtures/status/status-list-verify-key.pub.pem
+```
+
+```
+VALID
+```
+
+Revoked against the revoked list (the credential's index is flagged), exit 1:
+
+```
+augenmass verify status fixtures/presentations/synthetic-pid-with-status.sdjwt \
+  --token fixtures/status/status-list-REVOKED.jwt \
+  --key fixtures/status/status-list-verify-key.pub.pem
+```
+
+```
+REVOKED
+```
+
+## `verify status-list`
+
+Verify a status-list token's signature and read a specific index directly, without a presentation. Useful when you have a status list and an index in hand.
+
+```
+Usage: augenmass verify status-list [OPTIONS] --token <TOKEN> --key <KEY> --index <INDEX>
+```
+
+Options:
+
+- `--token <TOKEN>` (required): the status-list token (`statuslist+jwt`), as a file path or inline.
+- `--key <KEY>` (required): the status-signer public key (SPKI or certificate PEM).
+- `--index <INDEX>` (required): the status index to read.
+- `--json`, `-h, --help`.
+
+Exit code: 1 if the index is revoked or verification errors; 0 if the index is valid.
+
+The committed status lists hold 256 entries, 1 bit each; index 42 is revoked in the REVOKED list. Reading index 42, exit 1:
+
+```
+augenmass verify status-list \
+  --token fixtures/status/status-list-REVOKED.jwt \
+  --key fixtures/status/status-list-verify-key.pub.pem \
+  --index 42
+```
+
+```
+REVOKED
+```
+
+Reading a clear index (0) in the same list, exit 0:
+
+```
+augenmass verify status-list \
+  --token fixtures/status/status-list-REVOKED.jwt \
+  --key fixtures/status/status-list-verify-key.pub.pem \
+  --index 0
+```
+
+```
+VALID
+```
+
+## `x509-hash`
+
+Compute the `x509_hash` `client_id` binding (`x509_hash:<base64url(SHA-256(leaf-cert-DER))>`) and, optionally, check a claimed `client_id` against it. Input is a JAR (its x5c leaf is extracted), a PEM certificate, or base64 DER.
+
+```
+Usage: augenmass x509-hash [OPTIONS] <INPUT>
+```
+
+Arguments:
+
+- `<INPUT>`: a JAR (its x5c leaf), a PEM certificate, or base64 DER; as a file path, inline value, or `-`.
+
+Options:
+
+- `--client-id <CLIENT_ID>`: a claimed `client_id` to compare against the computed binding.
+- `--json`, `-h, --help`.
+
+Exit code: with `--client-id`, 1 on mismatch and 0 on match; without `--client-id`, 0 (compute only).
+
+Compute from a leaf PEM (the `access-leaf.pem` binding):
+
+```
+augenmass x509-hash fixtures/certs/access-leaf.pem
+```
+
+```
+x509_hash:   VE3qp3vLVkU8JyVmXkjL7CSDVxVoTFdTv5fAEwmjKOI
+client_id:   x509_hash:VE3qp3vLVkU8JyVmXkjL7CSDVxVoTFdTv5fAEwmjKOI
+subject:     CN=Hackathon - Reza,...,O=Hackathon - Reza,C=DE
+issuer:      CN=German Registrar,C=DE
+serial:      2D:DD:F5:FD:92:86:B2:A2
+```
+
+Compute from a JAR (the leaf is pulled out of x5c). The eudiplo JAR binds to `x509_hash:7zvIjJaM1KQPpN7IZBuVLuh8anw1gcbZ0a6Wj3M9i4w`:
+
+```
+augenmass x509-hash fixtures/requests/eudiplo-request.jwt
+```
+
+Check a claimed `client_id`, match (exit 0):
+
+```
+augenmass x509-hash fixtures/certs/access-leaf.pem \
+  --client-id x509_hash:VE3qp3vLVkU8JyVmXkjL7CSDVxVoTFdTv5fAEwmjKOI
+```
+
+```
+MATCH: x509_hash:VE3qp3vLVkU8JyVmXkjL7CSDVxVoTFdTv5fAEwmjKOI matches the computed binding.
+```
+
+Check a claimed `client_id`, mismatch (exit 1):
+
+```
+augenmass x509-hash fixtures/certs/access-leaf.pem --client-id x509_hash:WRONGHASH
+```
+
+```
+MISMATCH: claimed client_id
+  x509_hash:WRONGHASH
+does not equal the computed
+  x509_hash:VE3qp3vLVkU8JyVmXkjL7CSDVxVoTFdTv5fAEwmjKOI
+```
+
+---
+
+# PRODUCE
+
+## `generate`
+
+Produce a proportionate registration body or a DCQL query.
+
+```
+Usage: augenmass generate [OPTIONS] <COMMAND>
+```
+
+Subcommands: `regbody`, `dcql`. Options on the group: `--json`, `-h, --help`.
+
+### `generate regbody`
+
+Emit a registrar registration body. By default it produces the proportionate age check: a single `age_equal_or_over.18` claim with `format dc+sd-jwt` and the German PID `vct`. The output passes `check` cleanly.
+
+```
+Usage: augenmass generate regbody [OPTIONS]
+```
+
+Options:
+
+- `--use-case <USE_CASE>`: default `age-check`; the only accepted value is `age-check`.
+- `--over-broad`: emit an intentionally over-broad body (useful to demonstrate `check`/`register` refusing an over-ask).
+- `--rp <RP>`: the relying-party id. Default `2af138a8-59ea-4a84-aea3-666cafdb1369` (our relying party, "Hackathon - Reza").
+- `--support-uri <SUPPORT_URI>`: default `support@example.com`.
+- `--privacy-policy <PRIVACY_POLICY>`: default `https://example.com/privacy`.
+- `--purpose <PURPOSE>`: default `Age verification`.
+- `--json`, `-h, --help`.
+
+Exit code: 0 on success.
+
+Default proportionate body:
+
+```
+augenmass generate regbody
+```
+
+```
+{
+  "rpId": "2af138a8-59ea-4a84-aea3-666cafdb1369",
+  "support_uri": "support@example.com",
+  "privacy_policy": "https://example.com/privacy",
+  "purpose": [
+    { "lang": "en", "content": "Age verification" }
+  ],
+  "credentials": [
+    {
+      "format": "dc+sd-jwt",
+      "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+      "claims": [
+        { "path": ["age_equal_or_over", "18"] }
+      ]
+    }
+  ]
+}
+```
+
+Note the correct shapes: `path` is an array, claims live under `credentials`, and `purpose` is a list of `{lang, content}`. Generate then immediately gate it:
+
+```
+augenmass generate regbody | augenmass check -
+```
+
+Demonstrate the over-ask path end to end (this body fails the gate, so `register` would refuse it without `--force`):
+
+```
+augenmass generate regbody --over-broad | augenmass check -
+```
+
+Override the contact and purpose fields:
+
+```
+augenmass generate regbody \
+  --support-uri "https://example.org/support" \
+  --privacy-policy "https://example.org/privacy" \
+  --purpose "Age gate for venue entry"
+```
+
+### `generate dcql`
+
+Build a DCQL query from one or more claim paths. The `--claim` flag is repeatable; paths may be dotted or slashed and are expanded into segment arrays.
+
+```
+Usage: augenmass generate dcql [OPTIONS] --claim <CLAIMS>
+```
+
+Options:
+
+- `--claim <CLAIMS>` (required, repeatable): a claim path, for example `--claim age_equal_or_over.18`.
+- `--json`, `-h, --help`.
+
+Exit code: 0 on success.
+
+Single claim:
+
+```
+augenmass generate dcql --claim age_equal_or_over.18
+```
+
+```
+{
+  "credentials": [
+    {
+      "id": "pid",
+      "format": "dc+sd-jwt",
+      "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+      "claims": [
+        { "path": ["age_equal_or_over", "18"] }
+      ]
+    }
+  ]
+}
+```
+
+Multiple claims (a flat path becomes a single-element array, a dotted path becomes a multi-element array):
+
+```
+augenmass generate dcql --claim given_name --claim age_equal_or_over.18
+```
+
+Feed the result straight into an audit:
+
+```
+augenmass generate dcql --claim given_name --claim family_name --claim age_equal_or_over.18 \
+  | augenmass audit --request - --purpose event_checkin
+```
+
+---
+
+# DIAGNOSE
+
+## `doctor`
+
+Diagnose verifier signed-request / JAR gotchas. This is a different document from a registration body: it lints the request a verifier sends a wallet. Input is request JSON or a compact JWT.
+
+```
+Usage: augenmass doctor [OPTIONS] <REQUEST>
+```
+
+Arguments:
+
+- `<REQUEST>`: request JSON or a compact JWT, as a file path, inline value, or `-`.
+
+Options: `--json`, `-h, --help`.
+
+Findings this command catches:
+
+- `x5c` must be a **list** of strings, even for a single certificate.
+- `client_id` must be in the `x509_hash:<base64url(SHA-256(leaf-cert-DER))>` form. Compute it with `augenmass x509-hash`.
+- (Reminder it prints on the clean path) set `Content-Type: application/json` on every POST.
+
+Exit code: 1 if there are blocking findings; 0 if none.
+
+Clean JAR, exit 0:
+
+```
+augenmass doctor fixtures/requests/eudiplo-request.jwt
+```
+
+```
+OK: no signed-request gotchas found.
+Set Content-Type: application/json on every POST; the client does this for you.
+```
+
+A malformed request (exit 1). The `examples/bad-request.json` fixture has `x5c` as a bare string and a non-`x509_hash` `client_id`:
+
+```
+augenmass doctor examples/bad-request.json
+```
+
+```
+Signed-request findings:
+  DOCTOR-X5C-STRING [blocking]: x5c must be a list of strings, even for a single certificate.
+    Fix: Wrap the certificate in an array: "x5c": ["MIIB..."].
+  DOCTOR-CLIENT-ID-X509HASH [blocking]: client_id must be in the x509_hash form.
+    Fix: Use "client_id": "x509_hash:<base64url(SHA-256(leaf-cert-DER))>". Compute it with `augenmass x509-hash`.
+```
+
+---
+
+# WRITE
+
+The write surface is guard-railed. There are two targets: `clone` (a local registrar-compatible store, the default) and `sandbox` (the real registrar, rehearsal only). Writes are dry-run by default; `--yes` performs the write; `--force` writes past an over-ask warning and requires `--yes`. Always write under our single relying party (`2af138a8-59ea-4a84-aea3-666cafdb1369`); never mint extra relying parties. Never log, echo, or commit tokens, certificates, or keys.
+
+The `clone` target is a local axum + SQLite store with no signing, no auth, and no x5c. It stores payload-only JWTs and is sound because every read path decodes payload-only. Its API base is `AUGENMASS_CLONE_API_BASE` (default `http://127.0.0.1:8080/api`). The `sandbox` target talks to the real registrar over Keycloak OAuth (resource-owner password grant), configured via `AUGENMASS_API_BASE` (default `https://sandbox.eudi-wallet.org/api`), `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`, and the optional `AUGENMASS_OIDC_CLIENT_SECRET`.
+
+The `register` and `list` commands talk to a target over HTTP, so for `--target clone` the clone server must be running (`augenmass clone serve`).
+
+## `register`
+
+Write a registration under guardrails. It runs the `check` gate first (over-ask plus format), then, only with `--yes`, performs the write. Without `--yes` it is a dry-run.
+
+```
+Usage: augenmass register [OPTIONS] <BODY>
+```
+
+Arguments:
+
+- `<BODY>`: a registration body as a file path, inline JSON, or `-` for stdin.
+
+Options:
+
+- `--target <TARGET>`: `clone` or `sandbox`. Default `clone`.
+- `--yes`: confirm a write. Without this flag the command is a dry-run.
+- `--force`: write past an over-ask warning. Requires `--yes`.
+- `--json`, `-h, --help`.
+
+Exit code: 1 on over-ask without `--force`, or a blocking format error; 0 on a clean dry-run or a successful write.
+
+Dry-run a clean body to the clone (nothing is written), exit 0:
+
+```
+augenmass register examples/min.json --target clone
+```
+
+```
+OK: no over-ask, no format errors. examples/min.json is ready to register.
+DRY RUN: nothing written. Re-run with --yes to write to clone.
+```
+
+An over-ask body is refused even with `--yes` (you would need `--force` to override), exit 1:
+
+```
+augenmass register examples/over.json --target clone --yes
+```
+
+```
+OVER-ASK: Over-ask vs purpose: 6 of 6 requested claims exceed the stated purpose.
+  ...
+Over-asking 6 claim(s) beyond the stated purpose.
+```
+
+Actually write a clean body to the running clone (requires `augenmass clone serve`):
+
+```
+augenmass register examples/min.json --target clone --yes
+```
+
+## `list`
+
+Read registrations back for one relying party, decoded. It fetches from the target and renders each stored certificate payload-only.
+
+```
+Usage: augenmass list [OPTIONS]
+```
+
+Options:
+
+- `--target <TARGET>`: `clone` or `sandbox`. Default `clone`.
+- `--rp <RP>`: the relying-party id. Default `2af138a8-59ea-4a84-aea3-666cafdb1369`.
+- `--json`, `-h, --help`.
+
+Exit code: 0 on a successful read.
+
+Example (against the running clone):
+
+```
+augenmass list --target clone
+```
+
+When the store is empty:
+
+```
+No registrations for RP 2af138a8-59ea-4a84-aea3-666cafdb1369 on clone.
+```
+
+## `clone serve`
+
+Run the registrar-compatible local clone store. It serves `POST`/`GET /registration-certificates` (and the `/api/...` variants) backed by SQLite, with no signing and no auth. This is the default write target; start it before `register --target clone` or `list --target clone`.
+
+```
+Usage: augenmass clone serve [OPTIONS]
+```
+
+Options:
+
+- `--db <DB>`: the SQLite database path. Default `./augenmass-clone.sqlite`.
+- `--port <PORT>`: the listen port. Default `8080`.
+- `--json`, `-h, --help`.
+
+This command runs until interrupted. Start it on the default port:
+
+```
+augenmass clone serve
+```
+
+Run on a different port and database file:
+
+```
+augenmass clone serve --port 9090 --db ./scratch-clone.sqlite
+```
+
+With a non-default port, point the read/write commands at it via `AUGENMASS_CLONE_API_BASE`, for example `http://127.0.0.1:9090/api`.
+
+---
+
+## Quick end-to-end recipes
+
+Generate a proportionate body, gate it, and (with a running clone) write it:
+
+```
+augenmass clone serve            # in one shell
+augenmass generate regbody | augenmass check -
+augenmass generate regbody | augenmass register - --target clone --yes
+augenmass list --target clone
+```
+
+Triage an unknown artifact, then verify it fully:
+
+```
+augenmass inspect fixtures/presentations/erica-vp-VALID.sdjwt
+augenmass verify presentation fixtures/presentations/erica-vp-VALID.sdjwt \
+  --nonce b4ba2623-76a2-486b-a1f6-f1656025d07b \
+  --aud https://self-issued.me/v2 \
+  --now 1780435200 \
+  --trust-anchor fixtures/certs/erica-trust-anchor.pem
+```
+
+Diagnose a verifier request and confirm its client_id binding:
+
+```
+augenmass doctor fixtures/requests/eudiplo-request.jwt
+augenmass x509-hash fixtures/requests/eudiplo-request.jwt \
+  --client-id x509_hash:7zvIjJaM1KQPpN7IZBuVLuh8anw1gcbZ0a6Wj3M9i4w
+```

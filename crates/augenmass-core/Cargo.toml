@@ -1,0 +1,30 @@
+[package]
+name = "augenmass-core"
+version = "0.2.0"
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.92"
+description = "Reusable, HTTP-free EUDI engine: German-PID OpenID4VP verification plus a data-minimisation (over-ask) inspector. The shared spine of the Augenmass toolkit."
+
+[lib]
+name = "augenmass_core"
+path = "src/lib.rs"
+
+[dependencies]
+openid4vp = { git = "https://github.com/spruceid/openid4vp", rev = "d2847dfcd07d1ea70ffc0c713ad650519d424a82" }
+ssi = { version = "0.16", features = ["secp256r1"] }
+josekit = { git = "https://github.com/cobward/josekit-rs", rev = "635c8a7" }
+x509-cert = "0.2.4"
+p256 = { version = "0.13", features = ["jwk", "ecdsa", "pem"] }
+sha2 = "0.10"
+base64 = "0.21"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+url = { version = "2", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1"
+thiserror = "1"
+tracing = "0.1"
+
+[dev-dependencies]
+rcgen = "0.13"

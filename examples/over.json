@@ -1,0 +1,55 @@
+{
+  "rpId": "2af138a8-59ea-4a84-aea3-666cafdb1369",
+  "support_uri": "support@example.com",
+  "privacy_policy": "https://example.com/privacy",
+  "purpose": [
+    {
+      "lang": "en",
+      "content": "Age verification"
+    }
+  ],
+  "credentials": [
+    {
+      "format": "dc+sd-jwt",
+      "meta": {
+        "vct_values": [
+          "urn:eudi:pid:de:1"
+        ]
+      },
+      "claims": [
+        {
+          "path": [
+            "given_name"
+          ]
+        },
+        {
+          "path": [
+            "family_name"
+          ]
+        },
+        {
+          "path": [
+            "birthdate"
+          ]
+        },
+        {
+          "path": [
+            "address",
+            "resident_street"
+          ]
+        },
+        {
+          "path": [
+            "address",
+            "resident_city"
+          ]
+        },
+        {
+          "path": [
+            "nationalities"
+          ]
+        }
+      ]
+    }
+  ]
+}
