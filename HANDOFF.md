@@ -8,7 +8,7 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
 - Repo: `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench-v2`, its own git repo on `main`.
 - A working, fully-tested Rust CLI `augenmass` (v0.2.0) plus a Claude Code skill and full docs.
 - Build green, zero warnings, clippy clean, `cargo fmt --check` clean.
-- Tests: 20 unit + 33 CLI integration + 1 serve integration = 54, all passing, against real committed offline fixtures.
+- Tests: 24 unit + 36 CLI integration + 1 serve integration = 61, all passing, against real committed offline fixtures.
 - Every command verified by hand against the real fixtures (verification, revocation, x509_hash, over-ask, the guarded clone write/read loop, the live serve flow).
 - HEADLINE capability now built: `augenmass serve`, a live wallet-interaction debugger (P2 done). See below.
 - P1 (harvest) done this round: 6 new repos in `../external/` + `external/HARVEST-NOTES.md`.
@@ -44,7 +44,7 @@ Every artifact arg accepts a file path, an inline value, or `-` for stdin. Comma
 - PROPORTIONALITY: `check <body>` (registration-body gate: over-ask + format), `audit --request {minimal|overask|FILE} --purpose <id> [--cert FILE]`, `baselines [<id>]`
 - CRYPTO: `verify {presentation|trust|status|status-list}`, `x509-hash <input> [--client-id]`
 - PRODUCE: `generate {regbody|dcql}`
-- DIAGNOSE: `doctor <request>` (JAR x5c/client_id gotchas)
+- DIAGNOSE: `doctor <request>` (JAR x5c/client_id gotchas), `validate dcql <input>` (DCQL semantic validation: unique ids, credential_sets refs, per-format claim paths; CI-gateable, src/commands/validate.rs)
 - DEBUG (live): `serve` (verifier-in-a-box; a real wallet presents and the whole OpenID4VP exchange is traced)
 - WRITE (guard-railed): `register <body> --target {clone|sandbox} [--yes --force]`, `list`, `clone serve`
 
@@ -165,10 +165,14 @@ P3. IN PROGRESS. mdoc / mso_mdoc (ISO 18013-5) DECODING done: `decode mdoc` +
     trust-list (ETSI TS 119 612 / 119 475) parse + validate against `../external/test-trust-lists`;
     presentation_definition (legacy PE) decode + PE->DCQL conversion; OpenID4VCI issuer metadata
     and wallet metadata; full JAR signature verification (not just decode).
-P4. DCQL validation (unique ids, credential_sets reference known ids, format-correct paths:
-    mdoc 2-element [namespace, element] vs SD-JWT nested). Schemas available under `../external/eudiplo/schemas`.
-P5. Adversarial multi-agent review (correctness/security/DX/doc-accuracy/completeness) of the
-    whole repo; fix findings. (Was planned but not yet run.)
+P4. DONE. DCQL validation shipped: `validate dcql` (src/commands/validate.rs) checks unique
+    credential ids, credential_sets options referencing known ids, and per-format claim paths
+    (mdoc 2-element [namespace, element] vs SD-JWT string/null/index). Findings have stable ids
+    + fixes; exits non-zero on blocking. Could extend with claim id uniqueness, claim_sets
+    references, and JSON-schema validation against `../external/eudiplo/schemas`.
+P5. DONE (this session). Adversarial multi-dimension review workflow run against the serve code;
+    12 of 13 confirmed findings fixed (1 LOW deferred: per-request enc key). Re-run such a review
+    over the whole repo (incl. mdoc + validate) when convenient.
 P6. Cross-platform release binaries; consider a C-ABI / WASM build of the engine later.
 
 ## Awareness: the parallel Codex build (you may read it now)

@@ -491,3 +491,43 @@ fn decode_mdoc_json_is_valid() {
     let value: serde_json::Value = serde_json::from_slice(&out).expect("valid JSON");
     assert_eq!(value["type"], "IssuerSigned");
 }
+
+// --- validate dcql ---------------------------------------------------------
+
+#[test]
+fn validate_dcql_good_fixture_passes() {
+    bin()
+        .args([
+            "validate",
+            "dcql",
+            "fixtures/dcql/eudiplo-haip-pid-de.dcql.json",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("DCQL VALID"));
+}
+
+#[test]
+fn validate_dcql_bad_query_blocks() {
+    let bad = r#"{"credentials":[{"id":"a","format":"mso_mdoc","claims":[{"path":["org.iso.18013.5.1"]}]},{"id":"a","format":"dc+sd-jwt"}],"credential_sets":[{"options":[["missing"]]}]}"#;
+    bin()
+        .args(["validate", "dcql", bad])
+        .assert()
+        .failure()
+        .stdout(contains("DCQL-CRED-ID-DUPLICATE"))
+        .stdout(contains("DCQL-MDOC-PATH"))
+        .stdout(contains("DCQL-SET-REF-DANGLING"));
+}
+
+#[test]
+fn validate_dcql_json_output_is_valid() {
+    let out = bin()
+        .args(["--json", "validate", "dcql", r#"{"credentials":[]}"#])
+        .assert()
+        .failure()
+        .get_output()
+        .stdout
+        .clone();
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("valid JSON");
+    assert_eq!(value["valid"], serde_json::Value::Bool(false));
+}

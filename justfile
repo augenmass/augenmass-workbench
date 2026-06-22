@@ -45,6 +45,9 @@ verify:
     cargo run --quiet -- serve --help > /dev/null
     # the mdoc decoder reads the committed ISO 18013-5 mDL vector
     cargo run --quiet -- decode mdoc fixtures/mdoc/issuer-signed.hex > /dev/null
+    # DCQL validation: the committed eudiplo query is clean, a bad one blocks
+    cargo run --quiet -- validate dcql fixtures/dcql/eudiplo-haip-pid-de.dcql.json > /dev/null
+    sh -c 'if cargo run --quiet -- validate dcql "{\"credentials\":[]}"; then exit 1; else exit 0; fi'
 
 # Bundle the release binary into the plugin (Apple Silicon macOS).
 bundle: release

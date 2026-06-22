@@ -11,7 +11,8 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 
 use crate::commands::decode::Decoded;
 use crate::commands::{
-    audit, baselines, check, clone, decode, doctor, generate, inspect, register, verify, x509hash,
+    audit, baselines, check, clone, decode, doctor, generate, inspect, register, validate, verify,
+    x509hash,
 };
 use crate::generator::GenerateOptions;
 use crate::http_target::Target;
@@ -89,6 +90,11 @@ enum Command {
         /// Request JSON or a compact JWT: a file path, inline value, or `-`.
         request: String,
     },
+    /// Validate an artifact's structure and cross-references (CI-gateable).
+    Validate {
+        #[command(subcommand)]
+        what: ValidateCmd,
+    },
     /// Write a registration under guardrails (dry-run by default).
     Register(RegisterCommand),
     /// Read registrations back for one relying party, decoded.
@@ -120,6 +126,15 @@ enum DecodeCmd {
     StatusList { input: String },
     /// Decode an ISO 18013-5 mdoc (DeviceResponse / IssuerSigned / MSO; CBOR, hex, or base64).
     Mdoc { input: String },
+}
+
+#[derive(Subcommand)]
+enum ValidateCmd {
+    /// Validate a DCQL query (unique ids, credential_sets references, per-format claim paths).
+    Dcql {
+        /// DCQL JSON (bare or wrapped under `dcql_query`): file path, inline, or `-`.
+        input: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -322,6 +337,12 @@ pub async fn run() -> Result<()> {
         Command::Doctor { request } => {
             let found = doctor::run(&read_input(&request)?, fmt)?;
             exit_if(found);
+        }
+        Command::Validate { what } => {
+            let bad = match what {
+                ValidateCmd::Dcql { input } => validate::dcql(&read_input(&input)?, fmt)?,
+            };
+            exit_if(bad);
         }
         Command::Register(cmd) => {
             let content = read_input(&cmd.body)?;

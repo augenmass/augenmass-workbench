@@ -134,6 +134,7 @@ PRODUCE
 
 DIAGNOSE
 - `doctor <request>`: diagnose verifier signed-request and JAR gotchas (x5c shape, client_id binding).
+- `validate dcql <input>`: validate a DCQL query for unique credential ids, `credential_sets` options that reference known ids, and claim paths whose shape matches the credential format (mdoc `[namespace, element]` vs SD-JWT string/null/index segments). Exits non-zero on a blocking error, so it gates CI.
 
 DEBUG (live wallet interaction)
 - `serve [--port --host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet]`: run a local OpenID4VP verifier (a verifier-in-a-box) so a real EUDI wallet can present to it, and trace the whole exchange. The trace streams to the console, renders as a live browser timeline at `/trace/<session>`, and serializes at `/api/trace/<session>`.

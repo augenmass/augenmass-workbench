@@ -10,5 +10,6 @@ pub mod doctor;
 pub mod generate;
 pub mod inspect;
 pub mod register;
+pub mod validate;
 pub mod verify;
 pub mod x509hash;

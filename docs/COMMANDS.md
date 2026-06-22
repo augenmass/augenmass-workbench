@@ -984,6 +984,56 @@ Signed-request findings:
     Fix: Use "client_id": "x509_hash:<base64url(SHA-256(leaf-cert-DER))>". Compute it with `augenmass x509-hash`.
 ```
 
+## `validate dcql`
+
+Validate a DCQL query beyond what the typed parse enforces, so a developer can catch the mistakes that make a wallet reject or mis-handle a request. It accepts a bare query or one wrapped under `dcql_query`, as a file path, inline value, or `-`.
+
+```
+Usage: augenmass validate dcql [OPTIONS] <INPUT>
+```
+
+Options: `--json`, `-h, --help`.
+
+Checks (each finding has a stable id, a severity, and a fix):
+
+- `DCQL-CREDENTIALS-MISSING` / `DCQL-CREDENTIALS-EMPTY`: there must be a non-empty `credentials` array.
+- `DCQL-CRED-ID-MISSING` / `DCQL-CRED-ID-DUPLICATE`: every credential needs a unique string `id`.
+- `DCQL-CRED-FORMAT-MISSING` / `DCQL-CRED-FORMAT-UNKNOWN`: a `format` is required; an unrecognized one warns.
+- `DCQL-PATH-NOT-ARRAY`: a claim `path` is a JSON array of segments, not a dotted string.
+- `DCQL-MDOC-PATH`: an `mso_mdoc` path must be `[namespace, element]` (two strings).
+- `DCQL-SDJWT-PATH`: an SD-JWT path's segments must be strings, null (all array elements), or integer indices.
+- `DCQL-SET-REF-DANGLING` (and the `DCQL-SET-*` shape checks): every id referenced in a `credential_sets` option must match a `credentials[].id`.
+
+Exit code: 1 if there is a blocking finding; 0 otherwise (warnings do not block).
+
+Clean query, exit 0:
+
+```
+augenmass validate dcql fixtures/dcql/eudiplo-haip-pid-de.dcql.json
+```
+
+```
+DCQL VALID: no structural or reference issues found.
+```
+
+A query with a duplicate id, a bad mdoc path, and a dangling set reference (exit 1):
+
+```
+augenmass validate dcql '{"credentials":[{"id":"a","format":"mso_mdoc","claims":[{"path":["org.iso.18013.5.1"]}]},{"id":"a","format":"dc+sd-jwt"}],"credential_sets":[{"options":[["missing"]]}]}'
+```
+
+```
+DCQL findings:
+  DCQL-CRED-ID-DUPLICATE [blocking]: duplicate credential id 'a'
+    Fix: credential ids must be unique within a DCQL query
+  DCQL-MDOC-PATH [blocking]: credentials[0].claims[0].path for mso_mdoc must be [namespace, element] (two strings), got 1 segment(s)
+    Fix: use a two-string path, e.g. ["org.iso.18013.5.1", "family_name"]
+  DCQL-SET-REF-DANGLING [blocking]: credential_sets[0] references unknown credential id 'missing'
+    Fix: every id in a credential_set option must match a credentials[].id
+
+DCQL INVALID: at least one blocking error above.
+```
+
 ---
 
 # DEBUG

@@ -36,6 +36,13 @@ wallet-interaction debugger.
   `decode jwt`, `decode sd-jwt`, `decode regcert`, `decode request`,
   `decode offer`, `decode status-list`, and `decode mdoc`. These decode without
   verifying any signature.
+- `validate dcql`: validate a DCQL query beyond what the typed parse enforces.
+  It checks that credential ids are unique, that every `credential_sets` option
+  references a known credential id, and that each claim path matches its
+  credential format (an `mso_mdoc` path must be `[namespace, element]`, two
+  strings; an SD-JWT path must be an array of string, null, or integer segments,
+  not a dotted string). Each finding has a stable id, a severity, and a fix; the
+  command exits non-zero on a blocking error so it gates CI. JSON via `--json`.
 - `decode mdoc`: decode an ISO/IEC 18013-5 mdoc (`mso_mdoc`), the other major
   EUDI credential format alongside SD-JWT VC. It accepts a `DeviceResponse`, a
   single `Document`, an `IssuerSigned`, or a bare `MobileSecurityObject`, given as
@@ -117,8 +124,8 @@ wallet-interaction debugger.
   HTTP-free and pure.
 - Commands are regrouped into clear families: UNDERSTAND (`inspect`, `decode`),
   PROPORTIONALITY (`check`, `audit`, `baselines`), CRYPTO (`verify`, `x509-hash`),
-  PRODUCE (`generate`), DIAGNOSE (`doctor`), and WRITE (`register`, `list`,
-  `clone`).
+  PRODUCE (`generate`), DIAGNOSE (`doctor`, `validate`), DEBUG (`serve`), and
+  WRITE (`register`, `list`, `clone`).
 - `check` now gates a registrar registration body before a write on both over-ask
   and format. It catches the registrar DTO traps: `claims[].path` must be an array
   of segments (`["age_equal_or_over","18"]`, not the string `"age_equal_or_over.18"`);

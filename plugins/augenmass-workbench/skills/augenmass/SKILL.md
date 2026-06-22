@@ -61,6 +61,7 @@ Writes are guarded. Reason before you write.
 | Decode an OpenID4VCI credential offer | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass decode offer <input>` |
 | Decode a token status list | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass decode status-list <input>` |
 | Decode an ISO 18013-5 mdoc (mso_mdoc; CBOR, hex, or base64) | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass decode mdoc <input>` |
+| Validate a DCQL query (ids, credential_sets refs, per-format claim paths) | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass validate dcql <input>` |
 | Gate a registration body before a write | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass check <body>` |
 | Audit a request for over-ask | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass audit --request {minimal\|overask\|FILE} --purpose <id> [--cert FILE]` |
 | List or show purpose baselines and legal basis | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass baselines [<id>]` |
