@@ -1,14 +1,15 @@
-//! Environment configuration for the registrar write path. Everything else in
-//! the toolkit runs fully offline and needs no configuration.
+//! Environment configuration for the registrar and cached-sandbox targets.
 
 use anyhow::{Context, Result};
 
 pub const DEFAULT_API_BASE: &str = "https://sandbox.eudi-wallet.org/api";
 pub const DEFAULT_CLONE_API_BASE: &str = "http://127.0.0.1:8080/api";
+pub const DEFAULT_CACHE_API_BASE: &str = "http://127.0.0.1:8081/api";
 
 #[derive(Debug, Clone)]
 pub struct Config {
     pub clone_api_base: String,
+    pub cache_api_base: String,
     pub sandbox_api_base: String,
     pub oidc_token_url: Option<String>,
     pub username: Option<String>,
@@ -23,9 +24,12 @@ impl Config {
             .unwrap_or_else(|_| DEFAULT_API_BASE.to_string());
         let clone_api_base = std::env::var("AUGENMASS_CLONE_API_BASE")
             .unwrap_or_else(|_| DEFAULT_CLONE_API_BASE.to_string());
+        let cache_api_base = std::env::var("AUGENMASS_CACHE_API_BASE")
+            .unwrap_or_else(|_| DEFAULT_CACHE_API_BASE.to_string());
 
         Self {
             clone_api_base: trim_base(&clone_api_base),
+            cache_api_base: trim_base(&cache_api_base),
             sandbox_api_base: trim_base(&sandbox_api_base),
             oidc_token_url: std::env::var("AUGENMASS_OIDC_TOKEN_URL").ok(),
             username: std::env::var("AUGENMASS_USERNAME").ok(),

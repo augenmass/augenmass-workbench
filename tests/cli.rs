@@ -205,6 +205,48 @@ fn check_json_output_is_valid_json() {
     assert_eq!(value["overAsk"], serde_json::Value::Bool(true));
 }
 
+// --- cached sandbox target -------------------------------------------------
+
+#[test]
+fn cache_serve_help_exposes_loopback_proxy_options() {
+    bin()
+        .args(["cache", "serve", "--help"])
+        .assert()
+        .success()
+        .stdout(contains("--upstream"))
+        .stdout(contains("--ttl-secs"));
+}
+
+#[test]
+fn register_cached_sandbox_dry_run_does_not_need_oidc() {
+    bin()
+        .args([
+            "register",
+            "examples/min.json",
+            "--target",
+            "cached-sandbox",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("DRY RUN"))
+        .stdout(contains("cached-sandbox"));
+}
+
+#[test]
+fn register_cached_sandbox_confirmed_write_is_refused() {
+    bin()
+        .args([
+            "register",
+            "examples/min.json",
+            "--target",
+            "cached-sandbox",
+            "--yes",
+        ])
+        .assert()
+        .failure()
+        .stderr(contains("cached-sandbox is read-only"));
+}
+
 // --- audit (over-ask lint) -------------------------------------------------
 
 #[test]

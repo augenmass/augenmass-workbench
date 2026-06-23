@@ -1,7 +1,8 @@
 //! The `augenmass` command tree. Groups: inspect/decode (understand any
 //! artifact), check/audit/baselines (over-ask proportionality), verify/x509-hash
 //! (cryptographic checks), generate (produce artifacts), doctor (diagnose JAR
-//! gotchas), register/list/clone (guard-railed registrar writes).
+//! gotchas), register/list/clone/cache (guard-railed registrar writes and
+//! sandbox mirrors).
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -9,11 +10,13 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
+use crate::cache_server::{DEFAULT_CACHE_PORT, DEFAULT_CACHE_TTL_SECS};
 use crate::commands::decode::Decoded;
 use crate::commands::{
-    audit, baselines, check, clone, decode, doctor, evidence, generate, inspect, register,
+    audit, baselines, cache, check, clone, decode, doctor, evidence, generate, inspect, register,
     validate, verify, x509hash,
 };
+use crate::config::DEFAULT_API_BASE;
 use crate::generator::GenerateOptions;
 use crate::http_target::Target;
 use crate::mdoc;
@@ -31,7 +34,8 @@ Wallet ecosystem. It decodes and inspects every common artifact (SD-JWT VC, \
 registration certificate, authorization request/JAR, credential offer, status \
 list), audits requests for over-asking against curated purpose baselines and the \
 legal basis, verifies presentations cryptographically, and writes registrations \
-under guardrails. Everything except the registrar write path runs fully offline."
+under guardrails. Offline commands stay deterministic; live features are explicit \
+targets such as sandbox, cached-sandbox, clone, and serve."
 )]
 struct Cli {
     /// Emit machine-readable JSON instead of a text rendering (read-only commands).
@@ -108,6 +112,11 @@ enum Command {
     Clone {
         #[command(subcommand)]
         command: CloneCmd,
+    },
+    /// Run a server-side read-through cache for public sandbox reads.
+    Cache {
+        #[command(subcommand)]
+        command: CacheCmd,
     },
     /// Serve a live wallet-interaction debugger (verifier-in-a-box + trace).
     Serve(ServeArgs),
@@ -326,6 +335,21 @@ enum CloneCmd {
     },
 }
 
+#[derive(Subcommand)]
+enum CacheCmd {
+    /// Serve a loopback cached-sandbox target for public sandbox GET routes.
+    Serve {
+        #[arg(long, default_value = "./augenmass-cache.sqlite")]
+        db: String,
+        #[arg(long, default_value_t = DEFAULT_CACHE_PORT)]
+        port: u16,
+        #[arg(long, default_value_t = DEFAULT_API_BASE.to_string())]
+        upstream: String,
+        #[arg(long, default_value_t = DEFAULT_CACHE_TTL_SECS)]
+        ttl_secs: u64,
+    },
+}
+
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
     let fmt = OutputFormat::from_json_flag(cli.json);
@@ -400,6 +424,14 @@ pub async fn run() -> Result<()> {
         Command::List(cmd) => register::list(cmd.target, &cmd.rp).await?,
         Command::Clone { command } => match command {
             CloneCmd::Serve { db, port } => clone::serve(&db, port).await?,
+        },
+        Command::Cache { command } => match command {
+            CacheCmd::Serve {
+                db,
+                port,
+                upstream,
+                ttl_secs,
+            } => cache::serve(&db, port, &upstream, ttl_secs).await?,
         },
         Command::Serve(args) => serve::run(args).await?,
     }

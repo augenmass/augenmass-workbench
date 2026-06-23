@@ -3,6 +3,7 @@
 
 pub mod audit;
 pub mod baselines;
+pub mod cache;
 pub mod check;
 pub mod clone;
 pub mod decode;

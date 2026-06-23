@@ -16,6 +16,7 @@ pub const DEFAULT_PRIVACY_POLICY: &str = "https://example.com/privacy";
 pub const DEFAULT_PURPOSE: &str = "Age verification";
 
 pub mod artifact;
+pub mod cache_server;
 pub mod checkbody;
 pub mod cli;
 pub mod clone_server;

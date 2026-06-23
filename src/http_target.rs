@@ -1,7 +1,8 @@
-//! The registrar write/read transport for `register` and `list`. Two targets:
-//! `clone` (the local demo store, no auth) and `sandbox` (the real registrar,
-//! Keycloak bearer). Same POST body and read shape for both; only base URL and
-//! auth differ.
+//! The registrar write/read transport for `register` and `list`.
+//!
+//! Targets stay deliberately separate: `clone` is a mutable local demo store,
+//! `sandbox` is the live registrar with Keycloak bearer auth, and
+//! `cached-sandbox` is a read-through mirror for sandbox GET routes.
 
 use anyhow::{Context, Result};
 use reqwest::Client;
@@ -13,6 +14,7 @@ use crate::config::{trim_base, Config};
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub enum Target {
     Clone,
+    CachedSandbox,
     Sandbox,
 }
 
@@ -20,6 +22,7 @@ impl Target {
     pub fn as_str(self) -> &'static str {
         match self {
             Target::Clone => "clone",
+            Target::CachedSandbox => "cached-sandbox",
             Target::Sandbox => "sandbox",
         }
     }
@@ -28,11 +31,17 @@ impl Target {
 const USER_AGENT: &str = concat!("augenmass/", env!("CARGO_PKG_VERSION"));
 
 pub async fn post_registration(target: Target, body: &Value, config: &Config) -> Result<Value> {
+    if matches!(target, Target::CachedSandbox) {
+        anyhow::bail!(
+            "cached-sandbox is read-only; use --target sandbox for real writes or --target clone for offline demo writes"
+        );
+    }
+
     let client = Client::builder().user_agent(USER_AGENT).build()?;
     let base = base_url(target, config);
     let url = format!("{base}/registration-certificates");
     let mut request = client.post(&url).json(body);
-    if matches!(target, Target::Sandbox) {
+    if needs_bearer(target) {
         let token = bearer_token(&client, config).await?;
         request = request.bearer_auth(token);
     }
@@ -56,7 +65,7 @@ pub async fn list_registrations(target: Target, rp_id: &str, config: &Config) ->
     let base = base_url(target, config);
     let url = format!("{base}/registration-certificates?rp={rp_id}");
     let mut request = client.get(&url);
-    if matches!(target, Target::Sandbox) {
+    if needs_bearer(target) {
         let token = bearer_token(&client, config).await?;
         request = request.bearer_auth(token);
     }
@@ -78,8 +87,13 @@ pub async fn list_registrations(target: Target, rp_id: &str, config: &Config) ->
 fn base_url(target: Target, config: &Config) -> String {
     match target {
         Target::Clone => config.clone_api_base.clone(),
+        Target::CachedSandbox => config.cache_api_base.clone(),
         Target::Sandbox => config.sandbox_api_base.clone(),
     }
+}
+
+fn needs_bearer(target: Target) -> bool {
+    matches!(target, Target::Sandbox)
 }
 
 #[derive(Debug, Deserialize)]
