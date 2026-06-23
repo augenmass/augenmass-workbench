@@ -76,7 +76,7 @@ did not previously expose at the command line.
 The shell is split into shared modules plus one file per command group.
 
 ```
-augenmass-workbench-v2/
+augenmass-workbench/
   Cargo.toml                  bin: augenmass, lib: augenmass_workbench
   Cargo.lock
   crates/

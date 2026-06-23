@@ -254,4 +254,4 @@ Example:
 | `register` | dry-run or write succeeds | over-ask without `--force`, or a blocking format error |
 | `list`, `generate`, `clone serve` | success | (no gating) |
 
-All read-only commands accept `--json` for machine-readable output. Verified against `augenmass 0.2.0` at `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench-v2/target/debug/augenmass`.
+All read-only commands accept `--json` for machine-readable output. Verified against `augenmass 0.2.0` at `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench/target/debug/augenmass`.

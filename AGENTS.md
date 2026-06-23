@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for AI agents and human contributors working in the Augenmaß Workbench v2 repository. Read this before you touch anything. The repo root is `augenmass-workbench-v2`; all paths below are relative to it.
+Guidance for AI agents and human contributors working in the Augenmaß Workbench repository. Read this before you touch anything. The repo root is `augenmass-workbench`; all paths below are relative to it.
 
 ## What this repository is
 

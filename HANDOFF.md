@@ -1,11 +1,11 @@
-# HANDOFF: augenmass-workbench-v2
+# HANDOFF: augenmass-workbench
 
 This file is the cross-session memory for the build. Read it first in any new session.
 It records what exists, what is verified, the (expanded) goal, and the prioritized next work.
 
 ## TL;DR of status
 
-- Repo: `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench-v2`, its own git repo on `main`.
+- Repo: `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench`, its own git repo on `main`.
 - A working, fully-tested Rust CLI `augenmass` (v0.2.0) plus a Claude Code skill and full docs.
 - Build green, zero warnings, clippy clean, `cargo fmt --check` clean.
 - Tests: 38 unit + 38 CLI integration + 1 serve integration = 77, all passing, against real committed offline fixtures.
@@ -110,7 +110,7 @@ verification reject, untrusted, revoked, x509_hash mismatch, doctor findings).
 ## How to build / test / verify
 
 ```
-cd augenmass-workbench-v2
+cd augenmass-workbench
 cargo build
 cargo test                 # 15 unit + 30 integration
 just verify                # fmt --check, clippy -D warnings, test, + real-fixture smoke battery
@@ -150,7 +150,7 @@ just bundle                # release build -> plugins/augenmass-workbench/bin/au
   tracing-subscriber. The bundled RC is `include_str!`'d from
   `fixtures/regcert/rc-by-id.json` (NOT `../fixtures/live/...` like the old service).
 - Workflow `args` quirk: in the harvest Workflow run, `args.externalDir` arrived as
-  `undefined` inside the script, so agents cloned into `augenmass-workbench-v2/undefined/`
+  `undefined` inside the script, so agents cloned into `augenmass-workbench/undefined/`
   instead of `../external/`. The 6 new repos were relocated to `../external/` by hand;
   the leftover `undefined/` (2 duplicate shallow clones) is gitignored and can be rm'd
   by the user. If you pass `args` to a Workflow, verify it actually reaches the script
