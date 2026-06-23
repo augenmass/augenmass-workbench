@@ -106,7 +106,7 @@ Never paste raw tokens, certificates, claim values, or keys back to anyone. Deco
 | Write a registration (dry-run by default) | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass register <body> --target {clone\|cached-sandbox\|sandbox} [--yes --force]` |
 | Read registrations back for one relying party | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass list --target {clone\|cached-sandbox\|sandbox} [--rp <id>]` |
 | Run the local registrar-compatible clone store | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass clone serve [--db --port]` |
-| Run the read-through cached-sandbox mirror | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass cache serve [--db --port --upstream --ttl-secs]` |
+| Run the read-through cached-sandbox mirror | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass cache serve [--db --host --port --upstream --ttl-secs --timeout-secs --admin-token]` |
 
 Artifact inputs accept file paths, inline values, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Read-only commands accept `--json` where they render machine output.
 

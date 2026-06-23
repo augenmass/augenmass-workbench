@@ -188,7 +188,7 @@ WRITE AND TARGETS (guard-railed)
 - `register <body> --target {clone | cached-sandbox | sandbox} [--yes --force]`: gate a registration body under guardrails. Confirmed writes are allowed only for `clone` and `sandbox`; `cached-sandbox` is read-only and useful for dry-run output symmetry.
 - `list --target {clone | cached-sandbox | sandbox} [--rp <id>]`: read registrations back for one relying party, decoded.
 - `clone serve [--db --port]`: run the registrar-compatible local clone store.
-- `cache serve [--db --port --upstream --ttl-secs]`: run a read-through cached-sandbox mirror for public sandbox GET routes.
+- `cache serve [--db --host --port --upstream --ttl-secs --timeout-secs --admin-token]`: run a read-through cached-sandbox mirror for public sandbox GET routes.
 
 ## Over-ask and the legal basis
 
@@ -226,7 +226,7 @@ Evidence replay turns that local capture into an audit artifact. Run `augenmass 
 
 Writes are dry-run by default. `register` makes no network call until you pass `--yes`; if the body over-asks, it refuses (exit 1) unless you also pass `--force`. Blocking format errors are never written past.
 
-There are three target modes. `clone` (the default) is a local registrar-compatible store (axum plus SQLite) with no signing, no auth, and no x5c: it holds payload-only JWTs and exists so you can rehearse the read and write paths entirely offline. `cached-sandbox` is a read-only, server-side mirror for public sandbox reads, with provenance headers and stale fallback for demos. `sandbox` is the real registrar behind Keycloak; it is rehearsal-only and off-stage. Configure them through environment variables (see `docs/SANDBOX.md` and `.env.example`).
+There are three target modes. `clone` (the default) is a local registrar-compatible store (axum plus SQLite) with no signing, no auth, and no x5c: it holds payload-only JWTs and exists so you can rehearse the read and write paths entirely offline. `cached-sandbox` is a read-only, server-side mirror for public sandbox reads, with provenance headers and stale fallback for demos. It can run locally or as a small backend on Railway or a VPS; bind it with `cache serve --host 0.0.0.0 --port $PORT --db /data/augenmass-cache.sqlite` and set `AUGENMASS_CACHE_ADMIN_TOKEN` before exposing refresh/status endpoints. `sandbox` is the real registrar behind Keycloak; it is rehearsal-only and off-stage. Configure them through environment variables (see `docs/SANDBOX.md` and `.env.example`).
 
 Secrets hygiene is enforced: the tool never logs, echoes, or commits tokens, certificates, or keys, and `.env*`, `secrets*.md`, `*.sqlite`, and `*signing-key*` are gitignored.
 

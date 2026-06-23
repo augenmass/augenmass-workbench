@@ -80,9 +80,9 @@ Because the sandbox is live and credential-bound, treat it as a dress rehearsal:
 
 The cached-sandbox target is a server-side read-through mirror for public sandbox
 GET routes. It is deliberately separate from the clone. The clone is mutable and
-offline; cached-sandbox is read-only and exists so a demo or audit can keep a
-stable view of the sandbox even when the upstream is slow, drifting, or briefly
-unreachable.
+offline; cached-sandbox is read-only and exists so a demo, audit, or small shared
+backend can keep a stable view of the sandbox even when the upstream is slow,
+drifting, or briefly unreachable.
 
 Run it with:
 
@@ -93,9 +93,12 @@ augenmass cache serve
 Flags (verified):
 
 - `--db <DB>`: SQLite file path. Default `./augenmass-cache.sqlite`.
-- `--port <PORT>`: listen port. Default `8081`.
+- `--host <HOST>`: bind host. Default `127.0.0.1`. Use `0.0.0.0` only behind TLS or a private network.
+- `--port <PORT>`: listen port. `AUGENMASS_CACHE_PORT` wins, then `PORT`, then `8081`.
 - `--upstream <URL>`: sandbox API base. Default `https://sandbox.eudi-wallet.org/api`.
 - `--ttl-secs <SECS>`: freshness window for cached responses. Default `3600`.
+- `--timeout-secs <SECS>`: upstream request timeout. Default `10`.
+- `--admin-token <TOKEN>`: protect status and refresh endpoints.
 
 The default server listens on `http://127.0.0.1:8081/api`. Point the CLI at it
 with `AUGENMASS_CACHE_API_BASE`, or use the default:
@@ -114,11 +117,18 @@ The cache mirrors successful upstream responses for these public GET routes:
 
 It also exposes cache metadata:
 
+- `GET /api/health`: public health check for deploy platforms.
 - `GET /api/cache/status`: list cached entries, upstream URL, fetch time, size,
   and SHA-256.
 - `POST /api/cache/refresh?route=schema-metadata`
 - `POST /api/cache/refresh?route=schema-metadata/vocabularies`
 - `POST /api/cache/refresh?route=registration-certificates&rp=<id>`
+
+If `AUGENMASS_CACHE_ADMIN_TOKEN` or `--admin-token` is set, `cache/status` and
+`cache/refresh` require either `Authorization: Bearer <token>` or
+`x-augenmass-cache-admin: <token>`. The read-through registrar routes and
+`/api/health` stay public because `list --target cached-sandbox` depends on
+them.
 
 Every cached response carries provenance headers:
 
@@ -137,6 +147,39 @@ error instead of fabricating data.
 cache. `register --target cached-sandbox` is useful as a dry-run, but a confirmed
 write with `--yes` is refused before any network call. Use `--target sandbox` for
 real writes and `--target clone` for offline demo writes.
+
+### Prewarm for a presentation
+
+Use a long TTL, warm the three public routes off-stage, then reuse the SQLite DB
+on stage:
+
+```
+BIN=./plugins/augenmass-workbench/bin/augenmass
+RP=2af138a8-59ea-4a84-aea3-666cafdb1369
+CACHE=./presenter-cache.sqlite
+
+$BIN cache serve --db "$CACHE" --port 8081 --ttl-secs 315360000
+```
+
+In another shell:
+
+```
+curl -i -X POST "http://127.0.0.1:8081/api/cache/refresh?route=schema-metadata"
+curl -i -X POST "http://127.0.0.1:8081/api/cache/refresh?route=schema-metadata/vocabularies"
+curl -i -X POST "http://127.0.0.1:8081/api/cache/refresh?route=registration-certificates&rp=$RP"
+curl -s "http://127.0.0.1:8081/api/cache/status"
+AUGENMASS_CACHE_API_BASE=http://127.0.0.1:8081/api "$BIN" list --target cached-sandbox --rp "$RP"
+```
+
+For a shared backend, set an admin token and send it on refresh calls:
+
+```
+AUGENMASS_CACHE_ADMIN_TOKEN=<token> \
+augenmass cache serve --host 0.0.0.0 --port ${PORT:-8081} --db /data/augenmass-cache.sqlite
+
+curl -H "Authorization: Bearer <token>" \
+  -X POST "https://cache.example/api/cache/refresh?route=schema-metadata"
+```
 
 ## Safety rules (targets)
 

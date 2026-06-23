@@ -213,8 +213,11 @@ fn cache_serve_help_exposes_loopback_proxy_options() {
         .args(["cache", "serve", "--help"])
         .assert()
         .success()
+        .stdout(contains("--host"))
         .stdout(contains("--upstream"))
-        .stdout(contains("--ttl-secs"));
+        .stdout(contains("--ttl-secs"))
+        .stdout(contains("--timeout-secs"))
+        .stdout(contains("--admin-token"));
 }
 
 #[test]

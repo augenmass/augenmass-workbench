@@ -1368,7 +1368,7 @@ With a non-default port, point the read/write commands at it via `AUGENMASS_CLON
 
 ## `cache serve`
 
-Run a loopback read-through cached-sandbox target for public sandbox GET routes.
+Run a read-through cached-sandbox target for public sandbox GET routes.
 It mirrors successful upstream responses into SQLite, returns fresh hits from
 disk, and falls back to stale cached data if a forced refresh or expired entry
 cannot reach the upstream. It never caches writes.
@@ -1379,10 +1379,13 @@ Usage: augenmass cache serve [OPTIONS]
 
 Options:
 
-- `--db <DB>`: the SQLite database path. Default `./augenmass-cache.sqlite`.
-- `--port <PORT>`: the listen port. Default `8081`.
-- `--upstream <UPSTREAM>`: the upstream API base. Default `https://sandbox.eudi-wallet.org/api`.
-- `--ttl-secs <TTL_SECS>`: freshness window in seconds. Default `3600`.
+- `--db <DB>`: the SQLite database path. Default `./augenmass-cache.sqlite`; env `AUGENMASS_CACHE_DB`.
+- `--host <HOST>`: bind host. Default `127.0.0.1`; env `AUGENMASS_CACHE_HOST`. Use `0.0.0.0` only when deploying behind TLS or a private network.
+- `--port <PORT>`: listen port. Env `AUGENMASS_CACHE_PORT` wins, then `PORT`, then default `8081`.
+- `--upstream <UPSTREAM>`: the upstream API base. Default `https://sandbox.eudi-wallet.org/api`; env `AUGENMASS_CACHE_UPSTREAM`.
+- `--ttl-secs <TTL_SECS>`: freshness window in seconds. Default `3600`; env `AUGENMASS_CACHE_TTL_SECS`.
+- `--timeout-secs <TIMEOUT_SECS>`: upstream request timeout in seconds. Default `10`; env `AUGENMASS_CACHE_TIMEOUT_SECS`.
+- `--admin-token <ADMIN_TOKEN>`: protect `GET /api/cache/status` and `POST /api/cache/refresh`; env `AUGENMASS_CACHE_ADMIN_TOKEN`.
 - `-h, --help`.
 
 The cache serves these registrar-shaped read routes:
@@ -1391,8 +1394,10 @@ The cache serves these registrar-shaped read routes:
 - `GET /api/schema-metadata/vocabularies`
 - `GET /api/registration-certificates?rp=<id>`
 
-It also exposes `GET /api/cache/status` and forced refresh via
-`POST /api/cache/refresh?route=<route>[&rp=<id>]`. Responses carry provenance
+It also exposes `GET /api/health`, `GET /api/cache/status`, and forced refresh
+via `POST /api/cache/refresh?route=<route>[&rp=<id>]`. If an admin token is
+configured, status and refresh require `Authorization: Bearer <token>` or
+`x-augenmass-cache-admin: <token>`. Responses carry provenance
 headers: `x-augenmass-cache`, `x-augenmass-cache-key`,
 `x-augenmass-cache-fetched-at`, `x-augenmass-cache-sha256`, and
 `x-augenmass-cache-upstream`.
@@ -1402,6 +1407,13 @@ Example:
 ```
 augenmass cache serve
 AUGENMASS_CACHE_API_BASE=http://127.0.0.1:8081/api augenmass list --target cached-sandbox
+```
+
+Deploy shape for Railway or a small VPS:
+
+```
+AUGENMASS_CACHE_ADMIN_TOKEN=<token> \
+augenmass cache serve --host 0.0.0.0 --port ${PORT:-8081} --db /data/augenmass-cache.sqlite
 ```
 
 ---

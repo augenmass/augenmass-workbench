@@ -87,7 +87,7 @@ Exit codes: commands exit non-zero on the bad outcome so they work in CI. `check
 `register` is the only command that mutates registrar data, and it is guard-railed by design:
 
 - Writes are dry-run by default. `--yes` is required to actually write. `--force` is required to write past an over-ask warning, and `--force` requires `--yes`.
-- Three target modes: `clone` (default) is a local registrar-compatible store (axum plus SQLite) with no signing, no auth, and no x5c; it stores payload-only JWTs. `cached-sandbox` is a read-only loopback mirror for public sandbox GET routes. `sandbox` is the real registrar behind Keycloak OAuth, for off-stage rehearsal only.
+- Three target modes: `clone` (default) is a local registrar-compatible store (axum plus SQLite) with no signing, no auth, and no x5c; it stores payload-only JWTs. `cached-sandbox` is a read-only mirror for public sandbox GET routes, local by default and deployable with an explicit `--host`, persistent `--db`, and optional admin token. `sandbox` is the real registrar behind Keycloak OAuth, for off-stage rehearsal only.
 - One relying party per entity, many certificates. Our relying party is "Hackathon - Reza", id `2af138a8-59ea-4a84-aea3-666cafdb1369`. Write only under it; never mint extra relying parties.
 - The clone is sound because every read path decodes payload-only and there is no client-side crypto on either path. Do not add signing or token handling to the clone.
 

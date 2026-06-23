@@ -10,7 +10,10 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
-use crate::cache_server::{DEFAULT_CACHE_PORT, DEFAULT_CACHE_TTL_SECS};
+use crate::cache_server::{
+    DEFAULT_CACHE_DB, DEFAULT_CACHE_HOST, DEFAULT_CACHE_PORT, DEFAULT_CACHE_TIMEOUT_SECS,
+    DEFAULT_CACHE_TTL_SECS,
+};
 use crate::commands::decode::Decoded;
 use crate::commands::{
     audit, baselines, cache, check, clone, decode, doctor, evidence, generate, inspect, register,
@@ -338,16 +341,29 @@ enum CloneCmd {
 
 #[derive(Subcommand)]
 enum CacheCmd {
-    /// Serve a loopback cached-sandbox target for public sandbox GET routes.
+    /// Serve a cached-sandbox target for public sandbox GET routes.
     Serve {
-        #[arg(long, default_value = "./augenmass-cache.sqlite")]
+        /// SQLite database path (env AUGENMASS_CACHE_DB).
+        #[arg(long, env = "AUGENMASS_CACHE_DB", default_value = DEFAULT_CACHE_DB)]
         db: String,
-        #[arg(long, default_value_t = DEFAULT_CACHE_PORT)]
-        port: u16,
-        #[arg(long, default_value_t = DEFAULT_API_BASE.to_string())]
+        /// Bind host (env AUGENMASS_CACHE_HOST). Use 0.0.0.0 for deploys.
+        #[arg(long, env = "AUGENMASS_CACHE_HOST", default_value = DEFAULT_CACHE_HOST)]
+        host: String,
+        /// Listen port. Env AUGENMASS_CACHE_PORT wins, then PORT, then 8081.
+        #[arg(long, env = "AUGENMASS_CACHE_PORT")]
+        port: Option<u16>,
+        /// Upstream sandbox API base (env AUGENMASS_CACHE_UPSTREAM).
+        #[arg(long, env = "AUGENMASS_CACHE_UPSTREAM", default_value_t = DEFAULT_API_BASE.to_string())]
         upstream: String,
-        #[arg(long, default_value_t = DEFAULT_CACHE_TTL_SECS)]
+        /// Freshness window for cached responses (env AUGENMASS_CACHE_TTL_SECS).
+        #[arg(long, env = "AUGENMASS_CACHE_TTL_SECS", default_value_t = DEFAULT_CACHE_TTL_SECS)]
         ttl_secs: u64,
+        /// Upstream request timeout in seconds (env AUGENMASS_CACHE_TIMEOUT_SECS).
+        #[arg(long, env = "AUGENMASS_CACHE_TIMEOUT_SECS", default_value_t = DEFAULT_CACHE_TIMEOUT_SECS)]
+        timeout_secs: u64,
+        /// Protect /api/cache/status and /api/cache/refresh (env AUGENMASS_CACHE_ADMIN_TOKEN).
+        #[arg(long, env = "AUGENMASS_CACHE_ADMIN_TOKEN")]
+        admin_token: Option<String>,
     },
 }
 
@@ -429,14 +445,37 @@ pub async fn run() -> Result<()> {
         Command::Cache { command } => match command {
             CacheCmd::Serve {
                 db,
+                host,
                 port,
                 upstream,
                 ttl_secs,
-            } => cache::serve(&db, port, &upstream, ttl_secs).await?,
+                timeout_secs,
+                admin_token,
+            } => {
+                cache::serve(cache::ServeArgs {
+                    db,
+                    host,
+                    port: resolve_cache_port(port),
+                    upstream,
+                    ttl_secs,
+                    timeout_secs,
+                    admin_token,
+                })
+                .await?
+            }
         },
         Command::Serve(args) => serve::run(args).await?,
     }
     Ok(())
+}
+
+fn resolve_cache_port(port: Option<u16>) -> u16 {
+    port.or_else(|| {
+        std::env::var("PORT")
+            .ok()
+            .and_then(|port| port.parse::<u16>().ok())
+    })
+    .unwrap_or(DEFAULT_CACHE_PORT)
 }
 
 fn run_evidence(what: EvidenceCmd, fmt: OutputFormat) -> Result<bool> {

@@ -47,12 +47,26 @@ async fn spawn_upstream(state: UpstreamState) -> String {
 }
 
 async fn spawn_cache(upstream: &str, ttl_secs: u64) -> String {
+    spawn_cache_with_admin(upstream, ttl_secs, None).await
+}
+
+async fn spawn_cache_with_admin(
+    upstream: &str,
+    ttl_secs: u64,
+    admin_token: Option<String>,
+) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind cache");
     let addr = listener.local_addr().unwrap();
-    let state =
-        AppState::new(&test_db("augenmass-cache-test"), upstream, ttl_secs).expect("cache state");
+    let state = AppState::new_with_options(
+        &test_db("augenmass-cache-test"),
+        upstream,
+        ttl_secs,
+        10,
+        admin_token,
+    )
+    .expect("cache state");
     let app = router(state);
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
@@ -197,4 +211,75 @@ async fn registration_refresh_requires_rp() {
         .await
         .expect("refresh without rp");
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn health_stays_public_when_admin_token_is_configured() {
+    let upstream_state = UpstreamState {
+        schema_hits: Arc::new(AtomicUsize::new(0)),
+        registration_hits: Arc::new(AtomicUsize::new(0)),
+        fail_registrations: Arc::new(AtomicBool::new(false)),
+    };
+    let upstream = spawn_upstream(upstream_state).await;
+    let cache = spawn_cache_with_admin(&upstream, 3600, Some("secret".to_string())).await;
+    let health: Value = reqwest::Client::new()
+        .get(format!("{cache}/health"))
+        .send()
+        .await
+        .expect("health")
+        .json()
+        .await
+        .expect("health json");
+    assert_eq!(health["status"], "ok");
+    assert_eq!(health["service"], "augenmass cache");
+}
+
+#[tokio::test]
+async fn admin_token_protects_cache_status_and_refresh() {
+    let upstream_state = UpstreamState {
+        schema_hits: Arc::new(AtomicUsize::new(0)),
+        registration_hits: Arc::new(AtomicUsize::new(0)),
+        fail_registrations: Arc::new(AtomicBool::new(false)),
+    };
+    let upstream = spawn_upstream(upstream_state.clone()).await;
+    let cache = spawn_cache_with_admin(&upstream, 3600, Some("secret".to_string())).await;
+    let client = reqwest::Client::new();
+
+    let status_without_token = client
+        .get(format!("{cache}/cache/status"))
+        .send()
+        .await
+        .expect("status without token");
+    assert_eq!(status_without_token.status(), StatusCode::UNAUTHORIZED);
+
+    let refresh_without_token = client
+        .post(format!("{cache}/cache/refresh?route=schema-metadata"))
+        .send()
+        .await
+        .expect("refresh without token");
+    assert_eq!(refresh_without_token.status(), StatusCode::UNAUTHORIZED);
+
+    let refreshed = client
+        .post(format!("{cache}/cache/refresh?route=schema-metadata"))
+        .bearer_auth("secret")
+        .send()
+        .await
+        .expect("refresh with token");
+    assert_eq!(refreshed.status(), StatusCode::OK);
+    assert_eq!(
+        cache_header(refreshed.headers(), "x-augenmass-cache"),
+        "MISS"
+    );
+    assert_eq!(upstream_state.schema_hits.load(Ordering::SeqCst), 1);
+
+    let status: Value = client
+        .get(format!("{cache}/cache/status"))
+        .header("x-augenmass-cache-admin", "secret")
+        .send()
+        .await
+        .expect("status with token")
+        .json()
+        .await
+        .expect("status json");
+    assert_eq!(status["entries"][0]["key"], "schema-metadata");
 }

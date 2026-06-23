@@ -5,7 +5,7 @@
 //! responses with provenance so demos and audits can keep running when the
 //! sandbox drifts or is temporarily unreachable.
 
-use std::net::SocketAddr;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -13,7 +13,7 @@ use anyhow::{Context, Result};
 use axum::body::Body;
 use axum::extract::{Query, State};
 use axum::http::header::CONTENT_TYPE;
-use axum::http::{HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -27,8 +27,24 @@ use sha2::{Digest, Sha256};
 use crate::config::trim_base;
 
 const USER_AGENT: &str = concat!("augenmass-cache/", env!("CARGO_PKG_VERSION"));
+const MAX_CACHE_BODY_BYTES: usize = 5 * 1024 * 1024;
+const MAX_RP_LEN: usize = 256;
+pub const DEFAULT_CACHE_DB: &str = "./augenmass-cache.sqlite";
+pub const DEFAULT_CACHE_HOST: &str = "127.0.0.1";
 pub const DEFAULT_CACHE_PORT: u16 = 8081;
 pub const DEFAULT_CACHE_TTL_SECS: u64 = 3600;
+pub const DEFAULT_CACHE_TIMEOUT_SECS: u64 = 10;
+
+#[derive(Debug, Clone)]
+pub struct ServeConfig {
+    pub db_path: String,
+    pub host: String,
+    pub port: u16,
+    pub upstream: String,
+    pub ttl_secs: u64,
+    pub timeout_secs: u64,
+    pub admin_token: Option<String>,
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -36,6 +52,7 @@ pub struct AppState {
     client: Client,
     upstream: String,
     ttl: Duration,
+    admin_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -103,24 +120,43 @@ impl CacheDisposition {
     }
 }
 
-pub async fn serve(db_path: &str, port: u16, upstream: &str, ttl_secs: u64) -> Result<()> {
-    let conn = Connection::open(db_path).with_context(|| format!("open SQLite db {db_path}"))?;
+pub async fn serve(config: ServeConfig) -> Result<()> {
+    let conn = Connection::open(&config.db_path)
+        .with_context(|| format!("open SQLite db {}", config.db_path))?;
     init_db(&conn)?;
+    let timeout = Duration::from_secs(config.timeout_secs);
     let state = AppState {
         db: Arc::new(Mutex::new(conn)),
-        client: Client::builder().user_agent(USER_AGENT).build()?,
-        upstream: trim_base(upstream),
-        ttl: Duration::from_secs(ttl_secs),
+        client: Client::builder()
+            .user_agent(USER_AGENT)
+            .timeout(timeout)
+            .build()?,
+        upstream: trim_base(&config.upstream),
+        ttl: Duration::from_secs(config.ttl_secs),
+        admin_token: normalize_token(config.admin_token.clone()),
     };
 
     let app = router(state);
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = resolve_bind_addr(&config.host, config.port)?;
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .with_context(|| format!("bind {addr}"))?;
     println!("cached-sandbox target listening on http://{addr}/api");
-    println!("upstream: {}", trim_base(upstream));
-    println!("ttl: {ttl_secs}s");
+    println!("upstream: {}", trim_base(&config.upstream));
+    println!("ttl: {}s", config.ttl_secs);
+    println!("upstream timeout: {}s", config.timeout_secs);
+    println!(
+        "admin endpoints: {}",
+        if config
+            .admin_token
+            .as_deref()
+            .is_some_and(|token| !token.trim().is_empty())
+        {
+            "protected by token"
+        } else {
+            "open on this listener"
+        }
+    );
     axum::serve(listener, app)
         .await
         .context("serve cached sandbox target")
@@ -140,6 +176,8 @@ pub fn router(state: AppState) -> Router {
             "/api/registration-certificates",
             get(registration_certificates),
         )
+        .route("/health", get(health))
+        .route("/api/health", get(health))
         .route("/api/cache/status", get(cache_status))
         .route("/api/cache/refresh", post(cache_refresh))
         .with_state(state)
@@ -147,16 +185,45 @@ pub fn router(state: AppState) -> Router {
 
 impl AppState {
     pub fn new(db_path: &str, upstream: &str, ttl_secs: u64) -> Result<Self> {
+        Self::new_with_options(
+            db_path,
+            upstream,
+            ttl_secs,
+            DEFAULT_CACHE_TIMEOUT_SECS,
+            None,
+        )
+    }
+
+    pub fn new_with_options(
+        db_path: &str,
+        upstream: &str,
+        ttl_secs: u64,
+        timeout_secs: u64,
+        admin_token: Option<String>,
+    ) -> Result<Self> {
         let conn =
             Connection::open(db_path).with_context(|| format!("open SQLite db {db_path}"))?;
         init_db(&conn)?;
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
-            client: Client::builder().user_agent(USER_AGENT).build()?,
+            client: Client::builder()
+                .user_agent(USER_AGENT)
+                .timeout(Duration::from_secs(timeout_secs))
+                .build()?,
             upstream: trim_base(upstream),
             ttl: Duration::from_secs(ttl_secs),
+            admin_token: normalize_token(admin_token),
         })
     }
+}
+
+async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
+    Json(json!({
+        "status": "ok",
+        "service": "augenmass cache",
+        "upstream": state.upstream,
+        "ttlSecs": state.ttl.as_secs(),
+    }))
 }
 
 async fn schema_metadata(State(state): State<AppState>) -> Response {
@@ -196,7 +263,13 @@ async fn registration_certificates(
         .into_response()
 }
 
-async fn cache_status(State(state): State<AppState>) -> Result<Json<serde_json::Value>, Response> {
+async fn cache_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, Response> {
+    if let Some(response) = require_admin(&state, &headers) {
+        return Err(response);
+    }
     let rows = cache_rows(&state).map_err(server_error)?;
     Ok(Json(json!({
         "kind": "augenmass-cache-status",
@@ -208,8 +281,12 @@ async fn cache_status(State(state): State<AppState>) -> Result<Json<serde_json::
 
 async fn cache_refresh(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(query): Query<RefreshQuery>,
 ) -> Response {
+    if let Some(response) = require_admin(&state, &headers) {
+        return response;
+    }
     let endpoint = match parse_route(&query.route) {
         Ok(endpoint) => endpoint,
         Err(error) => return bad_request(error).into_response(),
@@ -278,6 +355,14 @@ async fn fetch_and_store(state: &AppState, request: &CacheRequest) -> Result<Cac
         .await
         .with_context(|| format!("read GET {} response", request.upstream_url))?
         .to_vec();
+    if body.len() > MAX_CACHE_BODY_BYTES {
+        anyhow::bail!(
+            "GET {} returned {} bytes, above the cache body cap of {} bytes",
+            request.upstream_url,
+            body.len(),
+            MAX_CACHE_BODY_BYTES
+        );
+    }
 
     if !status.is_success() {
         anyhow::bail!(
@@ -410,6 +495,7 @@ fn request_for(upstream: &str, endpoint: Endpoint, rp: Option<&str>) -> Result<C
     let key = match endpoint {
         Endpoint::RegistrationCertificates => {
             let rp = rp.context("rp is required for registration-certificates cache refresh")?;
+            validate_rp(rp)?;
             url.query_pairs_mut().append_pair("rp", rp);
             format!("registration-certificates?rp={rp}")
         }
@@ -431,6 +517,22 @@ fn parse_route(route: &str) -> Result<Endpoint> {
             "unsupported cache route {other}; expected schema-metadata, schema-metadata/vocabularies, or registration-certificates"
         ),
     }
+}
+
+fn validate_rp(rp: &str) -> Result<()> {
+    if rp.is_empty() {
+        anyhow::bail!("rp must not be empty");
+    }
+    if rp.len() > MAX_RP_LEN {
+        anyhow::bail!("rp is too long: {} bytes, maximum {MAX_RP_LEN}", rp.len());
+    }
+    if !rp
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
+    {
+        anyhow::bail!("rp contains unsupported characters");
+    }
+    Ok(())
 }
 
 fn is_fresh(cached: &CachedResponse, ttl: Duration) -> bool {
@@ -476,6 +578,52 @@ fn server_error(error: anyhow::Error) -> Response {
     (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
 }
 
+fn require_admin(state: &AppState, headers: &HeaderMap) -> Option<Response> {
+    let expected = state.admin_token.as_deref()?;
+    if token_matches(headers, expected) {
+        None
+    } else {
+        Some(
+            (
+                StatusCode::UNAUTHORIZED,
+                "cache admin token required; send Authorization: Bearer <token>",
+            )
+                .into_response(),
+        )
+    }
+}
+
+fn token_matches(headers: &HeaderMap, expected: &str) -> bool {
+    let bearer = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::trim);
+    if bearer == Some(expected) {
+        return true;
+    }
+
+    headers
+        .get("x-augenmass-cache-admin")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        == Some(expected)
+}
+
+fn normalize_token(token: Option<String>) -> Option<String> {
+    token
+        .map(|token| token.trim().to_string())
+        .filter(|token| !token.is_empty())
+}
+
+fn resolve_bind_addr(host: &str, port: u16) -> Result<SocketAddr> {
+    (host, port)
+        .to_socket_addrs()
+        .with_context(|| format!("resolve bind host {host}:{port}"))?
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("bind host {host}:{port} did not resolve"))
+}
+
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
@@ -513,5 +661,12 @@ mod tests {
             None,
         )
         .is_err());
+    }
+
+    #[test]
+    fn rejects_empty_or_oversized_rp() {
+        assert!(validate_rp("").is_err());
+        assert!(validate_rp(&"a".repeat(MAX_RP_LEN + 1)).is_err());
+        assert!(validate_rp("2af138a8-59ea-4a84-aea3-666cafdb1369").is_ok());
     }
 }
