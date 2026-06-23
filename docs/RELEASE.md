@@ -19,7 +19,9 @@ dependencies.
 
 ## CI gate
 
-`.github/workflows/ci.yml` runs on:
+`.github/workflows/ci.yml` is manual-only through `workflow_dispatch`, so normal
+pushes do not spend private-repo runner minutes. When you explicitly run it, it
+uses:
 
 - `ubuntu-latest`
 - `macos-13`
