@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::Value;
+use std::time::Duration;
 
 use crate::config::{trim_base, Config};
 
@@ -37,7 +38,7 @@ pub async fn post_registration(target: Target, body: &Value, config: &Config) ->
         );
     }
 
-    let client = Client::builder().user_agent(USER_AGENT).build()?;
+    let client = http_client(config)?;
     let base = base_url(target, config);
     let url = format!("{base}/registration-certificates");
     let mut request = client.post(&url).json(body);
@@ -61,10 +62,10 @@ pub async fn post_registration(target: Target, body: &Value, config: &Config) ->
 }
 
 pub async fn list_registrations(target: Target, rp_id: &str, config: &Config) -> Result<Value> {
-    let client = Client::builder().user_agent(USER_AGENT).build()?;
+    let client = http_client(config)?;
     let base = base_url(target, config);
-    let url = format!("{base}/registration-certificates?rp={rp_id}");
-    let mut request = client.get(&url);
+    let url = registration_list_url(&base, rp_id)?;
+    let mut request = client.get(url.clone());
     if needs_bearer(target) {
         let token = bearer_token(&client, config).await?;
         request = request.bearer_auth(token);
@@ -94,6 +95,21 @@ fn base_url(target: Target, config: &Config) -> String {
 
 fn needs_bearer(target: Target) -> bool {
     matches!(target, Target::Sandbox)
+}
+
+fn http_client(config: &Config) -> Result<Client> {
+    Client::builder()
+        .user_agent(USER_AGENT)
+        .timeout(Duration::from_secs(config.http_timeout_secs))
+        .build()
+        .context("build HTTP client")
+}
+
+fn registration_list_url(base: &str, rp_id: &str) -> Result<reqwest::Url> {
+    let mut url = reqwest::Url::parse(&format!("{}/registration-certificates", trim_base(base)))
+        .with_context(|| format!("invalid registrar API base URL {base}"))?;
+    url.query_pairs_mut().append_pair("rp", rp_id);
+    Ok(url)
 }
 
 #[derive(Debug, Deserialize)]
@@ -130,4 +146,19 @@ async fn bearer_token(client: &Client, config: &Config) -> Result<String> {
     let token: TokenResponse =
         serde_json::from_str(&text).context("OIDC token response did not match expected shape")?;
     Ok(token.access_token)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::registration_list_url;
+
+    #[test]
+    fn registration_list_url_percent_encodes_rp() {
+        let url =
+            registration_list_url("http://127.0.0.1:8081/api/", "rp 1&x=y").expect("valid URL");
+        assert_eq!(
+            url.as_str(),
+            "http://127.0.0.1:8081/api/registration-certificates?rp=rp+1%26x%3Dy"
+        );
+    }
 }

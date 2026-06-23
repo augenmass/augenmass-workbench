@@ -59,6 +59,7 @@ Run the local gate first:
 ```sh
 just verify
 just demo-run
+just install-smoke
 just shipping-smoke
 just platform-smoke
 ```
@@ -81,11 +82,12 @@ After the release workflow finishes, install or test the platform archive on a
 machine matching the target. The plugin marketplace bundle remains a separate
 artifact from the CLI release archives.
 
-`just shipping-smoke` and `just platform-smoke` are local. They do not start
-GitHub Actions. `shipping-smoke` covers the plugin bundle, the live
-cached-sandbox path, and the Docker backend. `platform-smoke` checks the host
-target and any locally available cross-targets; by default it skips Linux or
-Windows targets when the required cross C/MSVC toolchain is missing. Set
+`just install-smoke`, `just shipping-smoke`, and `just platform-smoke` are
+local. They do not start GitHub Actions. `install-smoke` proves a fresh source
+install into a temporary local root. `shipping-smoke` covers the plugin bundle,
+the live cached-sandbox path, and the Docker backend. `platform-smoke` checks the
+host target and any locally available cross-targets; by default it skips Linux
+or Windows targets when the required cross C/MSVC toolchain is missing. Set
 `AUGENMASS_STRICT_PLATFORM_SMOKE=1` on a release machine if missing targets
 should fail the gate.
 
@@ -95,11 +97,11 @@ For the strongest local proof without spending GitHub Actions minutes, run:
 just local-release-proof
 ```
 
-That adds explicit Docker builds and runtime checks for `linux/arm64` and
-`linux/amd64` using `AUGENMASS_DOCKER_PLATFORM`. It proves the cache backend
-container on those Linux platforms, but it still does not prove the standalone
-native Linux archive or the Windows archive. Those need native runners or manual
-machines.
+That adds the source-install smoke plus explicit Docker builds and runtime
+checks for `linux/arm64` and `linux/amd64` using `AUGENMASS_DOCKER_PLATFORM`. It
+proves the cache backend container on those Linux platforms, but it still does
+not prove the standalone native Linux archive or the Windows archive. Those need
+native runners or manual machines.
 
 ## Plugin bundle caveat
 

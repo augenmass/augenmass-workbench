@@ -125,6 +125,7 @@ help_has cache warm
 grep -q -- '--api-base' "${OUT}"
 grep -q -- '--admin-token' "${OUT}"
 grep -q -- '--rp' "${OUT}"
+grep -q -- '--timeout-secs' "${OUT}"
 
 help_has serve
 grep -q -- '--unsafe-debug-artifacts' "${OUT}"

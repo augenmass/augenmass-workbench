@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 pub const DEFAULT_API_BASE: &str = "https://sandbox.eudi-wallet.org/api";
 pub const DEFAULT_CLONE_API_BASE: &str = "http://127.0.0.1:8080/api";
 pub const DEFAULT_CACHE_API_BASE: &str = "http://127.0.0.1:8081/api";
+pub const DEFAULT_HTTP_TIMEOUT_SECS: u64 = 10;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -15,6 +16,7 @@ pub struct Config {
     pub username: Option<String>,
     pub password: Option<String>,
     pub oidc_client_secret: Option<String>,
+    pub http_timeout_secs: u64,
 }
 
 impl Config {
@@ -35,6 +37,10 @@ impl Config {
             username: std::env::var("AUGENMASS_USERNAME").ok(),
             password: std::env::var("AUGENMASS_PASSWORD").ok(),
             oidc_client_secret: std::env::var("AUGENMASS_OIDC_CLIENT_SECRET").ok(),
+            http_timeout_secs: parse_positive_u64(
+                std::env::var("AUGENMASS_HTTP_TIMEOUT_SECS").ok(),
+                DEFAULT_HTTP_TIMEOUT_SECS,
+            ),
         }
     }
 
@@ -59,4 +65,24 @@ impl Config {
 
 pub fn trim_base(input: &str) -> String {
     input.trim_end_matches('/').to_string()
+}
+
+fn parse_positive_u64(value: Option<String>, default: u64) -> u64 {
+    value
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_positive_u64, DEFAULT_HTTP_TIMEOUT_SECS};
+
+    #[test]
+    fn timeout_parser_uses_positive_values_only() {
+        assert_eq!(parse_positive_u64(Some("5".to_string()), 10), 5);
+        assert_eq!(parse_positive_u64(Some("0".to_string()), 10), 10);
+        assert_eq!(parse_positive_u64(Some("bad".to_string()), 10), 10);
+        assert_eq!(parse_positive_u64(None, DEFAULT_HTTP_TIMEOUT_SECS), 10);
+    }
 }

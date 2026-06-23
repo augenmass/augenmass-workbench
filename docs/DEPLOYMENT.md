@@ -70,6 +70,8 @@ BASE=https://cache.example/api
 augenmass cache warm --api-base "$BASE" --admin-token "$TOKEN" --rp "$RP"
 curl -fsS -H "Authorization: Bearer $TOKEN" \
   "$BASE/cache/status"
+AUGENMASS_CACHE_API_BASE="$BASE" \
+  augenmass list --target cached-sandbox --rp "$RP"
 ```
 
 Each cached response carries provenance headers:
@@ -145,8 +147,8 @@ just live-cache-smoke
 That starts a local cache server with an admin token, fetches public sandbox
 data, proves `MISS` and `HIT`, reads registrations through
 `list --target cached-sandbox`, runs `cache warm` through the protected refresh
-API, then proves stale fallback with an intentionally broken upstream. It uses no
-sandbox credentials.
+API, validates warmed JSON shape, then proves stale fallback with an
+intentionally broken upstream. It uses no sandbox credentials.
 
 ## Cloudflare
 

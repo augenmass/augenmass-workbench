@@ -283,6 +283,7 @@ async fn cache_warm_cli_refreshes_demo_routes() {
     assert!(stdout.contains("schema-metadata"));
     assert!(stdout.contains("schema-metadata/vocabularies"));
     assert!(stdout.contains("registration-certificates?rp=rp-1"));
+    assert!(stdout.contains("1 item(s)"));
     assert_eq!(upstream_state.schema_hits.load(Ordering::SeqCst), 2);
     assert_eq!(upstream_state.registration_hits.load(Ordering::SeqCst), 1);
 }

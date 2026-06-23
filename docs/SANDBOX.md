@@ -177,6 +177,8 @@ AUGENMASS_CACHE_ADMIN_TOKEN=<token> \
 augenmass cache serve --host 0.0.0.0 --port ${PORT:-8081} --db /data/augenmass-cache.sqlite
 
 augenmass cache warm --api-base https://cache.example/api --admin-token <token> --rp "$RP"
+AUGENMASS_CACHE_API_BASE=https://cache.example/api \
+  augenmass list --target cached-sandbox --rp "$RP"
 ```
 
 ## Safety rules (targets)

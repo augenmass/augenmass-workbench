@@ -1430,6 +1430,7 @@ Options:
 - `--api-base <API_BASE>`: cache API base. Default `http://127.0.0.1:8081/api`; env `AUGENMASS_CACHE_API_BASE`.
 - `--admin-token <ADMIN_TOKEN>`: bearer token for protected refresh endpoints; env `AUGENMASS_CACHE_ADMIN_TOKEN`.
 - `--rp <RP>`: relying party id whose registration list should be warmed. Default `2af138a8-59ea-4a84-aea3-666cafdb1369`.
+- `--timeout-secs <TIMEOUT_SECS>`: HTTP request timeout in seconds. Default `10`; env `AUGENMASS_HTTP_TIMEOUT_SECS`.
 - `-h, --help`.
 
 Example:
@@ -1447,7 +1448,9 @@ augenmass cache warm --api-base https://cache.example/api --admin-token <token> 
 ```
 
 Add `--json` for a machine-readable summary of each refreshed route, including
-cache disposition, body size, and SHA-256.
+cache disposition, body size, item count where known, and SHA-256. Warmed bodies
+must be JSON, and registration warm responses must be arrays whose rows contain
+a `jwt`.
 
 ---
 

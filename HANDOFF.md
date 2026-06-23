@@ -8,15 +8,13 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
 - Repo: `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench`, its own git repo on `main`.
 - A working, fully-tested Rust CLI `augenmass` (v0.2.0) plus a Claude Code skill, cache backend, Docker image, and full docs.
 - Build green, zero warnings, clippy clean, `cargo fmt --check` clean.
-- Tests at last shipping pass: 41 unit + 43 CLI integration + 7 cache integration + 5 demo-proof integration + 1 serve integration, all passing against real committed offline fixtures.
+- Tests at last shipping pass: 45 unit + 43 CLI integration + 7 cache integration + 5 demo-proof integration + 1 serve integration, all passing against real committed offline fixtures.
 - Every command verified by hand against the real fixtures (verification, revocation, x509_hash, over-ask, the guarded clone write/read loop, the live serve flow).
 - HEADLINE capability built: `augenmass serve`, a live wallet-interaction debugger (P2 done), since hardened to be safe-by-default (the P0 security PR) with an `evidence` export/verify/replay group built on top.
-- Commits on `main` (newest first): `1d1206a` evidence bundle caveats doc; `b22c73a` evidence
-  export/verify/replay; `a19cea6` bundle serve hardening; `7555e0f` serve-hardening docs; `bc0eca8`
-  harden live debugger + status fetch (the P0 security PR); `0b47ddf` prior HANDOFF update; `7d0f090`
-  validate dcql (P4); `791b5c1` decode mdoc (P3); `657bf85` serve hardening from the adversarial
-  review (P5, 12/13 fixed); `8930e77` serve (P2); `875a42c` foundation. Working tree clean;
-  `just verify` exits 0.
+- Recent `main` history includes the foundation, serve debugger, serve hardening, mdoc decode,
+  DCQL validation, P0 live-debugger hardening, evidence export/verify/replay, cached-sandbox
+  backend, local release-proof gates, source-install proof, and CLI HTTP timeout hardening.
+  Use `git log --oneline` for authoritative hashes. `just local-release-proof` exits 0.
 - Done this session: P1 (harvest, 6 repos + `external/HARVEST-NOTES.md`), P2 (serve), P5 (review +
   fixes), P3-mdoc (decode mdoc + inspect detection), P4 (validate dcql). Surveyed codex (see below).
 - Done since, as an Opus-plans / Codex-implements split across two merged PRs (frozen plan
@@ -28,8 +26,8 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
   redacted projector-safe replay that can decrypt and offline-verify a captured response). Both were
   verified against the running binary and fast-forward merged to `main`.
 - Added since: `cache serve`, `cache warm`, `cached-sandbox` read-through behavior, local
-  `plugin-smoke`, `live-cache-smoke`, `docker-smoke`, explicit Linux Docker platform smokes,
-  `shipping-smoke`, `platform-smoke`, and `local-release-proof` gates.
+  `plugin-smoke`, `install-smoke`, `live-cache-smoke`, `docker-smoke`, explicit Linux Docker
+  platform smokes, `shipping-smoke`, `platform-smoke`, and `local-release-proof` gates.
 - NOT finished: the rest of P3 (mdoc cryptographic VERIFY, trust-list parse, PE->DCQL, OpenID4VCI
   metadata, full JAR signature verify) and fully proven native Windows/Linux release archives. See "Next work".
 - The previously deferred review finding (LOW: serve reused one response-encryption key across
@@ -38,7 +36,7 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
 
 ## The real goal (corrected and expanded by the user)
 
-This is a LONG-RUNNING effort (hours, not minutes), not a one-shot. The user was emphatic:
+This is a LONG-RUNNING effort (large, not small), not a one-shot. The user was emphatic:
 it is no longer "just about over-ask". The goal is a genuinely comprehensive, complex,
 production-grade Rust toolkit ("swiss army knife") for **debugging, interacting with, fixing,
 and developing for and with the EUDI Wallet ecosystem** (the digital-identity infrastructure
@@ -117,6 +115,7 @@ cd augenmass-workbench
 cargo build
 cargo test --workspace     # full workspace suite, including the reusable core crate
 just verify                # fmt --check, clippy -D warnings, test, + real-fixture smoke battery
+just install-smoke         # source install into an isolated local root
 just shipping-smoke        # plugin bundle + live cached-sandbox + Docker cache backend
 just platform-smoke        # host/cross-target cargo checks; skips missing cross toolchains unless strict
 just local-release-proof   # strongest local gate; includes linux/arm64 and linux/amd64 Docker smokes

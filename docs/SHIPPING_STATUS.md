@@ -35,7 +35,7 @@ just verify
 That covers formatting, clippy, all Rust tests, and the deterministic demo proof
 commands. At the time of this status note, the suite includes:
 
-- 41 unit tests.
+- 45 unit tests.
 - 43 CLI integration tests.
 - 7 cache integration tests.
 - 5 demo-proof integration tests.
@@ -59,13 +59,23 @@ That proves:
   `2af138a8-59ea-4a84-aea3-666cafdb1369` returned one cached-sandbox
   registration.
 - `cache warm` prewarmed schema metadata, schema vocabularies, and that RP's
-  registration list through the cache refresh API.
+  registration list through the cache refresh API, with JSON shape checks on
+  warmed bodies.
 - Stale fallback works with a deliberately broken upstream, returning the cached
   registration response with `x-augenmass-cache: STALE`.
 - The Docker cache image builds locally, runs as uid `10001`, can write `/data`,
   exposes `/api/health`, and protects admin status without a token.
 
 No remote GitHub Actions run is required for these gates.
+
+The local source-install gate is:
+
+```sh
+just install-smoke
+```
+
+It installs the CLI into a temporary local Cargo root, runs the installed
+binary, and proves the first-run path without relying on the plugin bundle.
 
 The local platform probe is:
 
@@ -85,9 +95,10 @@ just local-release-proof
 ```
 
 This gate passed locally on 2026-06-23. It combines the deterministic Rust
-gates, plugin smoke, live cached-sandbox smoke, platform smoke, and explicit
-Docker cache-backend builds/runs for `linux/arm64` and `linux/amd64`. It still
-does not replace native Windows or native Linux release-archive testing.
+gates, source-install smoke, plugin smoke, live cached-sandbox smoke, platform
+smoke, and explicit Docker cache-backend builds/runs for `linux/arm64` and
+`linux/amd64`. It still does not replace native Windows or native Linux
+release-archive testing.
 
 ## Presentation-safe surfaces
 
@@ -128,6 +139,7 @@ or a separate adapter. For this release, keep the cache backend as a container.
 Proven:
 
 - macOS Apple Silicon source build and test.
+- macOS Apple Silicon source install into an isolated local Cargo root.
 - macOS Apple Silicon bundled plugin binary.
 - macOS Intel target check from the Apple Silicon development machine when the
   `x86_64-apple-darwin` Rust target is installed.

@@ -30,6 +30,13 @@ cargo build --release
 ./target/release/augenmass --help
 ```
 
+For a local source install into your own bin directory:
+
+```sh
+cargo install --locked --path . --bin augenmass --root "$HOME/.local"
+"$HOME/.local/bin/augenmass" --help
+```
+
 The binary that ships inside the plugin is the same one. Inside the skill, the explicit path is `${CLAUDE_PLUGIN_ROOT}/bin/augenmass`; use a bare `augenmass` only when your session or shell has that plugin binary on PATH.
 
 ## Ask it like this
@@ -189,7 +196,7 @@ WRITE AND TARGETS (guard-railed)
 - `list --target {clone | cached-sandbox | sandbox} [--rp <id>]`: read registrations back for one relying party, decoded.
 - `clone serve [--db --port]`: run the registrar-compatible local clone store.
 - `cache serve [--db --host --port --upstream --ttl-secs --timeout-secs --admin-token]`: run a read-through cached-sandbox mirror for public sandbox GET routes.
-- `cache warm [--api-base --admin-token --rp]`: prewarm schema and registration reads before a demo or outage-sensitive rehearsal.
+- `cache warm [--api-base --admin-token --rp --timeout-secs]`: prewarm schema and registration reads before a demo or outage-sensitive rehearsal.
 
 ## Over-ask and the legal basis
 
@@ -245,6 +252,7 @@ One engine is the spine. `augenmass-core` is a vendored, HTTP-free, pure-Rust cr
 - `docs/ARCHITECTURE.md`: the one-engine spine and how the CLI wraps `augenmass-core`.
 - `docs/SANDBOX.md`: the clone store, the sandbox registrar, and their environment variables.
 - `docs/DEPLOYMENT.md`: deploying the cached-sandbox backend on Railway, Docker, or a VPS, with notes for Cloudflare and Vercel.
+- `docs/INSTALL.md`: source install, plugin install, and platform caveats.
 - `docs/RELEASE.md`: CI, release archives, and platform support.
 - `docs/DEMO_PROOF.md`: offline demo gates plus local plugin, live-cache, and Docker smoke checks.
 - `docs/SHIPPING_STATUS.md`: the current demo-readiness verdict, proven gates, deployment status, and platform caveats.

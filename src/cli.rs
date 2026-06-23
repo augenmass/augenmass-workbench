@@ -19,7 +19,7 @@ use crate::commands::{
     audit, baselines, cache, check, clone, decode, doctor, evidence, generate, inspect, register,
     validate, verify, x509hash,
 };
-use crate::config::{DEFAULT_API_BASE, DEFAULT_CACHE_API_BASE};
+use crate::config::{DEFAULT_API_BASE, DEFAULT_CACHE_API_BASE, DEFAULT_HTTP_TIMEOUT_SECS};
 use crate::generator::GenerateOptions;
 use crate::http_target::Target;
 use crate::mdoc;
@@ -376,6 +376,9 @@ enum CacheCmd {
         /// Relying party id whose registration list should be warmed.
         #[arg(long, default_value = DEFAULT_RP_ID)]
         rp: String,
+        /// HTTP request timeout in seconds (env AUGENMASS_HTTP_TIMEOUT_SECS).
+        #[arg(long, env = "AUGENMASS_HTTP_TIMEOUT_SECS", default_value_t = DEFAULT_HTTP_TIMEOUT_SECS)]
+        timeout_secs: u64,
     },
 }
 
@@ -479,12 +482,14 @@ pub async fn run() -> Result<()> {
                 api_base,
                 admin_token,
                 rp,
+                timeout_secs,
             } => {
                 cache::warm(
                     cache::WarmArgs {
                         api_base,
                         admin_token,
                         rp,
+                        timeout_secs,
                     },
                     fmt,
                 )

@@ -75,6 +75,10 @@ demo-run:
 plugin-smoke:
     ./scripts/plugin-smoke.sh
 
+# Verify a fresh source install into an isolated local root.
+install-smoke:
+    ./scripts/install-smoke.sh
+
 # Verify the live cached-sandbox path against the public sandbox API.
 live-cache-smoke:
     ./scripts/live-cache-smoke.sh
@@ -99,7 +103,7 @@ platform-smoke:
 shipping-smoke: plugin-smoke live-cache-smoke docker-smoke
 
 # Strongest local release proof; no GitHub Actions, but two Linux Docker builds.
-local-release-proof: verify demo-run plugin-smoke live-cache-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64
+local-release-proof: verify demo-run plugin-smoke install-smoke live-cache-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64
 
 # Bundle the release binary into the plugin (Apple Silicon macOS).
 bundle: release

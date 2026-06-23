@@ -23,6 +23,12 @@ cargo build --release
 # add ./target/release to PATH, or copy ./target/release/augenmass somewhere on it
 ```
 
+You can also install from the repo into a local Cargo root:
+
+```sh
+cargo install --locked --path . --bin augenmass --root "$HOME/.local"
+```
+
 ## Pre-commit hook
 
 Refuse to commit a registration body that over-asks. Save this as `.git/hooks/pre-commit` (or wire it into your hook manager) and make it executable.

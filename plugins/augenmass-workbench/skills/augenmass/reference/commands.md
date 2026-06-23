@@ -218,7 +218,7 @@ These are the explicit live target commands. Writes are dry-run by default.
 | Run the local registrar-compatible store. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" clone serve` | Defaults `--db ./augenmass-clone.sqlite`, `--port 8080` |
 | Run the clone on another port / db file. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" clone serve --port <PORT> --db <FILE>` | |
 | Run the read-through cached-sandbox mirror. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" cache serve` | Defaults `--db ./augenmass-cache.sqlite`, `--host 127.0.0.1`, `--port 8081`, `--upstream https://sandbox.eudi-wallet.org/api`, `--timeout-secs 10` |
-| Prewarm the cached-sandbox mirror. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" cache warm --api-base <BASE> --rp <RP>` | Add `--admin-token <TOKEN>` if the backend protects refresh endpoints |
+| Prewarm the cached-sandbox mirror. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" cache warm --api-base <BASE> --rp <RP> [--timeout-secs 10]` | Add `--admin-token <TOKEN>` if the backend protects refresh endpoints |
 
 `register` defaults: `--target clone`, dry-run unless `--yes`. The guardrails: it refuses with exit 1 on over-ask unless you add `--force`, and it bails on blocking format errors regardless. `--target` accepts `clone`, `cached-sandbox`, or `sandbox`; `cached-sandbox` is read-only and refuses confirmed writes before any network call.
 
