@@ -8,18 +8,30 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
 - Repo: `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench-v2`, its own git repo on `main`.
 - A working, fully-tested Rust CLI `augenmass` (v0.2.0) plus a Claude Code skill and full docs.
 - Build green, zero warnings, clippy clean, `cargo fmt --check` clean.
-- Tests: 24 unit + 36 CLI integration + 1 serve integration = 61, all passing, against real committed offline fixtures.
+- Tests: 38 unit + 38 CLI integration + 1 serve integration = 77, all passing, against real committed offline fixtures.
 - Every command verified by hand against the real fixtures (verification, revocation, x509_hash, over-ask, the guarded clone write/read loop, the live serve flow).
-- HEADLINE capability built: `augenmass serve`, a live wallet-interaction debugger (P2 done).
-- Commits on `main` (newest first): `7d0f090` validate dcql (P4); `791b5c1` decode mdoc (P3);
-  `657bf85` serve hardening from the adversarial review (P5, 12/13 fixed); `8930e77` serve (P2);
-  `875a42c` foundation. Working tree clean; `just verify` exits 0.
+- HEADLINE capability built: `augenmass serve`, a live wallet-interaction debugger (P2 done), since hardened to be safe-by-default (the P0 security PR) with an `evidence` export/verify/replay group built on top.
+- Commits on `main` (newest first): `1d1206a` evidence bundle caveats doc; `b22c73a` evidence
+  export/verify/replay; `a19cea6` bundle serve hardening; `7555e0f` serve-hardening docs; `bc0eca8`
+  harden live debugger + status fetch (the P0 security PR); `0b47ddf` prior HANDOFF update; `7d0f090`
+  validate dcql (P4); `791b5c1` decode mdoc (P3); `657bf85` serve hardening from the adversarial
+  review (P5, 12/13 fixed); `8930e77` serve (P2); `875a42c` foundation. Working tree clean;
+  `just verify` exits 0.
 - Done this session: P1 (harvest, 6 repos + `external/HARVEST-NOTES.md`), P2 (serve), P5 (review +
   fixes), P3-mdoc (decode mdoc + inspect detection), P4 (validate dcql). Surveyed codex (see below).
+- Done since, as an Opus-plans / Codex-implements split across two merged PRs (frozen plan
+  `plans/parallel-mixing-babbage.md`): (1) the P0 security PR, which made `serve` safe-by-default
+  (redacted-by-default trace, per-session ephemeral response-encryption keys with single-use cleanup,
+  plaintext `direct_post` rejection, SSRF resolver pin + status-body cap + mapped-IPv6/CGNAT deny,
+  opt-in `--unsafe-debug-artifacts` local capture); (2) the `evidence` PR (export/verify/replay of
+  sensitive audit bundles built from those captures: canonical hashing, optional ES256 signing, and a
+  redacted projector-safe replay that can decrypt and offline-verify a captured response). Both were
+  verified against the running binary and fast-forward merged to `main`.
 - NOT finished: the rest of P3 (mdoc cryptographic VERIFY, trust-list parse, PE->DCQL, OpenID4VCI
   metadata, full JAR signature verify) and P6 (release binaries). See "Next work".
-- One deferred review finding (LOW): serve reuses one response-enc key across requests (HAIP wants
-  per-request). Codex already did per-request keys; borrow that. See P2 follow-ups + codex section.
+- The previously deferred review finding (LOW: serve reused one response-encryption key across
+  requests) is now CLOSED by the P0 PR: per-session ephemeral keys, single-use, with cleanup on the
+  success, plaintext-reject, and malformed-parse paths.
 
 ## The real goal (corrected and expanded by the user)
 
@@ -53,6 +65,7 @@ Every artifact arg accepts a file path, an inline value, or `-` for stdin. Comma
 - PRODUCE: `generate {regbody|dcql}`
 - DIAGNOSE: `doctor <request>` (JAR x5c/client_id gotchas), `validate dcql <input>` (DCQL semantic validation: unique ids, credential_sets refs, per-format claim paths; CI-gateable, src/commands/validate.rs)
 - DEBUG (live): `serve` (verifier-in-a-box; a real wallet presents and the whole OpenID4VP exchange is traced)
+- EVIDENCE (offline audit): `evidence {export|verify|replay}` (turn a `serve --unsafe-debug-artifacts` capture into a sensitive, hash-verified, optionally ES256-signed bundle, then render a redacted projector-safe replay timeline)
 - WRITE (guard-railed): `register <body> --target {clone|sandbox} [--yes --force]`, `list`, `clone serve`
 
 The `serve` command (src/serve/{mod,state,handlers,view,trace}.rs) is the headline
@@ -64,12 +77,15 @@ direct_post.jwt -> decrypt -> verify -> trust -> status -> over-ask), GET
 /api/sessions, GET /health. The NEW part vs the old service is src/serve/trace.rs:
 a per-session, timestamped TraceStore (event codes SESSION_CREATED, REQUEST_BUILT,
 REQUEST_OBJECT_FETCHED, RESPONSE_RECEIVED, RESPONSE_DECRYPTED, VERIFIED/REJECTED,
-STATUS_CHECKED, OVER_ASK_ANALYZED, NOTE, ERROR), each carrying the raw artifact,
-mirrored live to the console (ANSI on a TTY), the browser, and JSON. Flags: --port
+STATUS_CHECKED, OVER_ASK_ANALYZED, ARTIFACT_SAVED, NOTE, ERROR). As of the P0 PR the trace is
+redacted by default: it records shapes, lengths, SHA-256 digests, field names, and outcomes, never
+raw bodies or claim values, and the unauthenticated `/api/trace/:id` serves only that redacted view.
+Full-fidelity local capture is opt-in via `--unsafe-debug-artifacts <dir>` and is never served over
+HTTP. The trace is mirrored live to the console (ANSI on a TTY), the browser, and JSON. Flags: --port
 --host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet.
 Zero-config uses a throwaway dev cert (client_id is then NOT the registered one);
 --key + --leaf use the real registrar leaf. A live wallet response cannot be
-replayed from a fixture (fresh ephemeral enc key + nonce per run), which is why the
+replayed from a fixture (fresh ephemeral enc key + nonce per session), which is why the
 verify path is unit-tested via verify_vp_token against the oracle fixtures and the
 request/trace path is integration-tested on an ephemeral port (tests/serve.rs).
 
@@ -153,13 +169,13 @@ P2. DONE. `augenmass serve` wallet-interaction debugger shipped (see "What is bu
     event on revoke so the timeline ends red, loud multi-credential warning, bind/
     public_url mismatch warning + always-shown bind address, public_url trailing-slash
     normalisation, seq ordering under the trace lock, camelCase trace JSON + eventCount,
-    --quiet env, loopback note, landing reload note). ONE finding deferred (LOW): serve
-    reuses one response-encryption key across requests; HAIP prefers a fresh ephemeral
-    key per Authorization Request. To fix: move generate_encryption_key + build_client_metadata
-    into create_request, inject per-session client_metadata via .with_request_parameter,
-    and store the per-session private JWK (e.g. Mutex<HashMap<Uuid, JWK>> on AppState) to
-    decrypt in verify_any. Other follow-ups: inline over-ask verdict on the trace page;
-    a "replay last response" capture-to-file for offline re-verification.
+    --quiet env, loopback note, landing reload note). The one deferred LOW finding (single reused
+    response-encryption key) is now FIXED by the P0 security PR: per-session ephemeral keys minted in
+    create_request, stored in a Mutex<HashMap<Uuid, JWK>> on AppState, single-use with cleanup on the
+    success, plaintext-reject, and malformed-parse paths. The trace is also redacted by default now,
+    with an opt-in --unsafe-debug-artifacts capture, and the "replay last response" follow-up is done
+    via the evidence export/verify/replay group. Remaining serve follow-up: inline over-ask verdict on
+    the trace page.
 P3. IN PROGRESS. mdoc / mso_mdoc (ISO 18013-5) DECODING done: `decode mdoc` +
     inspect detection, src/mdoc.rs via `ciborium` (already transitive; no new deps),
     fixtures from isomdl (the real Jane Doe mDL issuer-signed + a synthetic
@@ -196,8 +212,10 @@ What codex now is (its old "no production crypto verification" boundary is GONE)
 - It ALSO built a `serve` verifier-in-a-box with a per-session trace, and converged on the exact
   same routes we did (/, /request/:id, /response/:id, /inspect/:id, /trace/:id, /api/trace/:id,
   /api/sessions, /health). Independent convergence; both ported verifier/verifier-service.
-- Codex's serve is AHEAD of ours on two points: per-session response-encryption keys (this is
-  exactly our deferred LOW finding #8) and a REDACTED /api/trace (we show raw PII by design).
+- Codex's serve WAS ahead of ours on two points (per-session response-encryption keys, which was
+  exactly our deferred LOW finding #8, and a redacted /api/trace). The P0 PR closed both: ours is now
+  redacted-by-default with per-session ephemeral keys, plus an opt-in --unsafe-debug-artifacts capture
+  for full-fidelity local debugging.
 - Codex went BROADER: SARIF output for check/lint, a machine-readable command catalog + 27 JSON
   schemas, `fix-plan` (JSON-Patch advice), `evidence capture`/`verify-manifest` + `wallet trace
   capture`/`replay` (SHA-256 manifests, tamper checks, offline replay), deep wallet/ERICA surface
@@ -211,10 +229,12 @@ OUR differentiators codex LACKS (keep these): self-contained build (vendored cor
 adversarial-review-hardened serve.
 
 Ideas worth borrowing from codex (the user said mine it, do not duplicate or depend on it):
-1. Per-request ephemeral enc keys + trace redaction in serve (closes our deferred #8).
-2. Evidence capture/replay (hash a captured wallet exchange to a manifest, replay/verify offline).
-   This is the "replay last response" follow-up we noted, and codex already built it.
-3. SARIF output for check/audit so findings drop into CI security dashboards.
+1. DONE (P0). Per-session ephemeral enc keys + redacted-by-default trace in serve (closed our deferred #8).
+2. DONE. Evidence export/verify/replay: turn a --unsafe-debug-artifacts capture into a sensitive,
+   hash-verified, optionally ES256-signed bundle and replay a redacted timeline offline. This was the
+   "replay last response" follow-up; ours is an independent implementation (no dependency on codex's
+   evidence module).
+3. STILL OPEN: SARIF output for check/audit so findings drop into CI security dashboards.
 Two independent tools; ours is the self-contained, mdoc-aware, write-capable, review-hardened one.
 
 ## House style (enforced by the user; violations are defects)
