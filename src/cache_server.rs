@@ -256,7 +256,7 @@ async fn registration_certificates(
         Some(query.rp.as_str()),
     ) {
         Ok(request) => request,
-        Err(error) => return server_error(error).into_response(),
+        Err(error) => return bad_request(error).into_response(),
     };
     cached_or_fetch(&state, request, false)
         .await

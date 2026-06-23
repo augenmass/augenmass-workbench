@@ -133,6 +133,27 @@ For a VPS, put the container behind TLS, keep `/data` on persistent storage, and
 set an admin token before exposing the service. Public reads are intentional;
 admin refresh and status are not.
 
+Local container proof:
+
+```sh
+just docker-smoke
+```
+
+That builds the Docker image, runs the cache backend, checks `/api/health`, checks
+that the process runs as the non-root uid `10001`, and verifies that cache status
+requires the admin token.
+
+Live cache proof:
+
+```sh
+just live-cache-smoke
+```
+
+That starts a local cache server, fetches public sandbox data, proves `MISS` and
+`HIT`, reads registrations through `list --target cached-sandbox`, then proves
+stale fallback with an intentionally broken upstream. It uses no sandbox
+credentials.
+
 ## Cloudflare
 
 Cloudflare Workers support Rust through `workers-rs`, and Cloudflare D1 provides

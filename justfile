@@ -70,6 +70,21 @@ demo-run:
     ./plugins/augenmass-workbench/bin/augenmass verify presentation fixtures/presentations/erica-vp-VALID.sdjwt --nonce b4ba2623-76a2-486b-a1f6-f1656025d07b --aud https://self-issued.me/v2 --now 1780435200 --trust-anchor fixtures/certs/erica-trust-anchor.pem
     sh -c './plugins/augenmass-workbench/bin/augenmass verify presentation fixtures/presentations/synthetic-pid-with-status.sdjwt --nonce b4ba2623-76a2-486b-a1f6-f1656025d07b --aud https://self-issued.me/v2 --now 1780435200 --trust-anchor fixtures/certs/synthetic-pid-anchor.pem --status-token fixtures/status/status-list-REVOKED.jwt --status-key fixtures/status/status-list-verify-key.pub.pem; code=$?; test "$code" -eq 1'
 
+# Verify the plugin bundle front door without needing Claude Code itself.
+plugin-smoke:
+    ./scripts/plugin-smoke.sh
+
+# Verify the live cached-sandbox path against the public sandbox API.
+live-cache-smoke:
+    ./scripts/live-cache-smoke.sh
+
+# Build and run the cache backend container locally.
+docker-smoke:
+    ./scripts/docker-smoke.sh
+
+# Local shipping proof that avoids remote GitHub CI runner minutes.
+shipping-smoke: plugin-smoke live-cache-smoke docker-smoke
+
 # Bundle the release binary into the plugin (Apple Silicon macOS).
 bundle: release
     mkdir -p plugins/augenmass-workbench/bin

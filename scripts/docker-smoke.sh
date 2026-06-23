@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+IMAGE="${AUGENMASS_DOCKER_IMAGE:-augenmass-cache-smoke}"
+PORT="${AUGENMASS_DOCKER_SMOKE_PORT:-18984}"
+NAME="${AUGENMASS_DOCKER_SMOKE_NAME:-augenmass-cache-smoke-$$}"
+VOLUME="${AUGENMASS_DOCKER_SMOKE_VOLUME:-${NAME}-data}"
+ADMIN="${AUGENMASS_DOCKER_SMOKE_ADMIN_TOKEN:-local-smoke-token}"
+BASE="http://127.0.0.1:${PORT}/api"
+BODY="$(mktemp "${TMPDIR:-/tmp}/augenmass-docker-smoke.XXXXXX")"
+
+cleanup() {
+  docker rm -f "${NAME}" >/dev/null 2>&1 || true
+  docker volume rm "${VOLUME}" >/dev/null 2>&1 || true
+  rm -f "${BODY}"
+}
+trap cleanup EXIT
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "missing required command: docker" >&2
+  exit 1
+fi
+
+if ! command -v curl >/dev/null 2>&1; then
+  echo "missing required command: curl" >&2
+  exit 1
+fi
+
+docker info >/dev/null
+docker build -t "${IMAGE}" .
+
+docker rm -f "${NAME}" >/dev/null 2>&1 || true
+docker volume rm "${VOLUME}" >/dev/null 2>&1 || true
+docker run --rm -d \
+  --name "${NAME}" \
+  -p "127.0.0.1:${PORT}:${PORT}" \
+  -e "PORT=${PORT}" \
+  -e "AUGENMASS_CACHE_ADMIN_TOKEN=${ADMIN}" \
+  -v "${VOLUME}:/data" \
+  "${IMAGE}" >/dev/null
+
+for _ in $(seq 1 40); do
+  if curl --max-time 2 -fsS "${BASE}/health" >"${BODY}" 2>/dev/null; then
+    break
+  fi
+  sleep 0.25
+done
+
+if ! curl --max-time 2 -fsS "${BASE}/health" >"${BODY}" 2>/dev/null; then
+  echo "container did not become healthy" >&2
+  docker logs "${NAME}" >&2 || true
+  exit 1
+fi
+
+echo "container health: $(cat "${BODY}")"
+
+uid="$(docker exec "${NAME}" id -u)"
+test "${uid}" = "10001"
+echo "container uid: ${uid}"
+
+docker exec "${NAME}" sh -c 'test -w /data && touch /data/write-smoke'
+echo "container data path: writable"
+
+code="$(curl --max-time 5 -s -o "${BODY}" -w '%{http_code}' "${BASE}/cache/status")"
+test "${code}" = "401"
+echo "admin status without token: ${code}"
+
+code="$(curl --max-time 5 -s -o "${BODY}" -w '%{http_code}' -H "Authorization: Bearer ${ADMIN}" "${BASE}/cache/status")"
+test "${code}" = "200"
+echo "admin status with token: ${code}"
+
+echo "docker smoke passed"

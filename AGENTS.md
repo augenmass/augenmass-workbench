@@ -35,7 +35,7 @@ cargo build
 cargo test
 ```
 
-`cargo test` runs unit tests plus integration suites that drive the real binary against the committed fixtures. At this writing, that includes 40 unit tests under `src/` and `crates/`, 43 CLI integration tests, 5 demo-proof integration tests, 3 cache integration tests, and 1 serve integration test. There is a `just verify` convenience target that wraps the build, the test run, and smoke checks; `cargo build` and `cargo test` are the canonical path and always work.
+`cargo test` runs unit tests plus integration suites that drive the real binary against the committed fixtures. At this writing, that includes 41 unit tests under `src/` and `crates/`, 43 CLI integration tests, 5 demo-proof integration tests, 6 cache integration tests, and 1 serve integration test. There is a `just verify` convenience target that wraps the build, the test run, and smoke checks; `cargo build` and `cargo test` are the canonical path and always work.
 
 For presentation and skill wording changes, run the focused proof gate too:
 
@@ -61,6 +61,7 @@ When in doubt about command behavior, do not guess. Run the binary:
 - `src/commands/`: one module per command (`inspect`, `decode`, `check`, `audit`, `baselines`, `verify`, `x509hash`, `generate`, `doctor`, `register`, `clone`, `cache`, plus `mod.rs`). Add or change command behavior here.
 - `src/` supporting modules: `output.rs` (text and `--json` rendering), `config.rs` (env and targets), `jose.rs`, `dcql.rs`, `checkbody.rs`, `render.rs`, `artifact.rs` (the `inspect` sniffer and dispatch), `x509util.rs`, `http_target.rs`, `clone_server.rs` (the local registrar clone), `cache_server.rs` (the read-through cached-sandbox mirror), `generator.rs`.
 - `tests/`: integration tests for the CLI, cache server, and serve debugger.
+- `scripts/`: local smoke gates wrapped by `just`, no Python and no remote CI.
 - `fixtures/`: committed offline test artifacts (see below).
 - `examples/`: sample registration bodies and requests (`min.json`, `over.json`, `bad-path.json`, `bad-request.json`).
 - `docs/`: documentation.

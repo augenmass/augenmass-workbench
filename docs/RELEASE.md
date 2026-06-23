@@ -59,6 +59,7 @@ Run the local gate first:
 ```sh
 just verify
 just demo-run
+just shipping-smoke
 ```
 
 Refresh the plugin bundle on an Apple Silicon Mac before tagging:
@@ -78,6 +79,9 @@ git push origin v0.2.0
 After the release workflow finishes, install or test the platform archive on a
 machine matching the target. The plugin marketplace bundle remains a separate
 artifact from the CLI release archives.
+
+`just shipping-smoke` is local. It does not start GitHub Actions. It covers the
+plugin bundle, the live cached-sandbox path, and the Docker backend.
 
 ## Plugin bundle caveat
 

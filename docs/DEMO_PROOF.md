@@ -35,6 +35,36 @@ just demo-proof
 just verify
 ```
 
+## Local shipping smoke
+
+`just shipping-smoke` is the local proof gate for the parts that `demo-proof`
+does not touch. It avoids remote GitHub Actions runner minutes.
+
+It runs:
+
+- `just plugin-smoke`: checks the Claude Code plugin bundle, the executable
+  bundled binary, the hook, the skill wording for the key command surfaces, and a
+  small fixture-backed command sequence.
+- `just live-cache-smoke`: starts `cache serve`, reaches the public sandbox API,
+  proves admin-token protection, proves `MISS` then `HIT`, reads the configured
+  relying party through `list --target cached-sandbox`, then restarts the cache
+  with a broken upstream and proves stale fallback.
+- `just docker-smoke`: builds the Docker image locally, runs the cache backend
+  container, checks `/api/health`, verifies it runs as uid `10001`, and proves
+  admin-token protection.
+
+Use the smaller gates when you are only touching one surface:
+
+```sh
+just plugin-smoke
+just live-cache-smoke
+just docker-smoke
+```
+
+`live-cache-smoke` intentionally touches `https://sandbox.eudi-wallet.org/api`.
+It does not use sandbox credentials. `docker-smoke` requires a running Docker
+daemon. Neither gate starts remote GitHub CI.
+
 ## Stable rehearsal sequence
 
 `just demo-run` runs the offline presentation sequence from the bundled plugin

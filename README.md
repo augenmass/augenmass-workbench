@@ -245,6 +245,7 @@ One engine is the spine. `augenmass-core` is a vendored, HTTP-free, pure-Rust cr
 - `docs/SANDBOX.md`: the clone store, the sandbox registrar, and their environment variables.
 - `docs/DEPLOYMENT.md`: deploying the cached-sandbox backend on Railway, Docker, or a VPS, with notes for Cloudflare and Vercel.
 - `docs/RELEASE.md`: CI, release archives, and platform support.
+- `docs/DEMO_PROOF.md`: offline demo gates plus local plugin, live-cache, and Docker smoke checks.
 - The skill: `plugins/augenmass-workbench/skills/augenmass`.
 
 ## License

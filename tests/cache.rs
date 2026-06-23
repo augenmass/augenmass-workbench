@@ -214,6 +214,24 @@ async fn registration_refresh_requires_rp() {
 }
 
 #[tokio::test]
+async fn registration_list_rejects_malformed_rp_before_upstream() {
+    let upstream_state = UpstreamState {
+        schema_hits: Arc::new(AtomicUsize::new(0)),
+        registration_hits: Arc::new(AtomicUsize::new(0)),
+        fail_registrations: Arc::new(AtomicBool::new(false)),
+    };
+    let upstream = spawn_upstream(upstream_state.clone()).await;
+    let cache = spawn_cache(&upstream, 3600).await;
+    let response = reqwest::Client::new()
+        .get(format!("{cache}/registration-certificates?rp=bad%20rp"))
+        .send()
+        .await
+        .expect("list with malformed rp");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(upstream_state.registration_hits.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
 async fn health_stays_public_when_admin_token_is_configured() {
     let upstream_state = UpstreamState {
         schema_hits: Arc::new(AtomicUsize::new(0)),
