@@ -144,7 +144,8 @@ These are good to show on stage or in a recording:
 - `serve`: live verifier-in-a-box with redacted traces by default.
 - `serve-smoke`: a local runtime proof for the verifier-in-a-box without a phone
   wallet; it exercises session minting, JAR fetch, trace endpoints, plaintext
-  rejection, and redaction.
+  rejection, and redaction. It honors `AUGENMASS_BIN` for native source or
+  release binaries.
 - `evidence export`, `evidence verify`, and `evidence replay`: signed,
   projector-safe replay of captured local debug artifacts.
 - `cache serve` and `cache warm`: a small backend for stable cached-sandbox reads.
@@ -217,6 +218,10 @@ Not yet fully proven:
 The code is Rust-only, but the shipped plugin binary is currently a macOS
 Apple Silicon artifact. Treat broader platform support as source-build and
 container-capable until native release archives are built and manually tested.
+Runtime smokes can still be reused on those platforms by setting
+`AUGENMASS_BIN` to the native binary, and `demo-run` can use
+`AUGENMASS_DEMO_BIN` for a one-off native demo binary. Plugin-bundle smokes
+remain Apple Silicon until the plugin bundle grows platform-specific binaries.
 
 ## Remaining polish
 

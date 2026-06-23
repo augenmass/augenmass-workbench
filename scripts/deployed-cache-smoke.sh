@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BIN="${AUGENMASS_DEPLOYED_CACHE_BIN:-./plugins/augenmass-workbench/bin/augenmass}"
+resolve_bin() {
+  if [ -n "${AUGENMASS_DEPLOYED_CACHE_BIN:-}" ]; then
+    printf '%s\n' "${AUGENMASS_DEPLOYED_CACHE_BIN}"
+  elif [ -n "${AUGENMASS_BIN:-}" ]; then
+    printf '%s\n' "${AUGENMASS_BIN}"
+  else
+    printf '%s\n' "./plugins/augenmass-workbench/bin/augenmass"
+  fi
+}
+
+BIN="$(resolve_bin)"
 BASE="${1:-${AUGENMASS_DEPLOYED_CACHE_API_BASE:-}}"
 ADMIN="${AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN:-}"
 RP="${AUGENMASS_DEPLOYED_CACHE_RP:-2af138a8-59ea-4a84-aea3-666cafdb1369}"

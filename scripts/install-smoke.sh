@@ -16,6 +16,9 @@ fi
 cargo install --locked --path . --bin augenmass --root "${ROOT}" --force
 
 BIN="${ROOT}/bin/augenmass"
+if [ ! -f "${BIN}" ] && [ -f "${BIN}.exe" ]; then
+  BIN="${BIN}.exe"
+fi
 if [ ! -x "${BIN}" ]; then
   echo "installed binary is missing or not executable: ${BIN}" >&2
   exit 1

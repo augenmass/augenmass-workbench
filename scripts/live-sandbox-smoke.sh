@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BIN="${AUGENMASS_SMOKE_BIN:-./plugins/augenmass-workbench/bin/augenmass}"
+resolve_bin() {
+  if [ -n "${AUGENMASS_SMOKE_BIN:-}" ]; then
+    printf '%s\n' "${AUGENMASS_SMOKE_BIN}"
+  elif [ -n "${AUGENMASS_BIN:-}" ]; then
+    printf '%s\n' "${AUGENMASS_BIN}"
+  else
+    printf '%s\n' "./plugins/augenmass-workbench/bin/augenmass"
+  fi
+}
+
+BIN="$(resolve_bin)"
 RP="${AUGENMASS_SMOKE_RP:-2af138a8-59ea-4a84-aea3-666cafdb1369}"
 WRITE="${AUGENMASS_LIVE_SANDBOX_WRITE:-0}"
 BODY="$(mktemp "${TMPDIR:-/tmp}/augenmass-live-sandbox-smoke.XXXXXX")"

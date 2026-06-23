@@ -202,7 +202,7 @@ Use a long TTL, warm the three public routes off-stage, then reuse the SQLite DB
 on stage:
 
 ```
-BIN=./plugins/augenmass-workbench/bin/augenmass
+BIN=${AUGENMASS_BIN:-./plugins/augenmass-workbench/bin/augenmass}
 RP=2af138a8-59ea-4a84-aea3-666cafdb1369
 CACHE=./presenter-cache.sqlite
 

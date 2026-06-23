@@ -68,9 +68,11 @@ It runs:
   temporary `HOME`, and confirms it is enabled.
 - `just codex-plugin-smoke`: installs the repo-local Codex marketplace and plugin
   into a temporary `CODEX_HOME`, then confirms the plugin is enabled.
-- `just serve-smoke`: starts the bundled `augenmass serve` runtime over
+- `just serve-smoke`: starts the resolved `augenmass serve` runtime over
   loopback HTTP, checks health, session minting, JAR fetch, JSON trace, HTML
-  trace, plaintext `direct_post` rejection, and trace redaction.
+  trace, plaintext `direct_post` rejection, and trace redaction. It defaults to
+  the bundled plugin binary and honors `AUGENMASS_BIN` for native source or
+  release binaries.
 - `just live-cache-smoke`: starts `cache serve`, reaches the public sandbox API,
   proves admin-token protection, proves `MISS` then `HIT`, reads the configured
   relying party through `list --target cached-sandbox`, prewarms with
@@ -110,22 +112,17 @@ a running Docker daemon. None of these gates starts remote GitHub CI.
 
 ## Stable rehearsal sequence
 
-`just demo-run` runs the offline presentation sequence from the bundled plugin
-binary. It uses only committed fixtures and treats the intentional findings as
-successful proof points, so no sandbox credentials or phone wallet are needed.
+`just demo-run` runs the offline presentation sequence from the resolved CLI
+binary: `AUGENMASS_DEMO_BIN`, then `AUGENMASS_BIN`, then the bundled plugin
+binary. Use `just plugin-demo-run` when you specifically want to prove the
+private-preview plugin artifact. The sequence uses only committed fixtures and
+treats the intentional findings as successful proof points, so no sandbox
+credentials or phone wallet are needed.
 
 The sequence is:
 
 ```sh
-./plugins/augenmass-workbench/bin/augenmass --version
-./plugins/augenmass-workbench/bin/augenmass inspect fixtures/requests/eudiplo-request.jwt
-sh -c './plugins/augenmass-workbench/bin/augenmass doctor examples/bad-request.json; code=$?; test "$code" -eq 1'
-./plugins/augenmass-workbench/bin/augenmass decode regcert fixtures/regcert/rc-by-id.json
-sh -c './plugins/augenmass-workbench/bin/augenmass audit --request minimal --purpose age_gate_18 --cert fixtures/regcert/rc-by-id.json; code=$?; test "$code" -eq 1'
-./plugins/augenmass-workbench/bin/augenmass check examples/min.json
-sh -c './plugins/augenmass-workbench/bin/augenmass check examples/over.json; code=$?; test "$code" -eq 1'
-./plugins/augenmass-workbench/bin/augenmass verify presentation fixtures/presentations/erica-vp-VALID.sdjwt --nonce b4ba2623-76a2-486b-a1f6-f1656025d07b --aud https://self-issued.me/v2 --now 1780435200 --trust-anchor fixtures/certs/erica-trust-anchor.pem
-sh -c './plugins/augenmass-workbench/bin/augenmass verify presentation fixtures/presentations/synthetic-pid-with-status.sdjwt --nonce b4ba2623-76a2-486b-a1f6-f1656025d07b --aud https://self-issued.me/v2 --now 1780435200 --trust-anchor fixtures/certs/synthetic-pid-anchor.pem --status-token fixtures/status/status-list-REVOKED.jwt --status-key fixtures/status/status-list-verify-key.pub.pem; code=$?; test "$code" -eq 1'
+./scripts/demo-run.sh
 ```
 
 Good narration anchors:

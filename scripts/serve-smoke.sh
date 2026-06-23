@@ -1,7 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BIN="${AUGENMASS_SERVE_SMOKE_BIN:-./plugins/augenmass-workbench/bin/augenmass}"
+resolve_bin() {
+  if [ -n "${AUGENMASS_SERVE_SMOKE_BIN:-}" ]; then
+    printf '%s\n' "${AUGENMASS_SERVE_SMOKE_BIN}"
+  elif [ -n "${AUGENMASS_BIN:-}" ]; then
+    printf '%s\n' "${AUGENMASS_BIN}"
+  else
+    printf '%s\n' "./plugins/augenmass-workbench/bin/augenmass"
+  fi
+}
+
+BIN="$(resolve_bin)"
 PORT="${AUGENMASS_SERVE_SMOKE_PORT:-18989}"
 BASE="http://127.0.0.1:${PORT}"
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/augenmass-serve-smoke.XXXXXX")"

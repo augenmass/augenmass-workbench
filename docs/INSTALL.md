@@ -73,6 +73,15 @@ export AUGENMASS_BIN="$HOME/.local/bin/augenmass"
 
 The skill should use `AUGENMASS_BIN` when that variable is set.
 
+The runtime smoke gates follow the same convention. `serve-smoke`,
+`live-cache-smoke`, `deployed-cache-smoke`, and `live-sandbox-smoke` prefer
+`AUGENMASS_BIN` when it is set, then fall back to the bundled macOS Apple
+Silicon plugin binary. The plugin-bundle gates intentionally keep using the
+bundled binary because they prove that exact private-preview artifact.
+`demo-run` is portable too: it resolves `AUGENMASS_DEMO_BIN`, then
+`AUGENMASS_BIN`, then the bundled binary. Use `plugin-demo-run` for the exact
+bundled sequence.
+
 ## Source install
 
 Use this on macOS or Linux when you have Rust 1.92 available:
@@ -135,11 +144,18 @@ The live wallet-debugger runtime gate is:
 just serve-smoke
 ```
 
-It starts the bundled `augenmass serve` binary on a loopback port, mints a
+It starts the resolved `augenmass serve` binary on a loopback port, mints a
 session, fetches the signed request object, reads the JSON/HTML trace endpoints,
 posts a synthetic plaintext `direct_post`, and confirms the trace stays redacted
 after the expected HTTP 422 rejection. It does not need a phone wallet or sandbox
 credentials.
+
+On Linux, macOS Intel, or Windows Git Bash, build or install a native CLI first
+and run this gate with `AUGENMASS_BIN`:
+
+```sh
+AUGENMASS_BIN=./target/release/augenmass just serve-smoke
+```
 
 The release-archive gate is:
 

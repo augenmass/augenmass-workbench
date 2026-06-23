@@ -94,8 +94,9 @@ After the release workflow finishes, install or test the platform archive on a
 machine matching the target. The plugin marketplace bundle remains a separate
 artifact from the CLI release archives.
 
-`just install-smoke`, `just claude-plugin-smoke`, `just codex-plugin-smoke`,
-`just serve-smoke`, `just release-archive-smoke`, `just shipping-smoke`,
+`just install-smoke`, `just demo-run`, `just plugin-demo-run`,
+`just claude-plugin-smoke`, `just codex-plugin-smoke`, `just serve-smoke`,
+`just release-archive-smoke`, `just shipping-smoke`,
 `just deployed-cache-smoke`, and `just platform-smoke` are local. They do not
 start GitHub Actions.
 `install-smoke` proves a fresh source install into a temporary local root.
@@ -103,8 +104,10 @@ start GitHub Actions.
 temporary `HOME`.
 `codex-plugin-smoke` proves local Codex marketplace installation in a temporary
 `CODEX_HOME`.
-`serve-smoke` proves the bundled verifier-in-a-box runtime over loopback HTTP:
-session minting, JAR fetch, JSON/HTML trace, plaintext rejection, and redaction.
+`serve-smoke` proves the verifier-in-a-box runtime over loopback HTTP: session
+minting, JAR fetch, JSON/HTML trace, plaintext rejection, and redaction. It
+honors `AUGENMASS_BIN` for native source/release binaries and otherwise uses the
+bundled plugin binary.
 `public-sandbox-snapshot` is a live-data report for presentation prep, not a
 release gate; it fetches public sandbox reads and prints aggregate counts/ETags
 without credentialed writes.
@@ -125,6 +128,13 @@ cross-targets; by default it skips Linux or Windows targets when the required
 cross C/MSVC toolchain is missing. Set
 `AUGENMASS_STRICT_PLATFORM_SMOKE=1` on a release machine if missing targets
 should fail the gate.
+
+Runtime smokes that touch a running server or hosted cache (`serve-smoke`,
+`live-cache-smoke`, `deployed-cache-smoke`, `live-sandbox-smoke`) resolve the CLI
+as: script-specific override, then `AUGENMASS_BIN`, then the bundled plugin
+binary. `demo-run` is also portable: it resolves `AUGENMASS_DEMO_BIN`, then
+`AUGENMASS_BIN`, then the bundled binary. Plugin-bundle gates (`plugin-smoke`,
+`plugin-demo-run`) intentionally stay bound to the committed plugin binary.
 
 For the strongest local proof without spending runner credits, run:
 
