@@ -153,6 +153,49 @@ cache. `register --target cached-sandbox` is useful as a dry-run, but a confirme
 write with `--yes` is refused before any network call. Use `--target sandbox` for
 real writes and `--target clone` for offline demo writes.
 
+### Snapshot public sandbox state
+
+Use this before a presentation or website update to learn what the public
+sandbox currently exposes, without credentials and without printing JWT/CWT
+bodies:
+
+```
+just public-sandbox-snapshot
+```
+
+The snapshot fetches `schema-metadata`, `schema-metadata/vocabularies`, the
+public `registration-certificates` list, and
+`registration-certificates?rp=<id>` for the configured relying party. It prints
+aggregate facts only: bytes, ETags, rate-limit remaining, registration count,
+distinct relying-party count, oldest and newest `createdAt`, configured-RP
+count, the five newest registrations, and the top relying parties by certificate
+count.
+
+Environment:
+
+```
+AUGENMASS_PUBLIC_SANDBOX_API_BASE=https://sandbox.eudi-wallet.org/api
+AUGENMASS_PUBLIC_SANDBOX_RP=2af138a8-59ea-4a84-aea3-666cafdb1369
+AUGENMASS_PUBLIC_SANDBOX_TIMEOUT_SECS=30
+AUGENMASS_PUBLIC_SANDBOX_MAX_BYTES=5242880
+AUGENMASS_PUBLIC_SANDBOX_REQUIRE_RP=1
+AUGENMASS_PUBLIC_SANDBOX_SNAPSHOT_JSON=
+```
+
+By default the snapshot fails if the configured RP has zero public registration
+certificates, because that is a presentation-readiness problem. Set
+`AUGENMASS_PUBLIC_SANDBOX_REQUIRE_RP=0` to make a zero-count RP informational.
+
+To save a redacted aggregate JSON summary for handoff or website work:
+
+```
+AUGENMASS_PUBLIC_SANDBOX_SNAPSHOT_JSON=dist/public-sandbox-snapshot.json \
+  just public-sandbox-snapshot
+```
+
+The saved summary omits registration JWTs and CWTs. It is still live operational
+context, so review it before publishing.
+
 ### Prewarm for a presentation
 
 Use a long TTL, warm the three public routes off-stage, then reuse the SQLite DB

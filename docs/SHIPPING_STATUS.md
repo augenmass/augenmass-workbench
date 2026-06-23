@@ -136,6 +136,9 @@ These are good to show on stage or in a recording:
 - `evidence export`, `evidence verify`, and `evidence replay`: signed,
   projector-safe replay of captured local debug artifacts.
 - `cache serve` and `cache warm`: a small backend for stable cached-sandbox reads.
+- `public-sandbox-snapshot`: a no-credentials live-data report for presentation
+  and website prep. It prints aggregate sandbox counts, ETags, newest entries,
+  and top relying parties without printing JWT/CWT bodies.
 - `register --target cached-sandbox`: dry-run symmetry only; confirmed writes are
   refused because cached-sandbox is read-only.
 - `live-sandbox-smoke`: a credential-gated, non-mutating rehearsal for the real
@@ -214,3 +217,26 @@ container-capable until native release archives are built and manually tested.
 augenmass cache serve --db ./presenter-cache.sqlite --ttl-secs 315360000
 augenmass cache warm --api-base http://127.0.0.1:8081/api --rp 2af138a8-59ea-4a84-aea3-666cafdb1369
 ```
+
+For the latest public sandbox aggregate before a demo or website update:
+
+```sh
+just public-sandbox-snapshot
+```
+
+Last observed snapshot from this checkout:
+
+- Captured at: `2026-06-23T23:09:38Z`
+- Schema metadata: `113804` bytes, ETag
+  `W/"1bc8c-WSRXyNo0svH/T001YeId4arFQcA"`
+- Schema vocabularies: `1001` bytes, ETag
+  `W/"3e9-7cccrHF9AzPEgRK9rDobOq2RzgI"`
+- Registration certificates: `558` entries, `90` distinct relying parties,
+  `3904849` bytes, ETag `W/"3b9551-SHeTwplNjFePA2Q4hUP1jbHPXFU"`
+- Created-at range: `2026-01-16T11:43:41.554Z` to
+  `2026-06-23T16:02:23.831Z`
+- Configured demo RP `2af138a8-59ea-4a84-aea3-666cafdb1369`: `1`
+  certificate, `6412` bytes, ETag `W/"190c-xdqSnhRlnpiTOm1GTAroSgPCrAs"`,
+  newest `2026-06-02T20:03:35.028Z`
+- Highest-volume relying party in the public list:
+  `8b366b67-4ab3-4613-9a70-de0b88ba938a` with `315` certificates.

@@ -69,6 +69,12 @@ AUGENMASS_CACHE_API_BASE=https://cache.example/api \
 Prewarming gives a presentation a stable view even if the upstream sandbox is
 slow or briefly unavailable.
 
+First check the live public sandbox aggregate so you know what you are caching:
+
+```sh
+just public-sandbox-snapshot
+```
+
 ```sh
 RP=2af138a8-59ea-4a84-aea3-666cafdb1369
 TOKEN=<token>

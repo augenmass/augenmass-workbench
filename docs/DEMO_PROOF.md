@@ -76,6 +76,10 @@ It runs:
   relying party through `list --target cached-sandbox`, prewarms with
   `cache warm`, then restarts the cache with a broken upstream and proves stale
   fallback.
+- `just public-sandbox-snapshot`: optional live-data snapshot for presentation
+  prep. It fetches public sandbox reads without credentials and prints aggregate
+  counts, ETags, latest registrations, and top relying parties without printing
+  JWT/CWT bodies.
 - `just deployed-cache-smoke`: optional hosted-backend proof. It skips when no
   deployed cache URL is configured, or checks a Railway/VPS cache URL with
   health, public cached reads, CLI `cached-sandbox`, and protected admin/warm
@@ -92,6 +96,7 @@ just claude-plugin-smoke
 just codex-plugin-smoke
 just serve-smoke
 just live-cache-smoke
+just public-sandbox-snapshot
 just deployed-cache-smoke
 just live-sandbox-smoke
 just docker-smoke

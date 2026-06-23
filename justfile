@@ -96,6 +96,10 @@ release-archive-smoke: release
 live-cache-smoke:
     ./scripts/live-cache-smoke.sh
 
+# Print a no-credentials aggregate snapshot of public sandbox reads.
+public-sandbox-snapshot:
+    ./scripts/public-sandbox-snapshot.sh
+
 # Verify an already deployed cache backend when AUGENMASS_DEPLOYED_CACHE_API_BASE is set.
 deployed-cache-smoke:
     ./scripts/deployed-cache-smoke.sh

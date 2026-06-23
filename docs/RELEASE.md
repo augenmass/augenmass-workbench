@@ -101,6 +101,9 @@ temporary `HOME`.
 `CODEX_HOME`.
 `serve-smoke` proves the bundled verifier-in-a-box runtime over loopback HTTP:
 session minting, JAR fetch, JSON/HTML trace, plaintext rejection, and redaction.
+`public-sandbox-snapshot` is a live-data report for presentation prep, not a
+release gate; it fetches public sandbox reads and prints aggregate counts/ETags
+without credentialed writes.
 `release-archive-smoke` builds the host release archive, extracts it, then runs
 the packaged binary against packaged docs, examples, and fixtures.
 `docker-release-archive-smoke-linux` builds Linux arm64 and amd64 archives
