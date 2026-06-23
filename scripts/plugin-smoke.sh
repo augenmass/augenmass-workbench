@@ -6,6 +6,8 @@ BIN="${PLUGIN_ROOT}/bin/augenmass"
 SKILL="${PLUGIN_ROOT}/skills/augenmass/SKILL.md"
 HOOKS="${PLUGIN_ROOT}/hooks/hooks.json"
 PLUGIN_JSON="${PLUGIN_ROOT}/.claude-plugin/plugin.json"
+CODEX_PLUGIN_JSON="${PLUGIN_ROOT}/.codex-plugin/plugin.json"
+MARKETPLACE_JSON="${AUGENMASS_MARKETPLACE_JSON:-marketplace.json}"
 OUT="$(mktemp "${TMPDIR:-/tmp}/augenmass-plugin-smoke.XXXXXX")"
 EVIDENCE_SOURCE=""
 EVIDENCE_BUNDLE=""
@@ -47,7 +49,7 @@ len_file() {
   wc -c <"$1" | tr -d '[:space:]'
 }
 
-for path in "${BIN}" "${SKILL}" "${HOOKS}" "${PLUGIN_JSON}"; do
+for path in "${BIN}" "${SKILL}" "${HOOKS}" "${PLUGIN_JSON}" "${CODEX_PLUGIN_JSON}" "${MARKETPLACE_JSON}"; do
   if [ ! -e "${path}" ]; then
     echo "missing plugin file: ${path}" >&2
     exit 1
@@ -60,6 +62,11 @@ if [ ! -x "${BIN}" ]; then
 fi
 
 grep -q '"name": "augenmass-workbench"' "${PLUGIN_JSON}"
+grep -q '"name": "augenmass-workbench"' "${CODEX_PLUGIN_JSON}"
+grep -q '"skills": "./skills/"' "${CODEX_PLUGIN_JSON}"
+grep -q '"displayName": "Augenmaß Workbench"' "${CODEX_PLUGIN_JSON}"
+grep -q '"name": "augenmass"' "${MARKETPLACE_JSON}"
+grep -q '"path": "./plugins/augenmass-workbench"' "${MARKETPLACE_JSON}"
 grep -q 'chmod +x' "${HOOKS}"
 grep -q 'AUGENMASS_BIN' "${SKILL}"
 grep -q '\$AUGENMASS inspect' "${SKILL}"
@@ -71,8 +78,13 @@ grep -q 'evidence replay' "${SKILL}"
 
 CARGO_VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
 PLUGIN_VERSION="$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' "${PLUGIN_JSON}" | head -n 1)"
+CODEX_PLUGIN_VERSION="$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' "${CODEX_PLUGIN_JSON}" | head -n 1)"
 if [ "${CARGO_VERSION}" != "${PLUGIN_VERSION}" ]; then
   echo "Cargo.toml version (${CARGO_VERSION}) does not match plugin.json (${PLUGIN_VERSION})" >&2
+  exit 1
+fi
+if [ "${CARGO_VERSION}" != "${CODEX_PLUGIN_VERSION}" ]; then
+  echo "Cargo.toml version (${CARGO_VERSION}) does not match Codex plugin.json (${CODEX_PLUGIN_VERSION})" >&2
   exit 1
 fi
 

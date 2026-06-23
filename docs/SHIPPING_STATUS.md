@@ -1,6 +1,6 @@
 # Shipping status
 
-Last local verification: 2026-06-23.
+Last local verification: 2026-06-24.
 
 This page is the short operator verdict for the Workbench as it stands before the
 EUDI On presentation. It is deliberately practical: what is proven, what can be
@@ -8,8 +8,8 @@ shown, and what still needs caution.
 
 ## Current verdict
 
-The Workbench is demo-ready as a Rust CLI plus Claude Code skill on the current
-Apple Silicon macOS development machine. The core flows are not slideware:
+The Workbench is demo-ready as a Rust CLI plus Claude Code/Codex skill on the
+current Apple Silicon macOS development machine. The core flows are not slideware:
 artifact inspection, over-ask checking, cryptographic verification, evidence
 replay, live verifier debugging, cached-sandbox reads, cache prewarming, and the
 Dockerized cache backend all have local proof gates.
@@ -35,7 +35,7 @@ just verify
 That covers formatting, clippy, all Rust tests, and the deterministic demo proof
 commands. At the time of this status note, the suite includes:
 
-- 45 unit tests.
+- 46 unit tests.
 - 43 CLI integration tests.
 - 8 cache integration tests.
 - 5 demo-proof integration tests.
@@ -49,8 +49,10 @@ just shipping-smoke
 
 That proves:
 
-- The bundled Claude Code plugin binary is present, executable, current, and
-  exposes the advertised command surfaces.
+- The bundled plugin binary is present, executable, current, and exposes the
+  advertised command surfaces through both Claude Code and Codex metadata checks.
+- The repo-local Codex marketplace installs `augenmass-workbench@augenmass` in a
+  temporary `CODEX_HOME` and reports it enabled.
 - The live public sandbox cache path works against
   `https://sandbox.eudi-wallet.org/api`.
 - The schema endpoint fetched `113804` bytes from the public sandbox, then served
@@ -170,7 +172,8 @@ Not yet fully proven:
 
 - Native Windows binary on Windows.
 - Native Linux release archive outside Docker or a native Linux host runner.
-- Claude Code plugin bundle on Windows or Linux.
+- Multi-platform plugin bundle; non-macOS-ARM agent users should set
+  `AUGENMASS_BIN` to a native CLI binary.
 
 The code is Rust-only, but the shipped plugin binary is currently a macOS
 Apple Silicon artifact. Treat broader platform support as source-build and

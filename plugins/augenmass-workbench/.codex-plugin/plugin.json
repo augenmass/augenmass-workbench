@@ -1,0 +1,38 @@
+{
+  "name": "augenmass-workbench",
+  "version": "0.2.0",
+  "description": "A Codex skill and Rust CLI for the EUDI Wallet ecosystem: audit registrations for over-ask, decode and verify wallet artifacts, debug live wallet flows, and produce concrete fixes.",
+  "author": {
+    "name": "Augenmaß"
+  },
+  "homepage": "https://github.com/augenmass/augenmass-workbench",
+  "repository": "https://github.com/augenmass/augenmass-workbench",
+  "license": "Apache-2.0",
+  "keywords": [
+    "eudi",
+    "wallet",
+    "openid4vp",
+    "privacy",
+    "devtools"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Augenmaß Workbench",
+    "shortDescription": "EUDI wallet debugger and over-ask guardrail.",
+    "longDescription": "Ask Codex to inspect EUDI wallet artifacts, audit relying-party registrations for over-asking, debug live verifier flows, and produce concrete fixes. The skill is backed by the bundled Rust CLI when platform-compatible, or by AUGENMASS_BIN on other platforms.",
+    "developerName": "Augenmaß",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Skills",
+      "CLI",
+      "Local"
+    ],
+    "websiteURL": "https://github.com/augenmass/augenmass-workbench",
+    "defaultPrompt": [
+      "Inspect this OpenID4VP request for wallet failures.",
+      "Audit this registration for over-asking.",
+      "Prepare a safe live wallet debug run."
+    ],
+    "brandColor": "#0F766E"
+  }
+}

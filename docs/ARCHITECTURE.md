@@ -117,7 +117,7 @@ augenmass-workbench/
   examples/                   min/over/bad-path/bad-request bodies
   tests/cli.rs                integration tests
   docs/                       this document and friends
-  plugins/augenmass-workbench/ Claude Code plugin: skill + bin
+  plugins/augenmass-workbench/ Claude Code/Codex plugin: skill + bin
   justfile  README.md  AGENTS.md  CHANGELOG.md  LICENSE  .env.example
 ```
 
@@ -206,7 +206,7 @@ augenmass inspect --json fixtures/presentations/erica-vp-VALID.sdjwt 2>/dev/null
 
 returns a stable object beginning with an `artifact` discriminator
 (`"sd-jwt-vc"`, and so on) followed by the decoded fields. This is the surface
-the Claude Code skill and CI scripts consume.
+the agent skill and CI scripts consume.
 
 ## The exit-code contract (CI gates)
 

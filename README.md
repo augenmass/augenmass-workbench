@@ -1,6 +1,6 @@
 # Augenmaß Workbench
 
-A Claude Code skill for the EUDI Wallet ecosystem, with a Rust CLI underneath it.
+An agent skill for the EUDI Wallet ecosystem, with a Rust CLI underneath it.
 
 Install the skill, then ask in plain language. Augenmaß Workbench understands EUDI Wallet work, so you can say "is this registration over-asking?", "generate a proportionate age check", or "why is my wallet rejecting this request?", and it does the work: it reads the artifact, weighs it against the legal basis for data minimisation, and tells you what to fix. The skill drives a single Rust binary (`augenmass`), so every answer is something you can also run yourself, script, or drop into CI.
 
@@ -19,9 +19,17 @@ Install the Claude Code plugin; the skill then auto-triggers on EUDI registratio
 /plugin install augenmass-workbench@augenmass
 ```
 
-This repository is currently a private preview, so the marketplace commands resolve only for accounts with access. Once it is published, they work for everyone.
+For Codex, this repository now includes a local marketplace and Codex plugin
+manifest:
 
-The bundled plugin binary currently supports macOS Apple Silicon only. On other platforms, build from source with `cargo build --release` and use `./target/release/augenmass`, or use the native CLI archives published by the release workflow once a version tag is cut.
+```sh
+codex plugin marketplace add .
+codex plugin add augenmass-workbench@augenmass
+```
+
+The Claude Code marketplace path is currently a private preview, so it resolves only for accounts with repository access. The Codex commands above install from the checked-out local repository. Once the repository is published, the same plugin metadata can back a public marketplace install.
+
+The bundled plugin binary currently supports macOS Apple Silicon only. On other platforms, build from source with `cargo build --release` and set `AUGENMASS_BIN=./target/release/augenmass`, or use the native CLI archives published by the release workflow once a version tag is cut.
 
 The skill is a thin layer over a plain CLI you can also build and run on its own, with or without an agent. This source build always works:
 
@@ -37,7 +45,7 @@ cargo install --locked --path . --bin augenmass --root "$HOME/.local"
 "$HOME/.local/bin/augenmass" --help
 ```
 
-The binary that ships inside the plugin is the same one. Inside the skill, the explicit path is `${CLAUDE_PLUGIN_ROOT}/bin/augenmass`; use a bare `augenmass` only when your session or shell has that plugin binary on PATH.
+The binary that ships inside the plugin is the same one. The skill resolves `AUGENMASS_BIN` first, then the bundled plugin binary on macOS Apple Silicon; use a bare `augenmass` only when your session or shell has a compatible binary on PATH.
 
 ## Ask it like this
 

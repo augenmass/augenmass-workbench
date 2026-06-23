@@ -1,13 +1,15 @@
 # Release and platform support
 
-Augenmaß Workbench ships as one Rust CLI (`augenmass`) and one Claude Code
-plugin bundle that carries the same CLI under `plugins/augenmass-workbench/bin`.
+Augenmaß Workbench ships as one Rust CLI (`augenmass`) and one agent plugin
+bundle with both Claude Code and Codex manifests. The bundle carries the same CLI
+under `plugins/augenmass-workbench/bin`.
 
 ## Current support status
 
 - Source build: supported on platforms with Rust 1.92 or newer.
-- Plugin bundle in this repository: macOS Apple Silicon, because the committed
-  bundled binary is a Mach-O arm64 executable.
+- Plugin bundle in this repository: Claude Code and Codex manifests are present;
+  the committed bundled binary is macOS Apple Silicon only because it is a
+  Mach-O arm64 executable.
 - Release workflow: builds native archives for Linux x86_64, Windows x86_64,
   macOS Intel, and macOS Apple Silicon when a `v*` tag is pushed or the workflow
   is run manually.
@@ -63,6 +65,7 @@ Run the local gate first:
 just verify
 just demo-run
 just install-smoke
+just codex-plugin-smoke
 just release-archive-smoke
 just docker-release-archive-smoke-linux
 just shipping-smoke
@@ -87,9 +90,12 @@ After the release workflow finishes, install or test the platform archive on a
 machine matching the target. The plugin marketplace bundle remains a separate
 artifact from the CLI release archives.
 
-`just install-smoke`, `just release-archive-smoke`, `just shipping-smoke`, and
-`just platform-smoke` are local. They do not start GitHub Actions.
+`just install-smoke`, `just codex-plugin-smoke`, `just release-archive-smoke`,
+`just shipping-smoke`, and `just platform-smoke` are local. They do not start
+GitHub Actions.
 `install-smoke` proves a fresh source install into a temporary local root.
+`codex-plugin-smoke` proves local Codex marketplace installation in a temporary
+`CODEX_HOME`.
 `release-archive-smoke` builds the host release archive, extracts it, then runs
 the packaged binary against packaged docs, examples, and fixtures.
 `docker-release-archive-smoke-linux` builds Linux arm64 and amd64 archives
@@ -127,8 +133,8 @@ The plugin path is:
 plugins/augenmass-workbench/bin/augenmass
 ```
 
-That binary is committed so the private Claude Code plugin preview works without
-a local build on the presenter machine. It is not yet a multi-platform bundle.
-Until plugin packaging learns platform-specific binaries, non-macOS-ARM users
-should install the skill for guidance and build the CLI from source or download a
-release archive.
+That binary is committed so the private plugin preview works without a local
+build on the presenter machine. It is not yet a multi-platform bundle. Until
+plugin packaging learns platform-specific binaries, non-macOS-ARM users should
+install the skill for guidance and set `AUGENMASS_BIN` to a CLI built from source
+or downloaded from a release archive.

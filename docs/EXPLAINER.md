@@ -36,7 +36,7 @@ Augenmaß is one idea (a trained sense of proportion) with two ways to use it.
 
 The board, at augenmass.tech. A public audit of the EUDI sandbox registry. It plots every relying party by how proportionate its requests are, so the over-asks stand out. This is the after-the-fact view: who has already registered a broader scope than their purpose needs.
 
-The Workbench. The same proportionality engine, on your own machine, before you register anything. It is a Claude Code skill (you ask it questions in plain language) backed by a command-line tool (you can also run it directly, or in an automated pipeline). This is the preventive view: catch your own over-ask locally, fix it, and only then register.
+The Workbench. The same proportionality engine, on your own machine, before you register anything. It is an agent skill for Claude Code and Codex (you ask it questions in plain language) backed by a command-line tool (you can also run it directly, or in an automated pipeline). This is the preventive view: catch your own over-ask locally, fix it, and only then register.
 
 Same engine, two surfaces: audit the registry on the board, catch it locally with the Workbench before you register.
 
@@ -55,6 +55,13 @@ If you have Claude Code, install the skill and talk to it:
 ```
 /plugin marketplace add augenmass/augenmass-workbench
 /plugin install augenmass-workbench@augenmass
+```
+
+If you use Codex from a local checkout:
+
+```sh
+codex plugin marketplace add .
+codex plugin add augenmass-workbench@augenmass
 ```
 
 Then ask in your own words. For example: "Here is a registration body. Is it asking for more than it needs? Explain it for a non-technical reader and tell me which rule it breaks." The skill reads the artifact, runs the check, and answers in plain language, citing the legal basis only where it helps.

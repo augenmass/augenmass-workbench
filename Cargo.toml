@@ -4,7 +4,7 @@ version = "0.2.0"
 edition = "2021"
 rust-version = "1.92"
 license = "Apache-2.0"
-description = "Augenmass Workbench: a Claude Code skill and Rust CLI for EUDI Wallet artifacts, over-ask guardrails, verifier debugging, and evidence replay."
+description = "Augenmass Workbench: an agent skill and Rust CLI for EUDI Wallet artifacts, over-ask guardrails, verifier debugging, and evidence replay."
 repository = "https://github.com/augenmass/augenmass-workbench"
 
 [[bin]]

@@ -75,6 +75,10 @@ demo-run:
 plugin-smoke:
     ./scripts/plugin-smoke.sh
 
+# Verify Codex can install the local plugin from this repo marketplace.
+codex-plugin-smoke:
+    ./scripts/codex-plugin-smoke.sh
+
 # Verify a fresh source install into an isolated local root.
 install-smoke:
     ./scripts/install-smoke.sh
@@ -119,10 +123,10 @@ platform-smoke:
     ./scripts/platform-smoke.sh
 
 # Local shipping proof that avoids remote GitHub CI runner credits.
-shipping-smoke: plugin-smoke live-cache-smoke docker-smoke
+shipping-smoke: plugin-smoke codex-plugin-smoke live-cache-smoke docker-smoke
 
 # Strongest local release proof; no GitHub Actions, but multiple Linux Docker builds.
-local-release-proof: verify demo-run plugin-smoke install-smoke release-archive-smoke live-cache-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64 docker-release-archive-smoke-linux
+local-release-proof: verify demo-run plugin-smoke codex-plugin-smoke install-smoke release-archive-smoke live-cache-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64 docker-release-archive-smoke-linux
 
 # Bundle the release binary into the plugin (Apple Silicon macOS).
 bundle: release

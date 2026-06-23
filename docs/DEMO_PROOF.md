@@ -54,9 +54,11 @@ does not touch. It avoids remote GitHub Actions runner minutes.
 
 It runs:
 
-- `just plugin-smoke`: checks the Claude Code plugin bundle, the executable
-  bundled binary, the hook, the skill wording for the key command surfaces, and a
-  small fixture-backed command sequence.
+- `just plugin-smoke`: checks the Claude Code and Codex plugin metadata, the
+  executable bundled binary, the hook, the skill wording for the key command
+  surfaces, and a small fixture-backed command sequence.
+- `just codex-plugin-smoke`: installs the repo-local Codex marketplace and plugin
+  into a temporary `CODEX_HOME`, then confirms the plugin is enabled.
 - `just live-cache-smoke`: starts `cache serve`, reaches the public sandbox API,
   proves admin-token protection, proves `MISS` then `HIT`, reads the configured
   relying party through `list --target cached-sandbox`, prewarms with
@@ -70,6 +72,7 @@ Use the smaller gates when you are only touching one surface:
 
 ```sh
 just plugin-smoke
+just codex-plugin-smoke
 just live-cache-smoke
 just live-sandbox-smoke
 just docker-smoke

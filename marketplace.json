@@ -1,0 +1,20 @@
+{
+  "name": "augenmass",
+  "interface": {
+    "displayName": "Augenmaß"
+  },
+  "plugins": [
+    {
+      "name": "augenmass-workbench",
+      "source": {
+        "source": "local",
+        "path": "./plugins/augenmass-workbench"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

@@ -4,7 +4,7 @@ Guidance for AI agents and human contributors working in the Augenmaß Workbench
 
 ## What this repository is
 
-Augenmaß Workbench is a developer and auditor toolkit for the EUDI (European Digital Identity) Wallet ecosystem, shipped as a single Rust binary named `augenmass` plus a Claude Code skill. It decodes and inspects every common artifact (SD-JWT VC presentations, ISO 18013-5 mdoc credentials, registration certificates, OpenID4VP authorization requests and signed JARs, credential offers, token status lists, DCQL queries, X.509 certificates), audits requests for over-asking against curated purpose baselines and the legal basis, verifies presentations cryptographically, and writes registrations under guardrails. Static artifact commands run fully offline. Network behavior is explicit and lives in the shell: registrar targets, the cache server, and `serve`.
+Augenmaß Workbench is a developer and auditor toolkit for the EUDI (European Digital Identity) Wallet ecosystem, shipped as a single Rust binary named `augenmass` plus Claude Code and Codex skill/plugin metadata. It decodes and inspects every common artifact (SD-JWT VC presentations, ISO 18013-5 mdoc credentials, registration certificates, OpenID4VP authorization requests and signed JARs, credential offers, token status lists, DCQL queries, X.509 certificates), audits requests for over-asking against curated purpose baselines and the legal basis, verifies presentations cryptographically, and writes registrations under guardrails. Static artifact commands run fully offline. Network behavior is explicit and lives in the shell: registrar targets, the cache server, and `serve`.
 
 The product name "Augenmaß" (sense of proportion) is the whole point: the tool helps relying parties ask for exactly the personal data they need, no more.
 
@@ -80,7 +80,7 @@ When in doubt about command behavior, do not guess. Run the binary:
 - `docs/`: documentation.
   - `docs/DEPLOYMENT.md`: cache backend deployment notes for Railway, Docker, VPS, Cloudflare, and Vercel.
   - `docs/RELEASE.md`: CI, release archives, and platform support.
-- `plugins/augenmass-workbench/skills/`: the Claude Code skill plus its bundled binary.
+- `plugins/augenmass-workbench/`: the Claude Code/Codex plugin bundle, skill, and bundled binary.
 - `LICENSE` (Apache-2.0), `README.md`, `CHANGELOG.md`, `.env.example`, `.gitignore`.
 
 ### Command surface (for orientation)
@@ -117,7 +117,7 @@ When you change `register`, `clone_server.rs`, `cache_server.rs`, or `http_targe
 
 ## Documentation and the skill must match the shipped binary
 
-The `--help` output, the README, the docs under `docs/`, and the Claude Code skill under `plugins/augenmass-workbench/skills/` describe the behavior the binary actually has. They are not allowed to drift.
+The `--help` output, the README, the docs under `docs/`, and the agent skill under `plugins/augenmass-workbench/skills/` describe the behavior the binary actually has. They are not allowed to drift.
 
 When you change a command, a flag, an exit code, or an output shape:
 

@@ -2,7 +2,7 @@
 
 Augenmaß Workbench has two entry points:
 
-- The Claude Code skill, for plain-language EUDI help.
+- The Claude Code and Codex skills, for plain-language EUDI help.
 - The `augenmass` Rust CLI, for terminal use, hooks, and CI.
 
 Both surfaces call the same binary.
@@ -16,7 +16,29 @@ Private preview install:
 /plugin install augenmass-workbench@augenmass
 ```
 
-## First run in Claude Code
+## Codex skill
+
+The repository includes a Codex plugin manifest and a local marketplace file. To
+install from a local checkout:
+
+```sh
+codex plugin marketplace add .
+codex plugin add augenmass-workbench@augenmass
+```
+
+After a public release, the marketplace source can be the GitHub repository
+instead of a local checkout:
+
+```sh
+codex plugin marketplace add augenmass/augenmass-workbench --ref main
+codex plugin add augenmass-workbench@augenmass
+```
+
+On macOS Apple Silicon, the plugin can use the bundled binary. On Linux,
+Windows, or macOS Intel, install or build the CLI first and set `AUGENMASS_BIN`
+to the platform-native binary before asking the skill to run commands.
+
+## First run in an agent
 
 After installing the plugin, start with the skill, not the terminal. These
 prompts are safe against the committed offline fixtures:
@@ -42,8 +64,8 @@ Inside the skill, agents should call the bundled binary on macOS Apple Silicon:
 Use bare `augenmass` only when the plugin `bin/` directory, a source install, or
 a release archive has placed it on `PATH`.
 
-On other platforms, build or install the CLI first, then tell the agent where it
-is:
+On other platforms, or when using Codex with a separately installed binary,
+build or install the CLI first, then tell the agent where it is:
 
 ```sh
 export AUGENMASS_BIN="$HOME/.local/bin/augenmass"
@@ -85,6 +107,16 @@ just install-smoke
 It installs the CLI into a temporary local Cargo root, checks that the installed
 binary is executable, then runs `--version`, `--help`, `inspect`, and a generated
 registration body through `check`.
+
+The Codex plugin install gate is:
+
+```sh
+just codex-plugin-smoke
+```
+
+It uses a temporary `CODEX_HOME`, adds this checkout as a local Codex
+marketplace, confirms `augenmass-workbench@augenmass` is available, installs it,
+and confirms it is enabled. It does not modify your real Codex config.
 
 The release-archive gate is:
 
