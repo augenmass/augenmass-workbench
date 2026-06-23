@@ -4,7 +4,8 @@
 //! (which gates a registrar registration body before a write).
 
 use std::fs;
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 use augenmass_core::inspector::{self, OverAskReport};
@@ -14,6 +15,7 @@ use openid4vp::core::dcql_query::DcqlQuery;
 use serde_json::Value;
 
 use crate::commands::decode::extract_regcert_jwt;
+use crate::dcql::parse_dcql;
 use crate::output::{emit, OutputFormat};
 use crate::render::render_audit;
 
@@ -64,11 +66,31 @@ fn build_request(request: &str) -> Result<DcqlQuery> {
     match request {
         "minimal" => Ok(pid::pid_dcql_minimal()),
         "overask" => Ok(pid::pid_dcql_overask_example()),
-        path => {
-            let content = fs::read_to_string(path).map_err(|e| {
-                anyhow!("--request must be 'minimal', 'overask', or a DCQL file path ({path}): {e}")
-            })?;
-            serde_json::from_str(&content).context("parse DCQL JSON")
+        input => {
+            let content = read_request_input(input)?;
+            parse_dcql(&content).with_context(|| {
+                format!("--request must be 'minimal', 'overask', or a DCQL JSON value ({input})")
+            })
         }
     }
+}
+
+fn read_request_input(input: &str) -> Result<String> {
+    if input == "-" {
+        let mut content = String::new();
+        std::io::stdin()
+            .read_to_string(&mut content)
+            .context("read --request from stdin")?;
+        return Ok(content);
+    }
+    let path = Path::new(input);
+    if path.is_file() {
+        return fs::read_to_string(path).with_context(|| format!("read {input}"));
+    }
+    if input.trim_start().starts_with('{') {
+        return Ok(input.to_string());
+    }
+    Err(anyhow!(
+        "--request must be 'minimal', 'overask', a DCQL file path, inline DCQL JSON, or '-'"
+    ))
 }
