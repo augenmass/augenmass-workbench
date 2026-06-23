@@ -10,9 +10,16 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
 - Build green, zero warnings, clippy clean, `cargo fmt --check` clean.
 - Tests: 24 unit + 36 CLI integration + 1 serve integration = 61, all passing, against real committed offline fixtures.
 - Every command verified by hand against the real fixtures (verification, revocation, x509_hash, over-ask, the guarded clone write/read loop, the live serve flow).
-- HEADLINE capability now built: `augenmass serve`, a live wallet-interaction debugger (P2 done). See below.
-- P1 (harvest) done this round: 6 new repos in `../external/` + `external/HARVEST-NOTES.md`.
-- The work is NOT finished: P3, P4, P5, P6 remain. See "Next work" below.
+- HEADLINE capability built: `augenmass serve`, a live wallet-interaction debugger (P2 done).
+- Commits on `main` (newest first): `7d0f090` validate dcql (P4); `791b5c1` decode mdoc (P3);
+  `657bf85` serve hardening from the adversarial review (P5, 12/13 fixed); `8930e77` serve (P2);
+  `875a42c` foundation. Working tree clean; `just verify` exits 0.
+- Done this session: P1 (harvest, 6 repos + `external/HARVEST-NOTES.md`), P2 (serve), P5 (review +
+  fixes), P3-mdoc (decode mdoc + inspect detection), P4 (validate dcql). Surveyed codex (see below).
+- NOT finished: the rest of P3 (mdoc cryptographic VERIFY, trust-list parse, PE->DCQL, OpenID4VCI
+  metadata, full JAR signature verify) and P6 (release binaries). See "Next work".
+- One deferred review finding (LOW): serve reuses one response-enc key across requests (HAIP wants
+  per-request). Codex already did per-request keys; borrow that. See P2 follow-ups + codex section.
 
 ## The real goal (corrected and expanded by the user)
 
@@ -175,19 +182,40 @@ P5. DONE (this session). Adversarial multi-dimension review workflow run against
     over the whole repo (incl. mdoc + validate) when convenient.
 P6. Cross-platform release binaries; consider a C-ABI / WASM build of the engine later.
 
-## Awareness: the parallel Codex build (you may read it now)
+## Awareness: the parallel Codex build (surveyed 2026-06-23)
 
-`../augenmass-workbench-v2-codex` is a SEPARATE deliverable by Codex (the user's other agent).
-It is its own git repo. Codex first built a dependency-free PYTHON CLI (`agm-workbench`) with
-commands lint/check, generate, inspect, doctor, diff, audit, fixtures, schema, commands, version,
-a Codex skill, docs, examples, JSON schemas, and tests. The user has since told Codex to REWRITE
-IN RUST. Codex's honesty boundary: it is inspect/lint/diff/audit/report only and explicitly does
-NOT do production crypto verification or registrar writes (it reports `crypto_verification: not-performed`).
+`../augenmass-workbench-v2-codex` is a SEPARATE deliverable by Codex (the user's other agent),
+its own git repo, STILL ACTIVELY being committed to (last seen: 34 commits, one 8 minutes before
+this survey). Codex finished its Python -> Rust rewrite: it is now Rust-first (27 .rs, ~14,200
+lines, edition 2024), two bins (`augenmass-workbench`, `agm-workbench`).
 
-Our differentiators to keep: real cryptographic verification (SD-JWT VC + KB-JWT, trust,
-revocation), the guarded registrar WRITE path, and (next) the live WALLET-INTERACTION debugger.
-Read codex for good ideas (its `diff`/`audit` corpus framing, its JSON schemas, its skill shape)
-but do not duplicate or depend on it. Two independent tools; ours is the deeper, verifying one.
+What codex now is (its old "no production crypto verification" boundary is GONE):
+- It does REAL crypto, but via `verifier-core` as a PATH dependency to `../verifier/verifier-core`
+  (NOT vendored). Consequence: codex's repo does NOT build standalone; it needs the sibling
+  verifier/ checkout. OURS vendored the engine (crates/augenmass-core) and builds standalone.
+- It ALSO built a `serve` verifier-in-a-box with a per-session trace, and converged on the exact
+  same routes we did (/, /request/:id, /response/:id, /inspect/:id, /trace/:id, /api/trace/:id,
+  /api/sessions, /health). Independent convergence; both ported verifier/verifier-service.
+- Codex's serve is AHEAD of ours on two points: per-session response-encryption keys (this is
+  exactly our deferred LOW finding #8) and a REDACTED /api/trace (we show raw PII by design).
+- Codex went BROADER: SARIF output for check/lint, a machine-readable command catalog + 27 JSON
+  schemas, `fix-plan` (JSON-Patch advice), `evidence capture`/`verify-manifest` + `wallet trace
+  capture`/`replay` (SHA-256 manifests, tamper checks, offline replay), deep wallet/ERICA surface
+  (wallet inspect-uri/flow/preflight/phone-check/fetch-request/direct-post/doctor; erica
+  parse-url-payload/debug-payload/summarize; request profile de-sandbox/haip/dc-api), `ops doctor`,
+  `jws decode/verify`, `trust diagnose-wrprc`.
+
+OUR differentiators codex LACKS (keep these): self-contained build (vendored core); mdoc / ISO
+18013-5 decoding (codex has no CBOR decoder, no ciborium); the guarded registrar WRITE path
+(register/list/clone + local SQLite clone store); `validate dcql` semantic validation; the
+adversarial-review-hardened serve.
+
+Ideas worth borrowing from codex (the user said mine it, do not duplicate or depend on it):
+1. Per-request ephemeral enc keys + trace redaction in serve (closes our deferred #8).
+2. Evidence capture/replay (hash a captured wallet exchange to a manifest, replay/verify offline).
+   This is the "replay last response" follow-up we noted, and codex already built it.
+3. SARIF output for check/audit so findings drop into CI security dashboards.
+Two independent tools; ours is the self-contained, mdoc-aware, write-capable, review-hardened one.
 
 ## House style (enforced by the user; violations are defects)
 
