@@ -8,7 +8,7 @@
     {
       "name": "augenmass-workbench",
       "source": "./plugins/augenmass-workbench",
-      "description": "A swiss-army CLI and Claude Code skill for the EUDI Wallet ecosystem: inspect, decode, audit over-ask, verify, generate, and repair EUDI artifacts."
+      "description": "A Claude Code skill for the EUDI Wallet ecosystem: ask in plain language to audit registrations for over-ask, decode and verify wallet artifacts, debug live wallet flows, and repair them, all backed by a Rust CLI you can also run in a hook or CI."
     }
   ]
 }

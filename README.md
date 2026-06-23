@@ -1,34 +1,69 @@
 # Augenmaß Workbench
 
-A swiss-army CLI and Claude Code skill for the EUDI Wallet ecosystem.
+A Claude Code skill for the EUDI Wallet ecosystem, with a Rust CLI underneath it.
 
-Augenmaß Workbench gives developers and auditors one tool to inspect, decode, audit over-ask, verify, generate, repair, live-debug, and replay EUDI artifacts and flows: SD-JWT VC presentations, ISO 18013-5 mdoc credentials, registration certificates, OpenID4VP requests and JARs, credential offers, status lists, DCQL queries, the wallet-to-verifier presentation exchange itself, and local evidence bundles captured from that exchange. It is built on a single engine (`augenmass-core`, reused as-is from the verifier project). Static artifact commands run fully offline; live surfaces are explicit: registrar targets (`clone`, `cached-sandbox`, `sandbox`), the cache server, and the wallet-interaction debugger (`serve`). Every read-only command takes `--json` so it drops cleanly into agents and CI.
+Install the skill, then ask in plain language. Augenmaß Workbench understands EUDI Wallet work, so you can say "is this registration over-asking?", "generate a proportionate age check", or "why is my wallet rejecting this request?", and it does the work: it reads the artifact, weighs it against the legal basis for data minimisation, and tells you what to fix. The skill drives a single Rust binary (`augenmass`), so every answer is something you can also run yourself, script, or drop into CI.
 
-It supersedes the v1 workbench (which had six commands: `generate`, `check`, `doctor`, `register`, `list`, `clone`) by surfacing the entire engine (verification, status, trust, disclosure, crypto) and adding net-new offline decoders behind one cohesive CLI.
+Augenmaß is German for a trained sense of proportion: judging the right amount by eye. That is the whole point. The tool helps a relying party ask for exactly the personal data its purpose needs, and no more.
+
+One engine, two surfaces. The same proportionality engine that audits the public EUDI registry at augenmass.tech runs locally here, so you can catch an over-ask on your own machine before you ever register it.
+
+The hackathon version was a light tool with six commands (`generate`, `check`, `doctor`, `register`, `list`, `clone`). This version surfaces the entire engine (verification, status, trust, disclosure, crypto) and adds offline decoders for the rest of the ecosystem's artifacts, behind one cohesive skill and CLI.
 
 ## Install
 
-Build from source with Cargo. The output binary is `augenmass`.
-
-```sh
-cargo build --release
-./target/release/augenmass --help
-```
-
-The same tool also ships as a Claude Code plugin. The skill auto-triggers on EUDI registration and verifier-debugging work, and underneath it is the same plain CLI you can call directly.
-
-This repository is currently private, so the marketplace commands below resolve to it only for accounts that have access; building from source (above) is the path that always works. Once the repository is published publicly, the same commands work for everyone.
+Install the Claude Code plugin; the skill then auto-triggers on EUDI registration and wallet-debugging work.
 
 ```
 /plugin marketplace add augenmass/augenmass-workbench
 /plugin install augenmass-workbench@augenmass
 ```
 
-For plugin and skill specifics, see `docs/TOOLS.md` and the skill at `plugins/augenmass-workbench/skills/augenmass`.
+This repository is currently a private preview, so the marketplace commands resolve only for accounts with access. Once it is published, they work for everyone.
 
-## Quickstart
+The skill is a thin layer over a plain CLI you can also build and run on its own, with or without an agent. This source build always works:
 
-Every artifact argument accepts a file path, an inline value, or `-` for stdin. Read-only commands accept `--json`. The examples below use committed fixtures under `fixtures/` and run against the debug binary; swap in `./target/release/augenmass` for a release build.
+```sh
+cargo build --release
+./target/release/augenmass --help
+```
+
+The binary that ships inside the plugin is the same one. Claude Code puts it on PATH, so inside an agent session a bare `augenmass` works too.
+
+## Ask it like this
+
+The skill is the front door. You talk to it the way you would talk to a colleague who knows the EUDI ecosystem cold; it picks the right command, runs it, and explains the result, citing the legal basis when a finding turns on it.
+
+- "Is this registration over-asking?" It runs the over-ask engine and returns a per-claim diff: which requested claims exceed the stated purpose, and the basis (eIDAS Art. 5b(3), GDPR Art. 5(1)(c), EUDI ARF RPRC_07).
+- "Generate a proportionate age-check body." You get only the over-18 attribute, never a raw birthdate.
+- "Register it, but refuse if it over-asks." It dry-runs first and writes only on your explicit go-ahead, and it will not write past an over-ask unless you force it.
+- "What is this token?" It sniffs the artifact and decodes it: an SD-JWT VC presentation, a JAR, a credential offer, an mdoc, a status list.
+- "Why is the wallet rejecting my request?" It diagnoses the signed request (x5c shape, the x509_hash client_id binding, content type).
+- "Run a verifier so I can test with a real wallet, and show me every step." It starts `augenmass serve`, a local verifier-in-a-box, and traces the exchange with raw wallet data redacted by default.
+- "Explain this finding for someone non-technical." It restates the over-ask in plain language and ties it to the rule it breaks.
+
+See `docs/ASK-IT-LIKE-THIS.md` for more, and `docs/EXPLAINER.md` for the plain-language version of what over-ask is and why it matters.
+
+## Use it as a guardrail
+
+Finding an over-ask once is good; never shipping one is better. Because every read-only command exits non-zero on a bad outcome, the same engine works as a pre-commit hook or a CI gate, so an over-ask fails the build instead of reaching the registrar.
+
+```sh
+# pre-commit: refuse to commit a registration body that over-asks
+augenmass check registration.json
+```
+
+```yaml
+# CI: gate the pipeline on proportionality and a well-formed DCQL query
+- run: augenmass check registration.json
+- run: augenmass validate dcql request.json
+```
+
+See `docs/GUARDRAILS.md` for hook and pipeline recipes. The point of the skill is not only to fix an over-ask after the fact, but to give an agent enough context to prevent the next one.
+
+## The CLI underneath
+
+Everything the skill does, it does by running these commands, so you can run them yourself. Every artifact argument accepts a file path, an inline value, or `-` for stdin. Read-only commands accept `--json`. The examples below use committed fixtures under `fixtures/` and run against the debug binary; swap in `./target/release/augenmass` for a release build.
 
 Auto-detect any artifact and decode it:
 
@@ -199,9 +234,12 @@ One engine is the spine. `augenmass-core` is a vendored, HTTP-free, pure-Rust cr
 
 ## Documentation
 
-- `docs/ARCHITECTURE.md`: the one-engine spine and how the CLI wraps `augenmass-core`.
+- `docs/EXPLAINER.md`: what over-ask is and why it matters, in plain language for developers, auditors, and non-technical readers.
+- `docs/ASK-IT-LIKE-THIS.md`: natural-language recipes for driving the skill.
+- `docs/GUARDRAILS.md`: using the tool as a pre-commit hook and a CI gate so an over-ask never ships.
 - `docs/COMMANDS.md`: every command, flag, exit code, and output shape.
-- `docs/TOOLS.md`: the Claude Code plugin and skill.
+- `docs/TOOLS.md`: an artifact field guide, organized by artifact type.
+- `docs/ARCHITECTURE.md`: the one-engine spine and how the CLI wraps `augenmass-core`.
 - `docs/SANDBOX.md`: the clone store, the sandbox registrar, and their environment variables.
 - The skill: `plugins/augenmass-workbench/skills/augenmass`.
 
