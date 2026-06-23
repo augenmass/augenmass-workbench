@@ -9,8 +9,8 @@ FROM debian:bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system --gid 10001 augenmass \
-    && useradd --system --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin augenmass \
+    && groupadd --gid 10001 augenmass \
+    && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin augenmass \
     && mkdir -p /data \
     && chown -R augenmass:augenmass /data
 
