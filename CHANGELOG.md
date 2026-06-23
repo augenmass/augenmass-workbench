@@ -104,8 +104,9 @@ wallet-interaction debugger.
   present to it, and records the whole exchange as a per-session trace:
   SESSION_CREATED, REQUEST_BUILT, REQUEST_OBJECT_FETCHED, RESPONSE_RECEIVED,
   RESPONSE_DECRYPTED, VERIFIED or REJECTED, STATUS_CHECKED (with `--live-status`
-  and a trust anchor), and OVER_ASK_ANALYZED. Every event carries the raw artifact
-  at that step. The trace is available three ways: live on the console
+  and a trust anchor), and OVER_ASK_ANALYZED. The trace is redacted by default
+  (shape and digests only; no raw bodies, no disclosed claim values). The trace is
+  available three ways: live on the console
   (color-coded on a TTY), as a browser timeline at `/trace/<session>` that
   refreshes while the exchange is in flight, and as JSON at
   `/api/trace/<session>`; `/api/sessions` lists the sessions seen this run. Flags:
@@ -113,7 +114,9 @@ wallet-interaction debugger.
   registrar leaf so the client_id matches the registration; otherwise a throwaway
   development certificate is used), `--purpose`, `--trust-anchor` (enforce PID
   issuer trust), `--live-status` (resolve token-status-list revocation over the
-  network), and `--quiet`. This is the headline new capability: the tool now
+  network), `--quiet`, and `--unsafe-debug-artifacts` (opt-in, off by default:
+  write full-fidelity raw wallet material to local disk for private debugging,
+  never served over HTTP). This is the headline new capability: the tool now
   debugs the actual wallet interaction, not just static artifacts. It is adapted
   from the verifier project's `verifier-service`, reusing the same engine.
 
@@ -166,9 +169,35 @@ wallet-interaction debugger.
   loudly rather than silently reduced to the last presentation; the startup
   banner always prints the real bind address and warns when `--public-url` does
   not match it; and `--public-url` is normalised to end in '/'.
-- Known limitation: `serve` reuses one response-encryption key across requests.
-  HAIP prefers a fresh ephemeral key per Authorization Request; per-request keys
-  are planned. This does not affect the offline `verify` commands.
+- `serve` live-status fetch hardening (second pass): the fetch is now pinned to
+  the addresses vetted before connecting, so reqwest no longer re-resolves the
+  hostname at connect time; this closes the DNS-rebinding / TOCTOU window between
+  the IP check and the connection. The non-public deny list now normalises
+  IPv4-mapped IPv6 (so `::ffff:127.0.0.1` and `::ffff:169.254.169.254` are denied)
+  and adds the CGNAT range `100.64.0.0/10`. The response body is read under a size
+  cap rather than unbounded.
+- `serve` trace is redacted by default: the unauthenticated `/api/trace/<session>`
+  and the browser timeline no longer carry the raw POST body or decrypted claim
+  values. The received response and the decrypted payload are recorded as shape
+  only (length, SHA-256, field names, `vp_token` presence and shape), and
+  `VERIFIED` lists disclosed claim keys only.
+- `serve` rejects a plaintext `direct_post`: the verifier advertises the encrypted
+  `direct_post.jwt` profile, so an unencrypted response is refused (HTTP 422) and
+  traced as `REJECTED` rather than verified.
+- `serve --unsafe-debug-artifacts <dir>` (opt-in, off by default): writes
+  full-fidelity local debug artifacts (raw `direct_post` body, decrypted response,
+  per-session private key, signed request object) to `<dir>/<session>/` with
+  owner-only permissions (dirs `0700`, files `0600`) and a sensitive-marked
+  `debug-manifest.json`, recorded in the trace as `ARTIFACT_SAVED` with only file
+  name, label, length, and SHA-256. Never served over HTTP. This restores
+  raw-material debugging for developers who explicitly opt in, after the default
+  trace was made safe.
+- `serve` now mints a fresh ephemeral response-encryption key per Authorization
+  Request, advertised in that request's client metadata, used once, and dropped
+  after the response is processed (and on the reject and malformed-parse paths).
+  No response-encryption key is shared across sessions. This aligns with HAIP's
+  preference for a per-request ephemeral key and does not affect the offline
+  `verify` commands.
 - Licensed under Apache-2.0. Open source, framed as a developer tool.
 - Honest scope. `verify trust` checks that a leaf chains to a supplied anchor
   within its validity window; it is not full X.509 path validation. The decoders

@@ -1061,8 +1061,9 @@ Options (all optional):
 - `--trust-anchor <TRUST_ANCHOR>` (env `TRUST_ANCHOR_PATH`): a PID issuer trust anchor PEM. When set, the response path rejects issuers that do not chain to it; when unset, issuer trust is not enforced.
 - `--live-status` (env `LIVE_STATUS`): resolve the token-status-list over the network on the response path and reject a revoked or suspended PID. Default `false` (offline-friendly). Only takes effect when `--trust-anchor` is also set.
 - `--quiet`: suppress the live per-step trace on the console. The trace still records and is served at `/trace/<session>` and `/api/trace/<session>`.
+- `--unsafe-debug-artifacts <UNSAFE_DEBUG_ARTIFACTS>` (env `AUGENMASS_UNSAFE_DEBUG_ARTIFACTS`): opt-in, off by default. Write full-fidelity debug artifacts for each session under `<dir>/<session>/`: the raw `direct_post` body, the decrypted authorization response, the per-session private encryption key, and the signed request object (JAR), plus a `debug-manifest.json` marked sensitive. Files are owner-only (dirs `0700`, files `0600`). UNSAFE: this writes raw wallet material, including personal data, to local disk in the clear. It is never served over HTTP; the trace records only the file name, a label, the length, and a SHA-256, never a path or a value.
 
-Runtime behavior: this command does not exit on its own and does not use `--json`. It binds the listener and serves until Ctrl-C. On startup it prints the open URL, the computed `client_id`, whether the cert is throwaway or the registrar leaf, whether issuer trust is enforced, whether status checks are live, and where the trace is served.
+Runtime behavior: this command does not exit on its own and does not use `--json`. It binds the listener and serves until Ctrl-C. On startup it prints the open URL, the computed `client_id`, whether the cert is throwaway or the registrar leaf, whether issuer trust is enforced, whether status checks are live, where the trace is served, and whether unsafe local debug artifacts are enabled.
 
 ```
 augenmass serve
@@ -1075,7 +1076,8 @@ augenmass serve: wallet-interaction debugger
   cert         : throwaway (development); set --key + --leaf for the real registrar leaf
   issuer trust : not enforced (set --trust-anchor to anchor PID issuers)
   status check : offline (set --live-status to resolve token-status-list revocation)
-  trace        : live on this console; also at <base>/trace/<session> and /api/trace/<session>
+  trace        : redacted by default; live on this console; also at <base>/trace/<session> and /api/trace/<session>
+  artifacts    : off (set --unsafe-debug-artifacts <dir> to capture raw wallet material locally; UNSAFE)
 
   Open the URL above, scan the QR with a wallet, and watch the trace below.
 ```
@@ -1097,7 +1099,7 @@ The `POST /response/:id` body is the wallet's `application/x-www-form-urlencoded
 
 ### Trace event codes
 
-The trace is a per-session, timestamped event log. The JSON uses camelCase keys. Each event has `seq` (a monotonic process-wide sequence number), `at` (local time of day, `HH:MM:SS.mmm`), `atUnixMs` (Unix milliseconds), `kind`, `code` (the stable string below), `level` (`info`, `good`, `warn`, or `bad`), `summary` (a one-line human-legible string), and an optional `detail` carrying the raw artifact at that step (the JAR header and payload, the raw response body, the decrypted `vp_token`, the reject reason, and so on). The `/api/sessions` listing gives each session a `session`, an `eventCount`, and the `lastCode`/`lastLevel`/`lastAt` of its most recent event.
+The trace is a per-session, timestamped event log. The JSON uses camelCase keys. Each event has `seq` (a monotonic process-wide sequence number), `at` (local time of day, `HH:MM:SS.mmm`), `atUnixMs` (Unix milliseconds), `kind`, `code` (the stable string below), `level` (`info`, `good`, `warn`, or `bad`), `summary` (a one-line human-legible string), and an optional `detail` carrying the (redacted) artifact at that step. The trace is redacted by default: the JAR header and payload are shown (the verifier's own request object), but the received response and the decrypted payload are recorded as shape only (mode, byte length, SHA-256, field names, `vp_token` presence and shape), never the raw body and never a disclosed claim value, and `VERIFIED` lists disclosed claim keys only. The `/api/sessions` listing gives each session a `session`, an `eventCount`, and the `lastCode`/`lastLevel`/`lastAt` of its most recent event.
 
 The codes, in typical order:
 
@@ -1106,15 +1108,28 @@ The codes, in typical order:
 | `SESSION_CREATED` | A fresh presentation session is minted. |
 | `REQUEST_BUILT` | The minimal-disclosure authorization request is built (carries the `nonce`, `client_id`, and DCQL). |
 | `REQUEST_OBJECT_FETCHED` | The wallet fetches the signed request object (the JAR); the decoded header and payload are attached. |
-| `RESPONSE_RECEIVED` | The wallet posts its response; the raw body is captured. |
-| `RESPONSE_DECRYPTED` | The JWE response is decrypted (ECDH-ES) and the `vp_token` is attached (or noted as plaintext when unencrypted). |
-| `VERIFIED` or `REJECTED` | The SD-JWT VC issuer signature, the KB-JWT holder binding, the nonce and audience, the `vct`, and freshness are checked; on failure the exact reason is recorded. |
+| `RESPONSE_RECEIVED` | The wallet posts its response; the trace records its shape (mode, byte length, SHA-256, field names, state), never the raw body. |
+| `RESPONSE_DECRYPTED` | The JWE response is decrypted (ECDH-ES); the trace records the payload shape (length, SHA-256, field names, `vp_token` presence and shape), never a disclosed claim value. A plaintext (unencrypted) `direct_post` is refused, not decrypted (see `REJECTED`). |
+| `VERIFIED` or `REJECTED` | The SD-JWT VC issuer signature, the KB-JWT holder binding, the nonce and audience, the `vct`, and freshness are checked; on failure the exact reason is recorded. A non-conformant response is also `REJECTED` before verification: a plaintext `direct_post` (the verifier requires the encrypted `direct_post.jwt` profile) returns HTTP 422 and ends the timeline red. |
 | `STATUS_CHECKED` | Only with `--live-status` plus a trust anchor: the token-status-list is resolved and a revoked or suspended credential is rejected fail-closed. |
 | `OVER_ASK_ANALYZED` | What the wallet actually disclosed is run through the over-ask inspector. |
 | `NOTE` | An informational annotation. |
 | `ERROR` | An error step. |
+| `ARTIFACT_SAVED` | Only with `--unsafe-debug-artifacts`: a debug artifact was written to local disk. The detail records the file name, a label, the length, and a SHA-256 only, never a path or a value. |
 
 The same trace is available three ways: live on the console (ANSI color only when stderr is a TTY; suppressed with `--quiet`), the browser timeline at `/trace/:id`, and JSON at `/api/trace/:id`.
+
+### Security and privacy
+
+The trace is redacted by default: no endpoint, including the unauthenticated `/api/trace/:id`, carries the raw POST body, the decrypted payload, or any disclosed claim value. Each session uses a fresh ephemeral response-encryption key, used once and dropped after the response is processed (and on the reject and malformed-parse paths). A plaintext `direct_post` is rejected with HTTP 422 because the verifier advertises the encrypted `direct_post.jwt` profile.
+
+The `--live-status` fetch is hardened against SSRF: it is pinned to the addresses it vetted before connecting (it does not re-resolve the hostname at connect time, which closes the DNS-rebinding window), stays https-only with redirects disabled and a timeout, caps the response body, and denies loopback, private, link-local, CGNAT, unique-local, and IPv4-mapped IPv6 addresses.
+
+When you need the raw bytes for local debugging, opt in with `--unsafe-debug-artifacts` (UNSAFE, local only, never served over HTTP):
+
+```
+augenmass serve --unsafe-debug-artifacts ./debug-out
+```
 
 Sign with the real registrar leaf so the `client_id` matches the registered identity, and enforce issuer trust with revocation:
 

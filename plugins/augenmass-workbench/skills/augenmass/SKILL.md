@@ -35,7 +35,7 @@ Claude Code adds the plugin `bin/` directory to PATH, so a bare `augenmass` work
 - Compute (or check) the x509_hash client_id binding for a JAR or certificate.
 - Generate a proportionate registration body or a DCQL query from claim paths.
 - Diagnose a verifier signed request / JAR: x5c shape, client_id x509_hash, content type.
-- Debug a live wallet interaction: run a verifier-in-a-box (`serve`) so a real EUDI wallet presents to it, and trace every step of the exchange (request built, JAR fetched, response decrypted, verified, trust, revocation, over-ask) on the console, in a browser timeline, and as JSON.
+- Debug a live wallet interaction: run a verifier-in-a-box (`serve`) so a real EUDI wallet presents to it, and trace every step of the exchange (request built, JAR fetched, response decrypted, verified, trust, revocation, over-ask) on the console, in a browser timeline, and as JSON. The trace is redacted by default (no raw bodies, no claim values), each session uses a fresh ephemeral encryption key, and a plaintext `direct_post` is rejected; `--unsafe-debug-artifacts <dir>` opts in to full-fidelity local capture, never served over HTTP.
 - Write a registration to the local clone or the sandbox registrar, read it back, or run the local clone store.
 
 ## The one rule that matters
@@ -73,7 +73,7 @@ Writes are guarded. Reason before you write.
 | Generate a proportionate registration body | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass generate regbody [--use-case age-check --over-broad --rp --support-uri --privacy-policy --purpose]` |
 | Generate a DCQL query from claim paths | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass generate dcql --claim <path> [--claim <path> ...]` |
 | Diagnose a signed request / JAR | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass doctor <request>` |
-| Debug a live wallet interaction (verifier-in-a-box) | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass serve [--port --host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet]` |
+| Debug a live wallet interaction (verifier-in-a-box) | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass serve [--port --host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet --unsafe-debug-artifacts]` |
 | Write a registration (dry-run by default) | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass register <body> --target {clone\|sandbox} [--yes --force]` |
 | Read registrations back for one relying party | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass list --target {clone\|sandbox} [--rp <id>]` |
 | Run the local registrar-compatible clone store | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass clone serve [--db --port]` |
