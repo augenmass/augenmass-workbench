@@ -1181,7 +1181,7 @@ Options:
 - `--out <OUT>`: output bundle path.
 - `--signing-key <SIGNING_KEY>`: optional P-256 PKCS#8 private key PEM for signing the bundle with ES256.
 
-The exported JSON bundle has `kind: "augenmass-evidence-bundle"`, `schemaVersion: 1`, a canonical `payloadSha256`, a `sensitive: true` payload, the raw artifacts as base64url-no-pad entries, and a deterministic redacted `replayTrace`. The canonical payload hash excludes wall-clock export time, so the same artifact set produces the same payload hash.
+The exported JSON bundle has `kind: "augenmass-evidence-bundle"`, `schemaVersion: 1`, a canonical `payloadSha256`, a `sensitive: true` payload, the raw artifacts as base64url-no-pad entries, a deterministic redacted `replayTrace`, and a machine-readable `caveats` list spelling out the handling restrictions on the captured material. The canonical payload hash excludes wall-clock export time, so the same artifact set produces the same payload hash.
 
 Text output:
 

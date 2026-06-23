@@ -191,7 +191,7 @@ Example:
 | Verify against a supplied public key. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" evidence verify <bundle.json> --verify-key <pem>` | 1 on mismatch |
 | Render the projector-safe replay timeline. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" evidence replay <bundle.json>` | 1 on invalid bundle |
 
-`evidence export` writes a JSON bundle with `kind: "augenmass-evidence-bundle"`, `schemaVersion: 1`, `payloadSha256`, `sensitive: true`, raw artifacts as base64url-no-pad entries, and a deterministic redacted `replayTrace`. `evidence verify` checks each entry length and SHA-256, regenerates the replay trace, checks the canonical payload hash, and verifies the optional ES256 signature. `evidence replay` performs the same verification first, then prints only the redacted timeline.
+`evidence export` writes a JSON bundle with `kind: "augenmass-evidence-bundle"`, `schemaVersion: 1`, `payloadSha256`, `sensitive: true`, raw artifacts as base64url-no-pad entries, a deterministic redacted `replayTrace`, and a machine-readable `caveats` list of handling restrictions. `evidence verify` checks each entry length and SHA-256, regenerates the replay trace, checks the canonical payload hash, and verifies the optional ES256 signature. `evidence replay` performs the same verification first, then prints only the redacted timeline.
 
 When the capture contains `direct-post.body`, `session-enc-key.jwk`, `verification-context.json`, and an encrypted response, replay decrypts and verifies the SD-JWT VC offline against the captured nonce, audience, vct, clock, and freshness window. It does not claim trust anchoring or live-status replay.
 
