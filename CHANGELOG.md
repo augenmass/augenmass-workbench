@@ -138,6 +138,11 @@ cached-sandbox mirror, and the live wallet-interaction debugger.
   when a refresh fails. `list --target cached-sandbox` reads through it, while
   confirmed writes to `--target cached-sandbox` are refused before any network
   call.
+- `just demo-proof`, `just demo-run`, and `docs/DEMO_PROOF.md`: a focused,
+  offline proof gate and rehearsal sequence for the agent-first presentation
+  story. It pins the stable commands for artifact identification, over-ask
+  guardrails, JAR repair guidance, offline crypto verification, safe demo
+  targets, the request-side wallet debugger, and the cached-sandbox mirror.
 
 ### Changed
 

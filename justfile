@@ -51,6 +51,25 @@ verify:
     cargo run --quiet -- validate dcql fixtures/dcql/eudiplo-haip-pid-de.dcql.json > /dev/null
     sh -c 'if cargo run --quiet -- validate dcql "{\"credentials\":[]}"; then exit 1; else exit 0; fi'
 
+# A presentation-focused proof gate: stable offline commands that support the
+# agent-first demo story without sandbox credentials or a live wallet.
+demo-proof:
+    cargo test --test demo_proof
+    cargo test --test serve request_side_and_trace_flow
+    cargo test --test cache
+
+# Print the stable offline presentation sequence from the bundled plugin binary.
+demo-run:
+    ./plugins/augenmass-workbench/bin/augenmass --version
+    ./plugins/augenmass-workbench/bin/augenmass inspect fixtures/requests/eudiplo-request.jwt
+    sh -c './plugins/augenmass-workbench/bin/augenmass doctor examples/bad-request.json; code=$?; test "$code" -eq 1'
+    ./plugins/augenmass-workbench/bin/augenmass decode regcert fixtures/regcert/rc-by-id.json
+    sh -c './plugins/augenmass-workbench/bin/augenmass audit --request minimal --purpose age_gate_18 --cert fixtures/regcert/rc-by-id.json; code=$?; test "$code" -eq 1'
+    ./plugins/augenmass-workbench/bin/augenmass check examples/min.json
+    sh -c './plugins/augenmass-workbench/bin/augenmass check examples/over.json; code=$?; test "$code" -eq 1'
+    ./plugins/augenmass-workbench/bin/augenmass verify presentation fixtures/presentations/erica-vp-VALID.sdjwt --nonce b4ba2623-76a2-486b-a1f6-f1656025d07b --aud https://self-issued.me/v2 --now 1780435200 --trust-anchor fixtures/certs/erica-trust-anchor.pem
+    sh -c './plugins/augenmass-workbench/bin/augenmass verify presentation fixtures/presentations/synthetic-pid-with-status.sdjwt --nonce b4ba2623-76a2-486b-a1f6-f1656025d07b --aud https://self-issued.me/v2 --now 1780435200 --trust-anchor fixtures/certs/synthetic-pid-anchor.pem --status-token fixtures/status/status-list-REVOKED.jwt --status-key fixtures/status/status-list-verify-key.pub.pem; code=$?; test "$code" -eq 1'
+
 # Bundle the release binary into the plugin (Apple Silicon macOS).
 bundle: release
     mkdir -p plugins/augenmass-workbench/bin

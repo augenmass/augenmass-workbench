@@ -279,6 +279,39 @@ fn audit_overask_event_checkin_flags() {
         .stdout(contains("OVER-ASK"));
 }
 
+#[test]
+fn audit_accepts_wrapped_dcql_fixture() {
+    bin()
+        .args([
+            "audit",
+            "--request",
+            "fixtures/dcql/eudiplo-haip-pid-de.dcql.json",
+            "--purpose",
+            "age_gate_18",
+        ])
+        .assert()
+        .failure()
+        .stdout(contains("OVER-ASK"))
+        .stdout(contains("age_equal_or_over.18"));
+}
+
+#[test]
+fn audit_accepts_stdin_dcql() {
+    let query = bin()
+        .args(["generate", "dcql", "--claim", "age_equal_or_over.18"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let query = String::from_utf8(query).expect("utf8");
+    bin()
+        .args(["audit", "--request", "-", "--purpose", "age_gate_18"])
+        .write_stdin(query)
+        .assert()
+        .success();
+}
+
 // --- baselines -------------------------------------------------------------
 
 #[test]
