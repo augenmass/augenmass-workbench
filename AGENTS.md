@@ -35,7 +35,7 @@ cargo build
 cargo test
 ```
 
-`cargo test` runs unit tests plus integration suites that drive the real binary against the committed fixtures. At this writing, that includes 45 unit tests under `src/` and `crates/`, 43 CLI integration tests, 5 demo-proof integration tests, 8 cache integration tests, and 1 serve integration test. There is a `just verify` convenience target that wraps the build, the test run, and smoke checks; `cargo build` and `cargo test` are the canonical path and always work.
+`cargo test` runs unit tests plus integration suites that drive the real binary against the committed fixtures. At this writing, that includes 46 unit tests under `src/` and `crates/`, 43 CLI integration tests, 5 demo-proof integration tests, 9 cache integration tests, and 1 serve integration test. There is a `just verify` convenience target that wraps the build, the test run, and smoke checks; `cargo build` and `cargo test` are the canonical path and always work.
 
 For presentation and skill wording changes, run the focused proof gate too:
 
@@ -48,15 +48,17 @@ It pins the stable offline demo path described in `docs/DEMO_PROOF.md`.
 For install or release wording changes, run:
 
 ```
+just ci-credit-guard
 just install-smoke
 just release-archive-smoke
 just docker-release-archive-smoke-linux
 ```
 
-They prove a fresh source install into an isolated local root and an extracted
-release archive that carries its own docs, examples, and fixtures. The Docker
-gate proves the Linux arm64 and amd64 release archives inside matching Linux
-containers without spending runner credits.
+They prove that normal branch pushes cannot start GitHub Actions, a fresh source
+install into an isolated local root, and an extracted release archive that
+carries its own docs, examples, and fixtures. The Docker gate proves the Linux
+arm64 and amd64 release archives inside matching Linux containers without
+spending runner credits.
 
 When in doubt about command behavior, do not guess. Run the binary:
 

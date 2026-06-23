@@ -2,7 +2,7 @@
 
 An agent skill for the EUDI Wallet ecosystem, with a Rust CLI underneath it.
 
-Install the skill, then ask in plain language. Augenmaß Workbench understands EUDI Wallet work, so you can say "is this registration over-asking?", "generate a proportionate age check", or "why is my wallet rejecting this request?", and it does the work: it reads the artifact, weighs it against the legal basis for data minimisation, and tells you what to fix. The skill drives a single Rust binary (`augenmass`), so every answer is something you can also run yourself, script, or drop into CI.
+Install the skill, then ask in plain language. Augenmaß Workbench understands EUDI Wallet work, so you can say "is this registration over-asking?", "generate a proportionate age check", or "why is my wallet rejecting this request?", and it does the work: it reads the artifact, screens it against protocol rules and curated purpose baselines grounded in the cited legal basis for data minimisation, and tells you what to fix. The skill drives a single Rust binary (`augenmass`), so every answer is something you can also run yourself, script, or drop into CI.
 
 Augenmaß is German for a trained sense of proportion: judging the right amount by eye. That is the whole point. The tool helps a relying party ask for exactly the personal data its purpose needs, and no more.
 

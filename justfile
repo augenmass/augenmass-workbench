@@ -80,6 +80,10 @@ claude-plugin-smoke:
 codex-plugin-smoke:
     ./scripts/codex-plugin-smoke.sh
 
+# Verify GitHub Actions cannot spend runner credits on normal branch pushes.
+ci-credit-guard:
+    ./scripts/ci-credit-guard.sh
+
 # Verify a fresh source install into an isolated local root.
 install-smoke:
     ./scripts/install-smoke.sh
@@ -140,10 +144,10 @@ platform-smoke:
     ./scripts/platform-smoke.sh
 
 # Local shipping proof that avoids remote GitHub CI runner credits.
-shipping-smoke: plugin-smoke claude-plugin-smoke codex-plugin-smoke serve-smoke live-cache-smoke deployed-cache-smoke docker-smoke
+shipping-smoke: ci-credit-guard plugin-smoke claude-plugin-smoke codex-plugin-smoke serve-smoke live-cache-smoke deployed-cache-smoke docker-smoke
 
 # Strongest local release proof; no GitHub Actions, but multiple Linux Docker builds.
-local-release-proof: verify demo-run plugin-smoke claude-plugin-smoke codex-plugin-smoke serve-smoke install-smoke release-archive-smoke live-cache-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64 docker-release-archive-smoke-linux
+local-release-proof: ci-credit-guard verify demo-run plugin-smoke claude-plugin-smoke codex-plugin-smoke serve-smoke install-smoke release-archive-smoke live-cache-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64 docker-release-archive-smoke-linux
 
 # Bundle the release binary into the plugin (Apple Silicon macOS).
 bundle: release

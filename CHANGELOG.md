@@ -149,6 +149,12 @@ cached-sandbox mirror, and the live wallet-interaction debugger.
   with release archives for Linux x86_64, Windows x86_64, macOS Intel, and macOS
   Apple Silicon. The CI gate is manual-only to conserve private-repo runner
   minutes.
+- `just ci-credit-guard`: a local workflow-trigger guard that fails if GitHub
+  Actions can run on normal branch pushes or pull-request activity. The only
+  allowed push trigger is the deliberate tag-only release path.
+- Cache deployment proof is stricter: `deployed-cache-smoke-required` now
+  requires an admin token, and Docker smoke restarts the cache container against
+  the same volume to prove cached data survives a container restart.
 - `just demo-proof`, `just demo-run`, and `docs/DEMO_PROOF.md`: a focused,
   offline proof gate and rehearsal sequence for the agent-first presentation
   story. It pins the stable commands for artifact identification, over-ask

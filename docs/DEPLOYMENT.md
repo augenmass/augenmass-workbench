@@ -166,7 +166,9 @@ just docker-smoke
 That builds the Docker image, runs the cache backend, checks `/api/health`, checks
 that the process runs as the non-root uid `10001`, verifies that cache status
 requires the admin token, then fetches `schema-metadata` through the container
-and proves the first response is a `MISS` and the second is a `HIT`.
+and proves the first response is a `MISS` and the second is a `HIT`. It then
+restarts the container against the same Docker volume and proves the cached
+schema is still a `HIT`, so `/data` persistence is exercised locally.
 
 Live cache proof:
 
@@ -189,12 +191,13 @@ AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN=<token> \
 ```
 
 Without `AUGENMASS_DEPLOYED_CACHE_API_BASE`, the deployed smoke exits cleanly so
-local release gates do not depend on a hosted service. With only the API base, it
-checks health, public cached reads, and the CLI `cached-sandbox` path. With the
-admin token, it also proves `/cache/status` is protected, verifies authenticated
-status access, runs `cache warm`, and confirms warmed entries are visible.
-Use `just deployed-cache-smoke-required` when you want that URL to be mandatory
-instead of skipped.
+local release gates do not depend on a hosted service. With only the API base,
+`just deployed-cache-smoke` checks health, public cached reads, and the CLI
+`cached-sandbox` path. With the admin token, it also proves `/cache/status` is
+protected, verifies authenticated status access, runs `cache warm`, and confirms
+warmed entries are visible. Use `just deployed-cache-smoke-required` for hosted
+readiness; required mode fails unless both `AUGENMASS_DEPLOYED_CACHE_API_BASE`
+and `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` are set.
 
 ## Fly.io and Render
 

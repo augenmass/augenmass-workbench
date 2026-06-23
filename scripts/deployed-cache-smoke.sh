@@ -63,6 +63,11 @@ fi
 
 BASE="${BASE%/}"
 
+if [ "${REQUIRED}" = "1" ] && [ -z "${ADMIN}" ]; then
+  echo "deployed cache smoke required mode requires AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN to prove protected status and refresh" >&2
+  exit 1
+fi
+
 if [ ! -x "${BIN}" ]; then
   echo "smoke binary is not executable: ${BIN}" >&2
   exit 1

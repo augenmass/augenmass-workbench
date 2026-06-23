@@ -2,7 +2,7 @@
 
 Finding an over-ask once is good. Never shipping one is better. The judgment commands exit non-zero on a bad outcome, so the same engine that explains a problem can also fail a commit or a build before the problem reaches the registrar.
 
-This page shows two placements: a pre-commit hook (stops it on your machine) and a CI gate (stops it for the whole team). Both rely only on documented exit codes; see the exit-code contract in `COMMANDS.md` and `AGENTS.md`.
+This page shows local placements first: a pre-commit hook and a local verification gate. A remote CI recipe is included as an opt-in pattern for teams that approve runner spend. All examples rely only on documented exit codes; see the exit-code contract in `COMMANDS.md` and `AGENTS.md`.
 
 ## The exit codes you are gating on
 
@@ -51,13 +51,28 @@ done
 
 `augenmass check` exits non-zero on the first over-ask or format error, and `set -e` turns that into a failed commit. The output names which claims exceeded the purpose, so the fix is in front of you. Adjust the `grep` pattern to match how your repository names registration bodies.
 
-## CI gate
+## Local verification gate
 
-Fail the pipeline on a proportionality regression. This GitHub Actions job builds the CLI once and runs the checks; the same commands work in any CI system.
+For this repository, the default team gate is local:
+
+```sh
+just verify
+just ci-credit-guard
+```
+
+`just verify` runs formatting, clippy, tests, and deterministic fixture checks.
+`just ci-credit-guard` fails if GitHub Actions can run on normal branch pushes
+or pull-request activity. This keeps the private-repo runner budget under
+explicit human control.
+
+## Optional remote CI gate
+
+Fail the pipeline on a proportionality regression only when the team has approved remote runner spend. Use a manual workflow rather than `push` or `pull_request` triggers for private repositories:
 
 ```yaml
 name: proportionality
-on: [push, pull_request]
+on:
+  workflow_dispatch:
 
 jobs:
   augenmass:

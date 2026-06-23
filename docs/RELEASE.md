@@ -42,6 +42,17 @@ cargo build --release --locked
 That matrix is intentionally native. It checks the OSes users actually run
 instead of pretending that a local cross-check from macOS is equivalent.
 
+Run the local guard before changing or pushing workflow files:
+
+```sh
+just ci-credit-guard
+```
+
+It fails if a workflow can run on normal branch pushes or pull-request activity.
+The only allowed push trigger is a tag-only release trigger, currently `v*`, so a
+release can still be cut deliberately without making every branch push spend
+runner credits.
+
 ## Release archives
 
 `.github/workflows/release.yml` builds these archives:
@@ -55,6 +66,7 @@ The workflow, local host smoke, and Docker Linux archive smoke all use
 `scripts/package-release-archive.sh` for the package layout.
 
 On a tag push (`v*`), the workflow uploads the archives to a GitHub release.
+Tag pushes spend runner minutes and should happen only after explicit approval.
 On manual dispatch, it publishes workflow artifacts only.
 
 ## Cutting a release
@@ -63,6 +75,7 @@ Run the local gate first:
 
 ```sh
 just verify
+just ci-credit-guard
 just demo-run
 just install-smoke
 just codex-plugin-smoke
@@ -90,15 +103,22 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
+That tag push starts the release workflow and spends runner minutes. For the
+presentation-prep phase, keep release proof local with
+`just docker-release-archive-smoke-linux` and do not push a `v*` tag unless the
+runner spend has been approved.
+
 After the release workflow finishes, install or test the platform archive on a
 machine matching the target. The plugin marketplace bundle remains a separate
 artifact from the CLI release archives.
 
-`just install-smoke`, `just demo-run`, `just plugin-demo-run`,
+`just ci-credit-guard`, `just install-smoke`, `just demo-run`, `just plugin-demo-run`,
 `just claude-plugin-smoke`, `just codex-plugin-smoke`, `just serve-smoke`,
 `just release-archive-smoke`, `just shipping-smoke`,
 `just deployed-cache-smoke`, and `just platform-smoke` are local. They do not
 start GitHub Actions.
+`ci-credit-guard` proves the workflow trigger invariant: normal branch pushes
+and pull-request activity cannot start GitHub Actions.
 `install-smoke` proves a fresh source install into a temporary local root.
 `claude-plugin-smoke` proves local Claude Code marketplace installation in a
 temporary `HOME`.
@@ -124,7 +144,8 @@ exports the resulting archives to:
 cached-sandbox path, and the Docker backend. `deployed-cache-smoke` is opt-in for
 a Railway/VPS cache URL and skips cleanly when `AUGENMASS_DEPLOYED_CACHE_API_BASE`
 is unset. `deployed-cache-smoke-required` is the hosted-readiness gate; it fails
-without `AUGENMASS_DEPLOYED_CACHE_API_BASE`. `platform-smoke` checks the host
+without `AUGENMASS_DEPLOYED_CACHE_API_BASE` and
+`AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN`. `platform-smoke` checks the host
 target and any locally available cross-targets; by default it skips Linux or
 Windows targets when the required cross C/MSVC toolchain is missing. Set
 `AUGENMASS_STRICT_PLATFORM_SMOKE=1` on a release machine if missing targets

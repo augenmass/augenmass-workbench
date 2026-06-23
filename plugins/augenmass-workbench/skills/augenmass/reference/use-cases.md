@@ -1,6 +1,6 @@
 # Augenmaß Workbench: end-to-end use cases
 
-Five complete walkthroughs. Every command here runs against the real binary as written, using committed fixtures under `fixtures/` and `examples/`. Paths are relative to the repo root. The examples use bare `augenmass` for readability; inside the Claude Code skill, prefer `${CLAUDE_PLUGIN_ROOT}/bin/augenmass`. In this repo a local debug build is `./target/debug/augenmass`.
+Five complete walkthroughs. Every command here runs against the real binary as written, using committed fixtures under `fixtures/` and `examples/`. Paths are relative to the repo root and require the full checkout. The examples use bare `augenmass` for readability; inside the skill, use the resolved `$AUGENMASS` path. In this repo a local debug build is `./target/debug/augenmass`.
 
 Conventions used throughout:
 
@@ -317,7 +317,7 @@ Format findings:
 
 This exits `1`. A blocking format error stops `register` outright; only the over-ask warning is bypassable, and only with `--force`.
 
-For a real off-stage rehearsal, swap `--target clone` for `--target sandbox`, which talks to the actual registrar over OAuth. That path needs environment configuration (`AUGENMASS_API_BASE`, `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`) and a working `client_id` of `swagger`. Use `--target cached-sandbox` only for read-only cached sandbox reads; confirmed writes to cached-sandbox are refused before any network call. Always write under the one relying party; never mint extra relying parties.
+For a real off-stage rehearsal, swap `--target clone` for `--target sandbox`, which talks to the actual registrar over OAuth. That path needs environment configuration (`AUGENMASS_API_BASE`, `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`) and a working `client_id` of `swagger`. Use `--target cached-sandbox` only for read-only cached sandbox reads; confirmed writes to cached-sandbox are refused before any network call. For real writes, use only the relying party the user explicitly names; never invent a demo relying party id or mint extra relying parties.
 
 ## 4. Verify a wallet presentation end to end
 

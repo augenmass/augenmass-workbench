@@ -41,13 +41,19 @@ to the platform-native binary before asking the skill to run commands.
 ## First run in an agent
 
 After installing the plugin, start with the skill, not the terminal. These
-prompts are safe against the committed offline fixtures:
+prompts are safe even when the plugin was installed without the full repo
+checkout:
 
 | Audience | Prompt | Expected outcome |
 | --- | --- | --- |
-| Developer | `Use the augenmass skill: inspect fixtures/requests/eudiplo-request.jwt and tell me why a wallet might reject it.` | The agent identifies the OpenID4VP JAR, checks the request shape, and explains verifier gotchas such as `x5c` and `x509_hash` binding without pasting secrets. |
-| Auditor | `Use the augenmass skill: is examples/over.json over-asking for an age check? Explain it for a privacy review.` | The agent reports the extra claims, cites the data-minimisation basis, and proposes the minimal `age_equal_or_over.18` request. |
-| Non-technical reviewer | `Use the augenmass skill: explain in plain language what is wrong with examples/over.json and what we should ask for instead.` | The agent avoids JSON detail, names the unnecessary data, explains the risk, and gives the safer replacement. |
+| Developer | `Use the augenmass skill: show the purpose baselines, generate a proportionate age-check body, and check it.` | The agent runs no-file commands, explains the generated minimal body, and confirms it passes the over-ask gate. |
+| Auditor | `Use the augenmass skill: explain why a full birthdate is too much for an over-18 check, and cite the basis.` | The agent explains the proportionality concern, cites the data-minimisation basis, and proposes `age_equal_or_over.18`. |
+| Non-technical reviewer | `Use the augenmass skill: in plain language, what should an age-check service ask for and what should it avoid?` | The agent avoids JSON detail, names the unnecessary data, explains the risk, and gives the safer replacement. |
+
+If you are working from the full repository checkout, you can also ask fixture
+prompts such as `inspect fixtures/requests/eudiplo-request.jwt` or
+`is examples/over.json over-asking for an age check?`. Those paths are checkout
+fixtures, not files guaranteed by every plugin marketplace installation.
 
 For live wallet debugging, ask for the workflow first: `Use the augenmass skill:
 prepare a safe live wallet debug run with redacted traces.` The agent should

@@ -53,24 +53,31 @@ fi
 
 docker build "${BUILD_ARGS[@]}" -t "${IMAGE}" .
 
+run_container() {
+  docker run "${RUN_ARGS[@]}" --rm -d \
+    --name "${NAME}" \
+    -p "127.0.0.1:${PORT}:${PORT}" \
+    -e "PORT=${PORT}" \
+    -e "AUGENMASS_CACHE_ADMIN_TOKEN=${ADMIN}" \
+    -v "${VOLUME}:/data" \
+    "${IMAGE}" >/dev/null
+}
+
+wait_healthy() {
+  for _ in $(seq 1 40); do
+    if curl --max-time 2 -fsS "${BASE}/health" >"${BODY}" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  return 1
+}
+
 docker rm -f "${NAME}" >/dev/null 2>&1 || true
 docker volume rm "${VOLUME}" >/dev/null 2>&1 || true
-docker run "${RUN_ARGS[@]}" --rm -d \
-  --name "${NAME}" \
-  -p "127.0.0.1:${PORT}:${PORT}" \
-  -e "PORT=${PORT}" \
-  -e "AUGENMASS_CACHE_ADMIN_TOKEN=${ADMIN}" \
-  -v "${VOLUME}:/data" \
-  "${IMAGE}" >/dev/null
+run_container
 
-for _ in $(seq 1 40); do
-  if curl --max-time 2 -fsS "${BASE}/health" >"${BODY}" 2>/dev/null; then
-    break
-  fi
-  sleep 0.25
-done
-
-if ! curl --max-time 2 -fsS "${BASE}/health" >"${BODY}" 2>/dev/null; then
+if ! wait_healthy; then
   echo "container did not become healthy" >&2
   docker logs "${NAME}" >&2 || true
   exit 1
@@ -104,5 +111,18 @@ code="$(curl --max-time 15 -s -D "${HEADERS}" -o "${BODY}" -w '%{http_code}' "${
 test "${code}" = "200"
 test "$(header_value x-augenmass-cache "${HEADERS}")" = "HIT"
 echo "container schema second fetch: HIT"
+
+docker stop "${NAME}" >/dev/null
+run_container
+if ! wait_healthy; then
+  echo "container did not become healthy after restart" >&2
+  docker logs "${NAME}" >&2 || true
+  exit 1
+fi
+
+code="$(curl --max-time 15 -s -D "${HEADERS}" -o "${BODY}" -w '%{http_code}' "${BASE}/schema-metadata")"
+test "${code}" = "200"
+test "$(header_value x-augenmass-cache "${HEADERS}")" = "HIT"
+echo "container schema after restart: HIT"
 
 echo "docker smoke passed"

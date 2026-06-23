@@ -49,6 +49,8 @@ just shipping-smoke
 
 That proves:
 
+- GitHub Actions workflows cannot start on normal branch pushes or pull-request
+  activity. CI is manual-only, and release publishing is tag-only.
 - The bundled plugin binary is present, executable, current, and exposes the
   advertised command surfaces through both Claude Code and Codex metadata checks.
 - The repo-local Claude Code marketplace validates with `--strict`, installs
@@ -77,6 +79,8 @@ That proves:
 - The Docker cache image builds locally, runs as uid `10001`, can write `/data`,
   exposes `/api/health`, protects admin status without a token, and fetches
   `schema-metadata` through the container with a `MISS` followed by a `HIT`.
+  It then restarts the container on the same Docker volume and proves the cached
+  schema is still a `HIT`.
 
 No remote GitHub Actions run is required for these gates.
 
@@ -116,8 +120,9 @@ just local-release-proof
 ```
 
 This gate passed locally on 2026-06-24. It combines the deterministic Rust
-gates, source-install smoke, release-archive smoke, plugin smoke, live
-cached-sandbox smoke, platform smoke, and explicit Docker cache-backend
+gates, the GitHub Actions runner-credit guard, source-install smoke,
+release-archive smoke, plugin smoke, live cached-sandbox smoke, platform smoke,
+and explicit Docker cache-backend
 builds/runs for `linux/arm64` and `linux/amd64`, plus Docker-built Linux
 release archives smoke-tested inside matching Linux containers. It still does
 not replace native Windows testing or a native Linux host check outside Docker.
@@ -164,8 +169,9 @@ These are good to show on stage or in a recording:
   `AUGENMASS_DEPLOYED_CACHE_API_BASE`; with a Railway/VPS URL it checks health,
   public cached reads, CLI `cached-sandbox`, and admin/warm protection when an
   admin token is provided.
-- `deployed-cache-smoke-required`: the same hosted-cache proof, but it fails
-  without a deployed cache URL and should gate any hosted-readiness claim.
+- `deployed-cache-smoke-required`: the hosted-readiness proof. It fails without
+  both a deployed cache URL and `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN`, then
+  proves public reads, protected status, authenticated warm, and warmed entries.
 
 ## Backend deployment verdict
 
