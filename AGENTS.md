@@ -50,10 +50,13 @@ For install or release wording changes, run:
 ```
 just install-smoke
 just release-archive-smoke
+just docker-release-archive-smoke-linux
 ```
 
 They prove a fresh source install into an isolated local root and an extracted
-release archive that carries its own docs, examples, and fixtures.
+release archive that carries its own docs, examples, and fixtures. The Docker
+gate proves the Linux arm64 and amd64 release archives inside matching Linux
+containers without spending runner credits.
 
 When in doubt about command behavior, do not guess. Run the binary:
 

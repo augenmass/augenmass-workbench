@@ -49,6 +49,9 @@ instead of pretending that a local cross-check from macOS is equivalent.
 - `augenmass-v<version>-x86_64-apple-darwin.tar.gz`
 - `augenmass-v<version>-aarch64-apple-darwin.tar.gz`
 
+The workflow, local host smoke, and Docker Linux archive smoke all use
+`scripts/package-release-archive.sh` for the package layout.
+
 On a tag push (`v*`), the workflow uploads the archives to a GitHub release.
 On manual dispatch, it publishes workflow artifacts only.
 
@@ -61,6 +64,7 @@ just verify
 just demo-run
 just install-smoke
 just release-archive-smoke
+just docker-release-archive-smoke-linux
 just shipping-smoke
 just platform-smoke
 ```
@@ -88,6 +92,13 @@ artifact from the CLI release archives.
 `install-smoke` proves a fresh source install into a temporary local root.
 `release-archive-smoke` builds the host release archive, extracts it, then runs
 the packaged binary against packaged docs, examples, and fixtures.
+`docker-release-archive-smoke-linux` builds Linux arm64 and amd64 archives
+inside Docker, runs the archive smoke inside the matching Linux container, and
+exports the resulting archives to:
+
+- `dist/docker-release-archive-smoke/linux-arm64/augenmass-v<version>-aarch64-unknown-linux-gnu.tar.gz`
+- `dist/docker-release-archive-smoke/linux-amd64/augenmass-v<version>-x86_64-unknown-linux-gnu.tar.gz`
+
 `shipping-smoke` covers the plugin bundle, the live cached-sandbox path, and the
 Docker backend. `platform-smoke` checks the host target and any locally available
 cross-targets; by default it skips Linux or Windows targets when the required
@@ -103,9 +114,10 @@ just local-release-proof
 
 That adds the source-install smoke, release-archive smoke, and explicit Docker
 builds and runtime checks for `linux/arm64` and `linux/amd64` using
-`AUGENMASS_DOCKER_PLATFORM`. It proves the cache backend container on those
-Linux platforms, but it still does not prove the standalone native Linux archive
-or the Windows archive. Those need native runners or manual machines.
+`AUGENMASS_DOCKER_PLATFORM`. It proves the cache backend container and the
+standalone Linux archive layout on those Linux platforms inside Docker. It still
+does not replace a native Linux host check outside Docker, and it does not prove
+the Windows archive. Those need native runners or manual machines.
 
 ## Plugin bundle caveat
 

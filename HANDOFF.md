@@ -14,7 +14,8 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
 - Recent `main` history includes the foundation, serve debugger, serve hardening, mdoc decode,
   DCQL validation, P0 live-debugger hardening, evidence export/verify/replay, cached-sandbox
   backend, local release-proof gates, source-install proof, and CLI HTTP timeout hardening.
-  Use `git log --oneline` for authoritative hashes. `just local-release-proof` exits 0.
+  Use `git log --oneline` for authoritative hashes. `just local-release-proof` exits 0 locally
+  as of 2026-06-24.
 - Done this session: P1 (harvest, 6 repos + `external/HARVEST-NOTES.md`), P2 (serve), P5 (review +
   fixes), P3-mdoc (decode mdoc + inspect detection), P4 (validate dcql). Surveyed codex (see below).
 - Done since, as an Opus-plans / Codex-implements split across two merged PRs (frozen plan
@@ -27,8 +28,8 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
   verified against the running binary and fast-forward merged to `main`.
 - Added since: `cache serve`, `cache warm`, `cached-sandbox` read-through behavior, local
   `plugin-smoke`, `install-smoke`, `release-archive-smoke`, `live-cache-smoke`, `docker-smoke`,
-  explicit Linux Docker platform smokes, `shipping-smoke`, `platform-smoke`, and
-  `local-release-proof` gates.
+  explicit Linux Docker platform smokes, Docker Linux release-archive smokes, `shipping-smoke`,
+  `platform-smoke`, and `local-release-proof` gates.
 - NOT finished: the rest of P3 (mdoc cryptographic VERIFY, trust-list parse, PE->DCQL, OpenID4VCI
   metadata, full JAR signature verify) and fully proven native Windows/Linux release archives. See "Next work".
 - The previously deferred review finding (LOW: serve reused one response-encryption key across
@@ -118,9 +119,10 @@ cargo test --workspace     # full workspace suite, including the reusable core c
 just verify                # fmt --check, clippy -D warnings, test, + real-fixture smoke battery
 just install-smoke         # source install into an isolated local root
 just release-archive-smoke # extracted release archive runs against packaged fixtures
+just docker-release-archive-smoke-linux # Linux arm64/amd64 archives built and smoked inside Docker
 just shipping-smoke        # plugin bundle + live cached-sandbox + Docker cache backend
 just platform-smoke        # host/cross-target cargo checks; skips missing cross toolchains unless strict
-just local-release-proof   # strongest local gate; includes linux/arm64 and linux/amd64 Docker smokes
+just local-release-proof   # strongest local gate; includes linux/arm64 and linux/amd64 Docker cache/archive smokes
 just bundle                # release build -> plugins/augenmass-workbench/bin/augenmass (arm64)
 ```
 

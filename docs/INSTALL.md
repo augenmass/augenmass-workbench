@@ -87,5 +87,6 @@ just local-release-proof
 ```
 
 That adds workspace verification, release archive proof, the plugin bundle
-smoke, live cached-sandbox proof, macOS target probing, and explicit Linux arm64
-and amd64 Docker build-and-run checks. It does not spend runner credits.
+smoke, live cached-sandbox proof, macOS target probing, explicit Linux arm64
+and amd64 Docker build-and-run checks, and Linux release archives smoke-tested
+inside matching Docker containers. It does not spend runner credits.

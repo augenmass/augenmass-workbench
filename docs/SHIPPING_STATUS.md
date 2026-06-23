@@ -103,11 +103,12 @@ The strongest local release proof is:
 just local-release-proof
 ```
 
-This gate passed locally on 2026-06-23. It combines the deterministic Rust
+This gate passed locally on 2026-06-24. It combines the deterministic Rust
 gates, source-install smoke, release-archive smoke, plugin smoke, live
 cached-sandbox smoke, platform smoke, and explicit Docker cache-backend
-builds/runs for `linux/arm64` and `linux/amd64`. It still does not replace
-native Windows or native Linux release-archive testing.
+builds/runs for `linux/arm64` and `linux/amd64`, plus Docker-built Linux
+release archives smoke-tested inside matching Linux containers. It still does
+not replace native Windows testing or a native Linux host check outside Docker.
 
 ## Presentation-safe surfaces
 
@@ -156,11 +157,15 @@ Proven:
 - Linux amd64 container build and runtime for the cache backend, including a
   full `cargo build --release --locked` inside the amd64 Docker build and the
   same health, uid, writable `/data`, and admin-token checks.
+- Linux arm64 release archive built inside Docker, extracted inside Linux, and
+  run against packaged docs, examples, and fixtures.
+- Linux amd64 release archive built inside Docker, extracted inside Linux, and
+  run against packaged docs, examples, and fixtures.
 
 Not yet fully proven:
 
 - Native Windows binary on Windows.
-- Native Linux release archive outside Docker or a native Linux runner.
+- Native Linux release archive outside Docker or a native Linux host runner.
 - Claude Code plugin bundle on Windows or Linux.
 
 The code is Rust-only, but the shipped plugin binary is currently a macOS

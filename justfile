@@ -81,7 +81,7 @@ install-smoke:
 
 # Verify the self-contained release archive layout before tagging.
 release-archive-smoke: release
-    bash -c 'set -euo pipefail; version="$(cargo pkgid | sed "s/.*#//")"; target="$(rustc -vV | sed -n "s/^host: //p")"; name="augenmass-v${version}-${target}"; out="dist/local-release-archive-smoke"; binary="augenmass"; case "${target}" in *windows*) binary="augenmass.exe";; esac; rm -rf "${out}"; mkdir -p "${out}/${name}"; cp "target/release/${binary}" "${out}/${name}/"; cp README.md LICENSE NOTICE "${out}/${name}/"; cp -R docs examples fixtures "${out}/${name}/"; tar -C "${out}" -czf "${out}/${name}.tar.gz" "${name}"; ./scripts/release-archive-smoke.sh "${out}/${name}.tar.gz"'
+    bash -c 'set -euo pipefail; target="$(rustc -vV | sed -n "s/^host: //p")"; binary="augenmass"; case "${target}" in *windows*) binary="augenmass.exe";; esac; out="dist/local-release-archive-smoke"; rm -rf "${out}"; mkdir -p "${out}"; archive="$(./scripts/package-release-archive.sh "${target}" "target/release/${binary}" tar.gz "${out}")"; ./scripts/release-archive-smoke.sh "${archive}"'
 
 # Verify the live cached-sandbox path against the public sandbox API.
 live-cache-smoke:
@@ -99,6 +99,17 @@ docker-smoke-arm64:
 docker-smoke-amd64:
     AUGENMASS_DOCKER_PLATFORM=linux/amd64 AUGENMASS_DOCKER_IMAGE=augenmass-cache-smoke-amd64 AUGENMASS_DOCKER_SMOKE_PORT=18985 ./scripts/docker-smoke.sh
 
+# Build and smoke a Linux arm64 release archive inside Docker.
+docker-release-archive-smoke-arm64:
+    ./scripts/docker-release-archive-smoke.sh linux/arm64
+
+# Build and smoke a Linux amd64 release archive inside Docker.
+docker-release-archive-smoke-amd64:
+    ./scripts/docker-release-archive-smoke.sh linux/amd64
+
+# Build and smoke Linux release archives inside Docker for both supported local proof platforms.
+docker-release-archive-smoke-linux: docker-release-archive-smoke-arm64 docker-release-archive-smoke-amd64
+
 # Check host and available cross-target builds without remote CI.
 platform-smoke:
     ./scripts/platform-smoke.sh
@@ -106,8 +117,8 @@ platform-smoke:
 # Local shipping proof that avoids remote GitHub CI runner credits.
 shipping-smoke: plugin-smoke live-cache-smoke docker-smoke
 
-# Strongest local release proof; no GitHub Actions, but two Linux Docker builds.
-local-release-proof: verify demo-run plugin-smoke install-smoke release-archive-smoke live-cache-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64
+# Strongest local release proof; no GitHub Actions, but multiple Linux Docker builds.
+local-release-proof: verify demo-run plugin-smoke install-smoke release-archive-smoke live-cache-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64 docker-release-archive-smoke-linux
 
 # Bundle the release binary into the plugin (Apple Silicon macOS).
 bundle: release
