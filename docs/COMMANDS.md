@@ -14,6 +14,7 @@ Commands are grouped by intent:
 - **PRODUCE**: generate proportionate artifacts (`generate`).
 - **DIAGNOSE**: find verifier signed-request gotchas (`doctor`).
 - **DEBUG**: a live wallet-interaction debugger, a verifier-in-a-box a real wallet presents to (`serve`).
+- **EVIDENCE**: export, verify, and replay local audit bundles from unsafe debug artifacts (`evidence`).
 - **WRITE**: guard-railed registrar writes and reads, plus the local clone store (`register`, `list`, `clone`).
 
 ## Global flag: `--json`
@@ -51,9 +52,10 @@ Commands exit non-zero on the "bad" outcome so they slot into CI without extra p
 | `verify status-list` | the read index is revoked, or verification errors | the index is valid |
 | `x509-hash --client-id` | the claimed `client_id` does not match the computed binding | match (or no `--client-id` given) |
 | `doctor` | any blocking finding | no findings |
+| `evidence verify` / `evidence replay` | bundle hashes, replay determinism, or signature verification fails | bundle is valid |
 | `register` | over-ask without `--force`, or a blocking format error | clean (dry-run or written) |
 
-Commands that purely read and render (`inspect`, `decode`, `baselines`, `generate`, `list`) exit 0 on success.
+Commands that purely read and render (`inspect`, `decode`, `baselines`, `generate`, `list`) exit 0 on success. `evidence export` exits non-zero when the source manifest or artifacts are invalid.
 
 ---
 
@@ -1061,7 +1063,7 @@ Options (all optional):
 - `--trust-anchor <TRUST_ANCHOR>` (env `TRUST_ANCHOR_PATH`): a PID issuer trust anchor PEM. When set, the response path rejects issuers that do not chain to it; when unset, issuer trust is not enforced.
 - `--live-status` (env `LIVE_STATUS`): resolve the token-status-list over the network on the response path and reject a revoked or suspended PID. Default `false` (offline-friendly). Only takes effect when `--trust-anchor` is also set.
 - `--quiet`: suppress the live per-step trace on the console. The trace still records and is served at `/trace/<session>` and `/api/trace/<session>`.
-- `--unsafe-debug-artifacts <UNSAFE_DEBUG_ARTIFACTS>` (env `AUGENMASS_UNSAFE_DEBUG_ARTIFACTS`): opt-in, off by default. Write full-fidelity debug artifacts for each session under `<dir>/<session>/`: the raw `direct_post` body, the decrypted authorization response when an encrypted wallet response is decrypted, the per-session private encryption key, the signed request object (JAR), and the decoded request payload, plus a `debug-manifest.json` marked sensitive. Files are owner-only (dirs `0700`, files `0600`). UNSAFE: this writes raw wallet material, including personal data, to local disk in the clear. It is never served over HTTP; the trace records the file name, a label, the length, a SHA-256, and the redaction fields `unsafeDebugArtifacts`, `pathRedacted`, `redacted`, and `redaction`, never a path or a value.
+- `--unsafe-debug-artifacts <UNSAFE_DEBUG_ARTIFACTS>` (env `AUGENMASS_UNSAFE_DEBUG_ARTIFACTS`): opt-in, off by default. Write full-fidelity debug artifacts for each session under `<dir>/<session>/`: the raw `direct_post` body, the decrypted authorization response when an encrypted wallet response is decrypted, the per-session private encryption key, the signed request object (JAR), the decoded request payload, and a verification context (`nonce`, `aud`, `vct`, clock, freshness window), plus a `debug-manifest.json` marked sensitive. Files are owner-only (dirs `0700`, files `0600`). UNSAFE: this writes raw wallet material, including personal data, to local disk in the clear. It is never served over HTTP; the trace records the file name, a label, the length, a SHA-256, and the redaction fields `unsafeDebugArtifacts`, `pathRedacted`, `redacted`, and `redaction`, never a path or a value.
 
 Runtime behavior: this command does not exit on its own and does not use `--json`. It binds the listener and serves until Ctrl-C. On startup it prints the open URL, the computed `client_id`, whether the cert is throwaway or the registrar leaf, whether issuer trust is enforced, whether status checks are live, where the trace is served, and whether unsafe local debug artifacts are enabled.
 
@@ -1142,6 +1144,103 @@ Bind on all interfaces so a wallet on a phone can reach the tool (the `--public-
 
 ```
 augenmass serve --host 0.0.0.0 --public-url http://192.0.2.10:8080/
+```
+
+---
+
+# EVIDENCE
+
+## `evidence`
+
+Export, verify, and replay local evidence captured by `serve --unsafe-debug-artifacts`. The source directory and the bundle are sensitive because they can contain the raw wallet POST body, decrypted authorization response material, and the verifier session private response key. The replay command renders only a redacted timeline.
+
+```
+Usage: augenmass evidence [OPTIONS] <COMMAND>
+```
+
+Subcommands:
+
+- `export`: export one serve unsafe-debug session directory into a portable bundle.
+- `verify`: verify bundle hashes, replay determinism, and optional signature.
+- `replay`: render the bundle's projector-safe replay timeline.
+
+All subcommands accept `--json`.
+
+## `evidence export`
+
+```
+Usage: augenmass evidence export [OPTIONS] --out <OUT> <SESSION_DIR>
+```
+
+Arguments:
+
+- `<SESSION_DIR>`: a session directory containing `debug-manifest.json`, for example `./debug-out/<session>`.
+
+Options:
+
+- `--out <OUT>`: output bundle path.
+- `--signing-key <SIGNING_KEY>`: optional P-256 PKCS#8 private key PEM for signing the bundle with ES256.
+
+The exported JSON bundle has `kind: "augenmass-evidence-bundle"`, `schemaVersion: 1`, a canonical `payloadSha256`, a `sensitive: true` payload, the raw artifacts as base64url-no-pad entries, and a deterministic redacted `replayTrace`. The canonical payload hash excludes wall-clock export time, so the same artifact set produces the same payload hash.
+
+Text output:
+
+```
+EVIDENCE BUNDLE EXPORTED
+session: <session>
+out: <bundle.json>
+entries: <n>
+payloadSha256: <sha256>
+signature: present|absent
+sensitive: true
+```
+
+## `evidence verify`
+
+```
+Usage: augenmass evidence verify [OPTIONS] <BUNDLE>
+```
+
+Arguments:
+
+- `<BUNDLE>`: evidence bundle JSON.
+
+Options:
+
+- `--verify-key <VERIFY_KEY>`: optional P-256 public key PEM for signature verification. If omitted, a signed bundle is checked against its embedded public key.
+
+Verification checks every entry length and SHA-256, regenerates the redacted replay trace from the embedded artifacts, checks that it matches the stored replay trace, checks the canonical payload SHA-256, and verifies the optional ES256 signature. It exits non-zero on any mismatch.
+
+Text output:
+
+```
+EVIDENCE BUNDLE VALID
+session: <session>
+entries: <n>
+replayEvents: <n>
+payloadSha256: <sha256>
+signature: absent|valid with embedded key|valid with supplied key
+sensitive: true
+```
+
+## `evidence replay`
+
+```
+Usage: augenmass evidence replay [OPTIONS] <BUNDLE>
+```
+
+Arguments and options match `evidence verify`.
+
+Replay first performs the same bundle verification, then prints the redacted timeline. It never writes raw wallet material to stdout. It uses only shape, lengths, SHA-256 digests, field names, artifact labels, and verification outcomes. If the bundle contains `direct-post.body`, `session-enc-key.jwk`, `verification-context.json`, and an encrypted response, replay decrypts the `direct_post.jwt` locally and verifies the SD-JWT VC presentation offline with the captured nonce, audience, vct, clock, and freshness window. Trust anchoring and live status are not claimed by evidence replay unless a later command adds explicit offline inputs for those checks.
+
+Example:
+
+```
+augenmass serve --unsafe-debug-artifacts ./debug-out
+# After a wallet session, export the session directory:
+augenmass evidence export ./debug-out/<session> --out evidence.json
+augenmass evidence verify evidence.json
+augenmass evidence replay evidence.json
 ```
 
 ---

@@ -306,6 +306,39 @@ async fn verify_any(
 ) -> Result<VerifiedPid, String> {
     let binding = request_binding(session);
     let sid = session.uuid;
+    if let Some(root) = st.unsafe_debug_artifacts.as_ref() {
+        match crate::serve::artifacts::write_json(
+            root,
+            sid,
+            "verification-context.json",
+            "verification replay context",
+            &json!({
+                "nonce": &binding.nonce,
+                "aud": &binding.aud,
+                "nowUnix": now_unix,
+                "maxAgeSecs": DEFAULT_MAX_AGE_SECS,
+                "vct": PID_VCT,
+            }),
+        ) {
+            Ok(artifact) => {
+                st.trace
+                    .record(
+                        sid,
+                        TraceKind::ArtifactSaved,
+                        "saved unsafe debug verification context artifact",
+                        Some(artifact.trace_detail()),
+                    )
+                    .await;
+            }
+            Err(e) => {
+                let reason = format!("failed to write unsafe debug verification context: {e}");
+                st.trace
+                    .record_at(sid, TraceKind::Error, TraceLevel::Bad, &reason, None)
+                    .await;
+                return Err(reason);
+            }
+        }
+    }
     match response {
         AuthorizationResponse::Jwt(jwt) => {
             let encryption_key = {

@@ -6,7 +6,7 @@ Natural-language intents mapped to exact `augenmass` commands. Every command bel
 
 Input ergonomics: every artifact argument (`<INPUT>`, `<BODY>`, `<REQUEST>`, and the file-valued flags) accepts a file path, an inline value, or `-` for stdin. So `... check examples/min.json`, `... check '{"rpId":...}'`, and `cat body.json | ... check -` are all equivalent.
 
-The `--json` flag: available on every read-only command. It emits machine-readable JSON instead of the text rendering, for agents and CI. Add it to any `inspect`, `decode`, `check`, `audit`, `baselines`, `verify`, `x509-hash`, `generate`, `doctor`, or `list` invocation.
+The `--json` flag: available on every read-only command. It emits machine-readable JSON instead of the text rendering, for agents and CI. Add it to any `inspect`, `decode`, `check`, `audit`, `baselines`, `verify`, `x509-hash`, `generate`, `doctor`, `evidence`, or `list` invocation.
 
 Exit codes: commands exit non-zero on the "bad" outcome so they gate cleanly in CI. The clean outcome is exit 0. See the exit-code column on each command and the summary table at the end.
 
@@ -160,8 +160,9 @@ Example pipeline (generate, then gate):
 | Enforce issuer trust and live revocation. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" serve --trust-anchor <PEM> --live-status` | `--live-status` needs a trust anchor |
 | Make it reachable from a phone wallet. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" serve --host 0.0.0.0 --public-url <URL>` | `--public-url` must end in `/` and be reachable from the phone |
 | Suppress the live console trace. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" serve --quiet` | Still served at `/trace/:id` and `/api/trace/:id` |
+| Capture full-fidelity local artifacts. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" serve --unsafe-debug-artifacts <DIR>` | UNSAFE, local only, never served over HTTP |
 
-Flags (all optional, each with an env var): `--port` (`PORT`, default 8080), `--host` (`HOST`, default 127.0.0.1), `--public-url` (`PUBLIC_URL`, default `http://127.0.0.1:8080/`, must end in `/`), `--key` (`RP_KEY_PATH`, EC private key PEM), `--leaf` (`RP_LEAF_PATH`, leaf cert PEM), `--purpose` (`PURPOSE`, default `event_checkin`), `--trust-anchor` (`TRUST_ANCHOR_PATH`, PID issuer anchor PEM; when set, the response path rejects issuers that do not chain to it), `--live-status` (`LIVE_STATUS`, default false; resolve the token-status-list over the network and reject revoked/suspended, only effective with a trust anchor), and `--quiet` (suppress the live console trace). This command does not use `--json` and does not exit on its own.
+Flags (all optional, each with an env var where noted): `--port` (`PORT`, default 8080), `--host` (`HOST`, default 127.0.0.1), `--public-url` (`PUBLIC_URL`, default `http://127.0.0.1:8080/`, must end in `/`), `--key` (`RP_KEY_PATH`, EC private key PEM), `--leaf` (`RP_LEAF_PATH`, leaf cert PEM), `--purpose` (`PURPOSE`, default `event_checkin`), `--trust-anchor` (`TRUST_ANCHOR_PATH`, PID issuer anchor PEM; when set, the response path rejects issuers that do not chain to it), `--live-status` (`LIVE_STATUS`, default false; resolve the token-status-list over the network and reject revoked/suspended, only effective with a trust anchor), `--quiet` (suppress the live console trace), and `--unsafe-debug-artifacts <DIR>` (`AUGENMASS_UNSAFE_DEBUG_ARTIFACTS`, off by default). This command does not use `--json` and does not exit on its own.
 
 HTTP endpoints: `GET /` (landing page and QR/deep-link), `GET /request/:id` (the signed JAR, content-type `application/oauth-authz-req+jwt`), `POST /response/:id` (the wallet's `direct_post.jwt`, returning JSON `{ status: "verified" | "rejected", reason?, inspect, trace }`), `GET /inspect/:id` (the over-ask inspector, with a `?demo=overask` variant), `GET /trace/:id` (the HTML timeline, auto-refreshing while in flight), `GET /api/trace/:id` (the trace as JSON), `GET /api/sessions` (the sessions seen this run), and `GET /health`.
 
@@ -176,6 +177,30 @@ Example:
 #   open      : http://127.0.0.1:8080/
 #   client_id : x509_hash:...
 #   ...        SESSION_CREATED / REQUEST_BUILT / REQUEST_OBJECT_FETCHED / ...
+```
+
+## EVIDENCE: export and replay local audit bundles
+
+`evidence` consumes one `serve --unsafe-debug-artifacts` session directory. The source directory and bundle are sensitive because they can contain raw wallet material and the verifier session private response key. Verification and replay output stay redacted.
+
+| Intent (plain English) | Command | Exit on "bad" |
+| --- | --- | --- |
+| Export one unsafe debug session directory into a bundle. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" evidence export <session-dir> --out <bundle.json>` | 1 if the source manifest or artifacts are invalid |
+| Export and sign with ES256. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" evidence export <session-dir> --out <bundle.json> --signing-key <pem>` | 1 if export or signing fails |
+| Verify hashes, replay determinism, and optional signature. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" evidence verify <bundle.json>` | 1 on mismatch |
+| Verify against a supplied public key. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" evidence verify <bundle.json> --verify-key <pem>` | 1 on mismatch |
+| Render the projector-safe replay timeline. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" evidence replay <bundle.json>` | 1 on invalid bundle |
+
+`evidence export` writes a JSON bundle with `kind: "augenmass-evidence-bundle"`, `schemaVersion: 1`, `payloadSha256`, `sensitive: true`, raw artifacts as base64url-no-pad entries, and a deterministic redacted `replayTrace`. `evidence verify` checks each entry length and SHA-256, regenerates the replay trace, checks the canonical payload hash, and verifies the optional ES256 signature. `evidence replay` performs the same verification first, then prints only the redacted timeline.
+
+When the capture contains `direct-post.body`, `session-enc-key.jwk`, `verification-context.json`, and an encrypted response, replay decrypts and verifies the SD-JWT VC offline against the captured nonce, audience, vct, clock, and freshness window. It does not claim trust anchoring or live-status replay.
+
+Example:
+
+```sh
+"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" evidence export ./debug-out/<session> --out evidence.json
+"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" evidence verify evidence.json
+"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" evidence replay evidence.json
 ```
 
 ## WRITE: register under guardrails, read back, run the local clone
@@ -224,6 +249,7 @@ Example:
 | `x509-hash` (no `--client-id`) | computed | (no comparison) |
 | `x509-hash --client-id` | match | mismatch |
 | `doctor` | no findings | findings |
+| `evidence verify`, `evidence replay` | bundle valid | hash, replay, or signature mismatch |
 | `serve` | runs until Ctrl-C | (server; no gating) |
 | `register` | dry-run or write succeeds | over-ask without `--force`, or a blocking format error |
 | `list`, `generate`, `clone serve` | success | (no gating) |

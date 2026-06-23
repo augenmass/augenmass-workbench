@@ -11,8 +11,8 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 
 use crate::commands::decode::Decoded;
 use crate::commands::{
-    audit, baselines, check, clone, decode, doctor, generate, inspect, register, validate, verify,
-    x509hash,
+    audit, baselines, check, clone, decode, doctor, evidence, generate, inspect, register,
+    validate, verify, x509hash,
 };
 use crate::generator::GenerateOptions;
 use crate::http_target::Target;
@@ -95,6 +95,11 @@ enum Command {
         #[command(subcommand)]
         what: ValidateCmd,
     },
+    /// Export, verify, and replay local evidence captured by serve.
+    Evidence {
+        #[command(subcommand)]
+        what: EvidenceCmd,
+    },
     /// Write a registration under guardrails (dry-run by default).
     Register(RegisterCommand),
     /// Read registrations back for one relying party, decoded.
@@ -175,6 +180,37 @@ enum VerifyCmd {
         /// The status index to read.
         #[arg(long)]
         index: usize,
+    },
+}
+
+#[derive(Subcommand)]
+enum EvidenceCmd {
+    /// Export one serve unsafe-debug session directory into a portable bundle.
+    Export {
+        /// A session directory containing debug-manifest.json.
+        session_dir: PathBuf,
+        /// Output bundle path.
+        #[arg(long)]
+        out: PathBuf,
+        /// Optional P-256 PKCS#8 private key PEM for signing the bundle.
+        #[arg(long)]
+        signing_key: Option<PathBuf>,
+    },
+    /// Verify bundle hashes, replay determinism, and optional signature.
+    Verify {
+        /// Evidence bundle JSON.
+        bundle: PathBuf,
+        /// Optional P-256 public key PEM for signature verification.
+        #[arg(long)]
+        verify_key: Option<PathBuf>,
+    },
+    /// Render the bundle's projector-safe replay timeline.
+    Replay {
+        /// Evidence bundle JSON.
+        bundle: PathBuf,
+        /// Optional P-256 public key PEM for signature verification.
+        #[arg(long)]
+        verify_key: Option<PathBuf>,
     },
 }
 
@@ -344,6 +380,10 @@ pub async fn run() -> Result<()> {
             };
             exit_if(bad);
         }
+        Command::Evidence { what } => {
+            let ok = run_evidence(what, fmt)?;
+            exit_if(!ok);
+        }
         Command::Register(cmd) => {
             let content = read_input(&cmd.body)?;
             register::register(
@@ -364,6 +404,32 @@ pub async fn run() -> Result<()> {
         Command::Serve(args) => serve::run(args).await?,
     }
     Ok(())
+}
+
+fn run_evidence(what: EvidenceCmd, fmt: OutputFormat) -> Result<bool> {
+    match what {
+        EvidenceCmd::Export {
+            session_dir,
+            out,
+            signing_key,
+        } => {
+            evidence::export(
+                evidence::ExportArgs {
+                    session_dir,
+                    out,
+                    signing_key,
+                },
+                fmt,
+            )?;
+            Ok(true)
+        }
+        EvidenceCmd::Verify { bundle, verify_key } => {
+            evidence::verify(evidence::VerifyArgs { bundle, verify_key }, fmt)
+        }
+        EvidenceCmd::Replay { bundle, verify_key } => {
+            evidence::replay(evidence::VerifyArgs { bundle, verify_key }, fmt)
+        }
+    }
 }
 
 fn run_decode(what: DecodeCmd, fmt: OutputFormat) -> Result<()> {

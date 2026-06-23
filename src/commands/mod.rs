@@ -7,6 +7,7 @@ pub mod check;
 pub mod clone;
 pub mod decode;
 pub mod doctor;
+pub mod evidence;
 pub mod generate;
 pub mod inspect;
 pub mod register;

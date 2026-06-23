@@ -43,6 +43,7 @@ verify:
     cargo run --quiet -- x509-hash fixtures/certs/access-leaf.pem --client-id x509_hash:VE3qp3vLVkU8JyVmXkjL7CSDVxVoTFdTv5fAEwmjKOI
     # the wallet-interaction debugger wires up (help exits without binding a port)
     cargo run --quiet -- serve --help > /dev/null
+    cargo run --quiet -- evidence --help > /dev/null
     # the mdoc decoder reads the committed ISO 18013-5 mDL vector
     cargo run --quiet -- decode mdoc fixtures/mdoc/issuer-signed.hex > /dev/null
     # DCQL validation: the committed eudiplo query is clean, a bad one blocks

@@ -5,7 +5,12 @@
 //! is exercised by `just verify` and the `clone_server` unit test, not here.
 
 use assert_cmd::Command;
+use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
+use serde_json::json;
+use sha2::{Digest, Sha256};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 // Shared binding values for the ERICA / synthetic fixtures (see fixtures MANIFEST).
 const NONCE: &str = "b4ba2623-76a2-486b-a1f6-f1656025d07b";
@@ -15,6 +20,74 @@ const STATUS_KEY: &str = "fixtures/status/status-list-verify-key.pub.pem";
 
 fn bin() -> Command {
     Command::cargo_bin("augenmass").expect("binary builds")
+}
+
+fn test_temp_dir(prefix: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("{prefix}-{}", uuid::Uuid::new_v4()))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn write_evidence_source_artifact(
+    dir: &Path,
+    filename: &str,
+    label: &str,
+    text: &str,
+) -> serde_json::Value {
+    fs::write(dir.join(filename), text).expect("write evidence source artifact");
+    json!({
+        "label": label,
+        "filename": filename,
+        "path": dir.join(filename).display().to_string(),
+        "len": text.len(),
+        "sha256": sha256_hex(text.as_bytes()),
+    })
+}
+
+fn evidence_source_session() -> PathBuf {
+    let dir = test_temp_dir("augenmass-cli-evidence-source");
+    fs::create_dir_all(&dir).expect("create evidence source dir");
+    let entries = vec![
+        write_evidence_source_artifact(
+            &dir,
+            "request.payload.json",
+            "decoded authorization request payload",
+            r#"{"client_id":"https://self-issued.me/v2","nonce":"n","client_metadata":{"jwks":{"keys":[{"kid":"enc-1"}]}},"dcql_query":{"credentials":[{"id":"pid"}]}}"#,
+        ),
+        write_evidence_source_artifact(
+            &dir,
+            "direct-post.body",
+            "raw direct_post form body",
+            "vp_token=secret-claim&state=abc",
+        ),
+        write_evidence_source_artifact(
+            &dir,
+            "verification-context.json",
+            "verification replay context",
+            r#"{"nonce":"n","aud":"https://self-issued.me/v2","nowUnix":1780435200,"maxAgeSecs":300,"vct":"urn:eudi:pid:de:1"}"#,
+        ),
+    ];
+    let manifest = json!({
+        "schemaVersion": 1,
+        "kind": "serve-unsafe-debug-artifacts",
+        "session": "11111111-1111-4111-8111-111111111111",
+        "sensitive": true,
+        "entries": entries,
+    });
+    fs::write(
+        dir.join("debug-manifest.json"),
+        serde_json::to_string_pretty(&manifest).expect("manifest json"),
+    )
+    .expect("write evidence source manifest");
+    dir
 }
 
 // --- inspect / detection ---------------------------------------------------
@@ -517,6 +590,78 @@ fn validate_dcql_bad_query_blocks() {
         .stdout(contains("DCQL-CRED-ID-DUPLICATE"))
         .stdout(contains("DCQL-MDOC-PATH"))
         .stdout(contains("DCQL-SET-REF-DANGLING"));
+}
+
+// --- evidence export / replay ---------------------------------------------
+
+#[test]
+fn evidence_export_verify_and_replay_stays_redacted() {
+    let source = evidence_source_session();
+    let bundle_dir = test_temp_dir("augenmass-cli-evidence-bundle");
+    let bundle = bundle_dir.join("bundle.json");
+
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .stdout(contains("EVIDENCE BUNDLE EXPORTED"))
+        .stdout(contains("sensitive: true"));
+
+    bin()
+        .args(["evidence", "verify", bundle.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(contains("EVIDENCE BUNDLE VALID"));
+
+    bin()
+        .args(["evidence", "replay", bundle.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(contains("EVIDENCE REPLAY"))
+        .stdout(contains("bodySha256").not())
+        .stdout(contains("secret-claim").not());
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
+}
+
+#[test]
+fn evidence_json_verify_reports_valid_bundle() {
+    let source = evidence_source_session();
+    let bundle_dir = test_temp_dir("augenmass-cli-evidence-json");
+    let bundle = bundle_dir.join("bundle.json");
+
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let out = bin()
+        .args(["--json", "evidence", "verify", bundle.to_str().unwrap()])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("valid JSON");
+    assert_eq!(value["valid"], true);
+    assert_eq!(value["sensitive"], true);
+    assert_eq!(value["signature"], "absent");
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
 }
 
 #[test]

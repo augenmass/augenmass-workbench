@@ -9,19 +9,21 @@ description: >-
   write, or repair against the registrar schema, a DCQL query or OpenID4VP
   authorization request (JAR) to lint for over-ask or diagnose (x5c, client_id
   x509_hash), an OpenID4VCI credential offer or status list to decode, a
-  proportionate registration to generate, or a live wallet-to-verifier exchange
-  to debug against a verifier-in-a-box. It checks data minimisation against
+  proportionate registration to generate, a live wallet-to-verifier exchange
+  to debug against a verifier-in-a-box, or a local evidence bundle to export,
+  verify, or replay. It checks data minimisation against
   curated purpose baselines and the legal basis (eIDAS, GDPR, ARF), computes the
   x509_hash binding, and writes only under guardrails. Triggers: EUDI, EUDI
   Wallet, SD-JWT VC, mdoc, registration certificate, WRPRC, relying party,
   registrar, over-ask, data minimisation, DCQL, OpenID4VP, OpenID4VCI,
   credential offer, authorization request, JAR, x5c, x509_hash, status list,
-  trust anchor, PID, sandbox, wallet debugger, verifier-in-a-box, serve.
+  trust anchor, PID, sandbox, wallet debugger, verifier-in-a-box, serve,
+  evidence replay, audit bundle.
 ---
 
 # Augenmaß Workbench
 
-This skill drives the bundled `augenmass` binary at `${CLAUDE_PLUGIN_ROOT}/bin/augenmass`, a developer and auditor toolkit for the EUDI Wallet ecosystem. It decodes and inspects every common artifact, audits requests for over-asking against curated purpose baselines and the legal basis, verifies presentations cryptographically, writes registrations under guardrails, and live-debugs the wallet-to-verifier exchange. Everything runs fully offline except two paths that are network by nature: the registrar write path, and the live wallet-interaction debugger (`serve`), where a real wallet connects to the tool.
+This skill drives the bundled `augenmass` binary at `${CLAUDE_PLUGIN_ROOT}/bin/augenmass`, a developer and auditor toolkit for the EUDI Wallet ecosystem. It decodes and inspects every common artifact, audits requests for over-asking against curated purpose baselines and the legal basis, verifies presentations cryptographically, writes registrations under guardrails, live-debugs the wallet-to-verifier exchange, and replays local evidence bundles. Everything runs fully offline except two paths that are network by nature: the registrar write path, and the live wallet-interaction debugger (`serve`), where a real wallet connects to the tool.
 
 Claude Code adds the plugin `bin/` directory to PATH, so a bare `augenmass` works too. The `${CLAUDE_PLUGIN_ROOT}/bin/augenmass` form is the safe explicit path; use whichever is convenient.
 
@@ -36,6 +38,7 @@ Claude Code adds the plugin `bin/` directory to PATH, so a bare `augenmass` work
 - Generate a proportionate registration body or a DCQL query from claim paths.
 - Diagnose a verifier signed request / JAR: x5c shape, client_id x509_hash, content type.
 - Debug a live wallet interaction: run a verifier-in-a-box (`serve`) so a real EUDI wallet presents to it, and trace every step of the exchange (request built, JAR fetched, response decrypted, verified, trust, revocation, over-ask) on the console, in a browser timeline, and as JSON. The trace is redacted by default (no raw bodies, no claim values), each session uses a fresh ephemeral encryption key, and a plaintext `direct_post` is rejected; `--unsafe-debug-artifacts <dir>` opts in to full-fidelity local capture, never served over HTTP.
+- Export and replay local evidence: turn one `serve --unsafe-debug-artifacts` session directory into a sensitive bundle, verify its hashes and optional ES256 signature, then render a redacted replay timeline.
 - Write a registration to the local clone or the sandbox registrar, read it back, or run the local clone store.
 
 ## The one rule that matters
@@ -74,13 +77,16 @@ Writes are guarded. Reason before you write.
 | Generate a DCQL query from claim paths | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass generate dcql --claim <path> [--claim <path> ...]` |
 | Diagnose a signed request / JAR | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass doctor <request>` |
 | Debug a live wallet interaction (verifier-in-a-box) | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass serve [--port --host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet --unsafe-debug-artifacts]` |
+| Export a local evidence bundle | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass evidence export <session-dir> --out <bundle.json> [--signing-key <pem>]` |
+| Verify a local evidence bundle | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass evidence verify <bundle.json> [--verify-key <pem>]` |
+| Replay a projector-safe timeline | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass evidence replay <bundle.json> [--verify-key <pem>]` |
 | Write a registration (dry-run by default) | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass register <body> --target {clone\|sandbox} [--yes --force]` |
 | Read registrations back for one relying party | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass list --target {clone\|sandbox} [--rp <id>]` |
 | Run the local registrar-compatible clone store | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass clone serve [--db --port]` |
 
 Every artifact argument accepts a file path, an inline value, or `-` for stdin. Read-only commands accept `--json`.
 
-The read-only commands exit non-zero on the bad outcome so they slot into CI: `check` and `audit` exit 1 on over-ask (and `check` also on a blocking format error), `verify` exits 1 when not verified, untrusted, revoked, or erroring, `x509-hash --client-id` exits 1 on mismatch, and `doctor` exits 1 when it has findings.
+The read-only commands exit non-zero on the bad outcome so they slot into CI: `check` and `audit` exit 1 on over-ask (and `check` also on a blocking format error), `verify` exits 1 when not verified, untrusted, revoked, or erroring, `x509-hash --client-id` exits 1 on mismatch, `doctor` exits 1 when it has findings, and `evidence verify` / `evidence replay` exit non-zero when hashes, replay determinism, or signatures fail.
 
 ## Relying party, examples, and fixtures
 

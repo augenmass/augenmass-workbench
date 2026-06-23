@@ -119,6 +119,18 @@ wallet-interaction debugger.
   never served over HTTP). This is the headline new capability: the tool now
   debugs the actual wallet interaction, not just static artifacts. It is adapted
   from the verifier project's `verifier-service`, reusing the same engine.
+- `evidence` command group: export, verify, and replay local audit bundles from
+  `serve --unsafe-debug-artifacts` session directories. `evidence export
+  <session-dir> --out <bundle.json>` writes a sensitive JSON bundle with raw local
+  artifacts, canonical entry hashes, a deterministic redacted replay trace, and an
+  optional ES256 signature via `--signing-key`. `evidence verify <bundle.json>`
+  checks entry lengths, entry hashes, replay determinism, the canonical payload
+  hash, and the optional signature (with `--verify-key` when supplied). `evidence
+  replay <bundle.json>` renders the projector-safe timeline and never prints raw
+  wallet material. When the capture contains `direct-post.body`,
+  `session-enc-key.jwk`, `verification-context.json`, and an encrypted response,
+  replay decrypts and verifies the SD-JWT VC offline against the captured nonce,
+  audience, vct, clock, and freshness window.
 
 ### Changed
 
@@ -127,8 +139,8 @@ wallet-interaction debugger.
   HTTP-free and pure.
 - Commands are regrouped into clear families: UNDERSTAND (`inspect`, `decode`),
   PROPORTIONALITY (`check`, `audit`, `baselines`), CRYPTO (`verify`, `x509-hash`),
-  PRODUCE (`generate`), DIAGNOSE (`doctor`, `validate`), DEBUG (`serve`), and
-  WRITE (`register`, `list`, `clone`).
+  PRODUCE (`generate`), DIAGNOSE (`doctor`, `validate`), DEBUG (`serve`),
+  EVIDENCE (`evidence`), and WRITE (`register`, `list`, `clone`).
 - `check` now gates a registrar registration body before a write on both over-ask
   and format. It catches the registrar DTO traps: `claims[].path` must be an array
   of segments (`["age_equal_or_over","18"]`, not the string `"age_equal_or_over.18"`);
@@ -187,8 +199,8 @@ wallet-interaction debugger.
 - `serve --unsafe-debug-artifacts <dir>` (opt-in, off by default): writes
   full-fidelity local debug artifacts (raw `direct_post` body, decrypted response
   when an encrypted wallet response is decrypted, per-session private key, signed
-  request object, and decoded request payload) to `<dir>/<session>/` with owner-only
-  permissions (dirs `0700`, files `0600`) and a sensitive-marked
+  request object, decoded request payload, and verification replay context) to
+  `<dir>/<session>/` with owner-only permissions (dirs `0700`, files `0600`) and a sensitive-marked
   `debug-manifest.json`, recorded in the trace as `ARTIFACT_SAVED` with file name,
   label, length, SHA-256, and the redaction fields `unsafeDebugArtifacts`,
   `pathRedacted`, `redacted`, and `redaction`. Never served over HTTP. This
