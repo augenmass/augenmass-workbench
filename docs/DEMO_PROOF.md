@@ -57,6 +57,9 @@ It runs:
 - `just plugin-smoke`: checks the Claude Code and Codex plugin metadata, the
   executable bundled binary, the hook, the skill wording for the key command
   surfaces, and a small fixture-backed command sequence.
+- `just claude-plugin-smoke`: validates the Claude Code plugin and marketplace
+  manifests with `--strict`, installs the plugin from this checkout in a
+  temporary `HOME`, and confirms it is enabled.
 - `just codex-plugin-smoke`: installs the repo-local Codex marketplace and plugin
   into a temporary `CODEX_HOME`, then confirms the plugin is enabled.
 - `just live-cache-smoke`: starts `cache serve`, reaches the public sandbox API,
@@ -64,6 +67,10 @@ It runs:
   relying party through `list --target cached-sandbox`, prewarms with
   `cache warm`, then restarts the cache with a broken upstream and proves stale
   fallback.
+- `just deployed-cache-smoke`: optional hosted-backend proof. It skips when no
+  deployed cache URL is configured, or checks a Railway/VPS cache URL with
+  health, public cached reads, CLI `cached-sandbox`, and protected admin/warm
+  checks when `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` is set.
 - `just docker-smoke`: builds the Docker image locally, runs the cache backend
   container, checks `/api/health`, verifies it runs as uid `10001`, and proves
   admin-token protection.
@@ -72,8 +79,10 @@ Use the smaller gates when you are only touching one surface:
 
 ```sh
 just plugin-smoke
+just claude-plugin-smoke
 just codex-plugin-smoke
 just live-cache-smoke
+just deployed-cache-smoke
 just live-sandbox-smoke
 just docker-smoke
 ```

@@ -268,7 +268,7 @@ One engine is the spine. `augenmass-core` is a vendored, HTTP-free, pure-Rust cr
 - `docs/DEPLOYMENT.md`: deploying the cached-sandbox backend on Railway, Docker, or a VPS, with notes for Cloudflare and Vercel.
 - `docs/INSTALL.md`: source install, plugin install, and platform caveats.
 - `docs/RELEASE.md`: CI, release archives, and platform support.
-- `docs/DEMO_PROOF.md`: offline demo gates plus local plugin, live-cache, and Docker smoke checks.
+- `docs/DEMO_PROOF.md`: offline demo gates plus local plugin, live-cache, deployed-cache, and Docker smoke checks.
 - `docs/SHIPPING_STATUS.md`: the current demo-readiness verdict, proven gates, deployment status, and platform caveats.
 - The skill: `plugins/augenmass-workbench/skills/augenmass`.
 

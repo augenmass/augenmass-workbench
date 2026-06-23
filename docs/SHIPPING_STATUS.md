@@ -51,6 +51,8 @@ That proves:
 
 - The bundled plugin binary is present, executable, current, and exposes the
   advertised command surfaces through both Claude Code and Codex metadata checks.
+- The repo-local Claude Code marketplace validates with `--strict`, installs
+  `augenmass-workbench@augenmass` in a temporary `HOME`, and reports it enabled.
 - The repo-local Codex marketplace installs `augenmass-workbench@augenmass` in a
   temporary `CODEX_HOME` and reports it enabled.
 - The live public sandbox cache path works against
@@ -132,6 +134,10 @@ These are good to show on stage or in a recording:
 - `live-sandbox-smoke`: a credential-gated, non-mutating rehearsal for the real
   sandbox path. It skips without credentials and only performs a confirmed write
   when `AUGENMASS_LIVE_SANDBOX_WRITE=1` is set.
+- `deployed-cache-smoke`: an opt-in hosted-cache proof. It skips without
+  `AUGENMASS_DEPLOYED_CACHE_API_BASE`; with a Railway/VPS URL it checks health,
+  public cached reads, CLI `cached-sandbox`, and admin/warm protection when an
+  admin token is provided.
 
 ## Backend deployment verdict
 
@@ -149,6 +155,15 @@ The Docker image has the right shape for Railway:
 Cloudflare Workers and Vercel are not the best fit for the current Rust binary
 plus SQLite backend. They would need either a rewrite against their storage model
 or a separate adapter. For this release, keep the cache backend as a container.
+
+No hosted cache URL is committed here. Once a Railway or VPS service exists,
+validate it locally with:
+
+```sh
+AUGENMASS_DEPLOYED_CACHE_API_BASE=https://cache.example/api \
+AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN=<token> \
+  just deployed-cache-smoke
+```
 
 ## Cross-platform status
 

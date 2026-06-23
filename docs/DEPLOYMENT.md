@@ -157,6 +157,20 @@ data, proves `MISS` and `HIT`, reads registrations through
 API, validates warmed JSON shape, then proves stale fallback with an
 intentionally broken upstream. It uses no sandbox credentials.
 
+Deployed cache proof, once Railway or a VPS URL exists:
+
+```sh
+AUGENMASS_DEPLOYED_CACHE_API_BASE=https://cache.example/api \
+AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN=<token> \
+  just deployed-cache-smoke
+```
+
+Without `AUGENMASS_DEPLOYED_CACHE_API_BASE`, the deployed smoke exits cleanly so
+local release gates do not depend on a hosted service. With only the API base, it
+checks health, public cached reads, and the CLI `cached-sandbox` path. With the
+admin token, it also proves `/cache/status` is protected, verifies authenticated
+status access, runs `cache warm`, and confirms warmed entries are visible.
+
 ## Cloudflare
 
 Cloudflare Workers support Rust through `workers-rs`, and Cloudflare D1 provides

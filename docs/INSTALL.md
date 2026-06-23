@@ -118,6 +118,17 @@ It uses a temporary `CODEX_HOME`, adds this checkout as a local Codex
 marketplace, confirms `augenmass-workbench@augenmass` is available, installs it,
 and confirms it is enabled. It does not modify your real Codex config.
 
+The Claude Code plugin install gate is:
+
+```sh
+just claude-plugin-smoke
+```
+
+It uses a temporary `HOME`, validates the plugin and marketplace manifests with
+`claude plugin validate --strict`, installs `augenmass-workbench@augenmass` from
+this checkout, and confirms the installed plugin is enabled. It does not modify
+your real Claude Code config.
+
 The release-archive gate is:
 
 ```sh
@@ -137,4 +148,6 @@ just local-release-proof
 That adds workspace verification, release archive proof, the plugin bundle
 smoke, live cached-sandbox proof, macOS target probing, explicit Linux arm64
 and amd64 Docker build-and-run checks, and Linux release archives smoke-tested
-inside matching Docker containers. It does not spend runner credits.
+inside matching Docker containers. `just deployed-cache-smoke` is separate and
+opt-in because it needs a hosted cache URL. None of these local gates spends
+runner credits.
