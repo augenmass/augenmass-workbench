@@ -37,7 +37,7 @@ commands. At the time of this status note, the suite includes:
 
 - 45 unit tests.
 - 43 CLI integration tests.
-- 7 cache integration tests.
+- 8 cache integration tests.
 - 5 demo-proof integration tests.
 - 1 serve integration test.
 
@@ -77,6 +77,15 @@ just install-smoke
 It installs the CLI into a temporary local Cargo root, runs the installed
 binary, and proves the first-run path without relying on the plugin bundle.
 
+The local release-archive gate is:
+
+```sh
+just release-archive-smoke
+```
+
+It builds a host archive, extracts it, and runs the packaged binary only against
+packaged docs, examples, and fixtures.
+
 The local platform probe is:
 
 ```sh
@@ -95,10 +104,10 @@ just local-release-proof
 ```
 
 This gate passed locally on 2026-06-23. It combines the deterministic Rust
-gates, source-install smoke, plugin smoke, live cached-sandbox smoke, platform
-smoke, and explicit Docker cache-backend builds/runs for `linux/arm64` and
-`linux/amd64`. It still does not replace native Windows or native Linux
-release-archive testing.
+gates, source-install smoke, release-archive smoke, plugin smoke, live
+cached-sandbox smoke, platform smoke, and explicit Docker cache-backend
+builds/runs for `linux/arm64` and `linux/amd64`. It still does not replace
+native Windows or native Linux release-archive testing.
 
 ## Presentation-safe surfaces
 

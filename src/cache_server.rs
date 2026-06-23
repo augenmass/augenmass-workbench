@@ -350,19 +350,7 @@ async fn fetch_and_store(state: &AppState, request: &CacheRequest) -> Result<Cac
         .and_then(|value| value.to_str().ok())
         .unwrap_or("application/json")
         .to_string();
-    let body = response
-        .bytes()
-        .await
-        .with_context(|| format!("read GET {} response", request.upstream_url))?
-        .to_vec();
-    if body.len() > MAX_CACHE_BODY_BYTES {
-        anyhow::bail!(
-            "GET {} returned {} bytes, above the cache body cap of {} bytes",
-            request.upstream_url,
-            body.len(),
-            MAX_CACHE_BODY_BYTES
-        );
-    }
+    let body = read_response_body_with_cap(response, &request.upstream_url).await?;
 
     if !status.is_success() {
         anyhow::bail!(
@@ -385,6 +373,30 @@ async fn fetch_and_store(state: &AppState, request: &CacheRequest) -> Result<Cac
     };
     store_cached(state, &cached)?;
     Ok(cached)
+}
+
+async fn read_response_body_with_cap(
+    mut response: reqwest::Response,
+    upstream_url: &str,
+) -> Result<Vec<u8>> {
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .with_context(|| format!("read GET {upstream_url} response"))?
+    {
+        let next_len = body
+            .len()
+            .checked_add(chunk.len())
+            .context("cache response body length overflow")?;
+        if next_len > MAX_CACHE_BODY_BYTES {
+            anyhow::bail!(
+                "GET {upstream_url} returned more than {MAX_CACHE_BODY_BYTES} bytes, above the cache body cap"
+            );
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
 }
 
 fn init_db(conn: &Connection) -> Result<()> {

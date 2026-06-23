@@ -8,7 +8,7 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
 - Repo: `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench`, its own git repo on `main`.
 - A working, fully-tested Rust CLI `augenmass` (v0.2.0) plus a Claude Code skill, cache backend, Docker image, and full docs.
 - Build green, zero warnings, clippy clean, `cargo fmt --check` clean.
-- Tests at last shipping pass: 45 unit + 43 CLI integration + 7 cache integration + 5 demo-proof integration + 1 serve integration, all passing against real committed offline fixtures.
+- Tests at last shipping pass: 45 unit + 43 CLI integration + 8 cache integration + 5 demo-proof integration + 1 serve integration, all passing against real committed offline fixtures.
 - Every command verified by hand against the real fixtures (verification, revocation, x509_hash, over-ask, the guarded clone write/read loop, the live serve flow).
 - HEADLINE capability built: `augenmass serve`, a live wallet-interaction debugger (P2 done), since hardened to be safe-by-default (the P0 security PR) with an `evidence` export/verify/replay group built on top.
 - Recent `main` history includes the foundation, serve debugger, serve hardening, mdoc decode,
@@ -26,8 +26,9 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
   redacted projector-safe replay that can decrypt and offline-verify a captured response). Both were
   verified against the running binary and fast-forward merged to `main`.
 - Added since: `cache serve`, `cache warm`, `cached-sandbox` read-through behavior, local
-  `plugin-smoke`, `install-smoke`, `live-cache-smoke`, `docker-smoke`, explicit Linux Docker
-  platform smokes, `shipping-smoke`, `platform-smoke`, and `local-release-proof` gates.
+  `plugin-smoke`, `install-smoke`, `release-archive-smoke`, `live-cache-smoke`, `docker-smoke`,
+  explicit Linux Docker platform smokes, `shipping-smoke`, `platform-smoke`, and
+  `local-release-proof` gates.
 - NOT finished: the rest of P3 (mdoc cryptographic VERIFY, trust-list parse, PE->DCQL, OpenID4VCI
   metadata, full JAR signature verify) and fully proven native Windows/Linux release archives. See "Next work".
 - The previously deferred review finding (LOW: serve reused one response-encryption key across
@@ -116,6 +117,7 @@ cargo build
 cargo test --workspace     # full workspace suite, including the reusable core crate
 just verify                # fmt --check, clippy -D warnings, test, + real-fixture smoke battery
 just install-smoke         # source install into an isolated local root
+just release-archive-smoke # extracted release archive runs against packaged fixtures
 just shipping-smoke        # plugin bundle + live cached-sandbox + Docker cache backend
 just platform-smoke        # host/cross-target cargo checks; skips missing cross toolchains unless strict
 just local-release-proof   # strongest local gate; includes linux/arm64 and linux/amd64 Docker smokes
@@ -206,9 +208,9 @@ P6. Cross-platform release binaries; consider a C-ABI / WASM build of the engine
 ## Awareness: the parallel Codex build (surveyed 2026-06-23)
 
 `../augenmass-workbench-v2-codex` is a SEPARATE deliverable by Codex (the user's other agent),
-its own git repo, STILL ACTIVELY being committed to (last seen: 34 commits, one 8 minutes before
-this survey). Codex finished its Python -> Rust rewrite: it is now Rust-first (27 .rs, ~14,200
-lines, edition 2024), two bins (`augenmass-workbench`, `agm-workbench`).
+its own git repo, and was still active at survey time. Codex finished its Python -> Rust rewrite:
+it is now Rust-first (27 .rs, ~14,200 lines, edition 2024), two bins
+(`augenmass-workbench`, `agm-workbench`).
 
 What codex now is (its old "no production crypto verification" boundary is GONE):
 - It does REAL crypto, but via `verifier-core` as a PATH dependency to `../verifier/verifier-core`

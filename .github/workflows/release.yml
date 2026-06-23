@@ -63,6 +63,14 @@ jobs:
             tar -C dist -czf "dist/${name}.tar.gz" "${name}"
           fi
 
+      - name: Smoke packaged archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(cargo pkgid | sed 's/.*#//')"
+          name="augenmass-v${version}-${{ matrix.target }}"
+          ./scripts/release-archive-smoke.sh "dist/${name}.${{ matrix.package_ext }}"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

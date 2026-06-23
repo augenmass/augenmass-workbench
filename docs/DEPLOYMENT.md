@@ -23,6 +23,10 @@ The cache stores public sandbox responses only. It still deserves a persistent
 database and an admin token because refresh and status expose operational
 control.
 
+Upstream response bodies are capped at 5 MiB while they are being read. If an
+upstream crosses that cap, the refresh is refused before the full body is
+downloaded; existing stale cache entries can still be served.
+
 ## Runtime configuration
 
 The server can be configured with flags or environment variables.

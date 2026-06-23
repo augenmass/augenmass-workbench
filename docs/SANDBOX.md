@@ -84,6 +84,10 @@ offline; cached-sandbox is read-only and exists so a demo, audit, or small share
 backend can keep a stable view of the sandbox even when the upstream is slow,
 drifting, or briefly unreachable.
 
+Responses are capped at 5 MiB while streaming from the upstream. Oversized
+responses are refused before being stored, and an existing stale response can
+still be used when a refresh fails.
+
 Run it with:
 
 ```

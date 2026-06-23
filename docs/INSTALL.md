@@ -70,12 +70,22 @@ It installs the CLI into a temporary local Cargo root, checks that the installed
 binary is executable, then runs `--version`, `--help`, `inspect`, and a generated
 registration body through `check`.
 
+The release-archive gate is:
+
+```sh
+just release-archive-smoke
+```
+
+It builds the host archive layout, extracts it into a temporary directory, then
+runs the packaged binary against packaged docs, examples, and fixtures. This is
+the local check that the downloaded archive is self-contained.
+
 The broader local release proof is:
 
 ```sh
 just local-release-proof
 ```
 
-That adds workspace verification, the plugin bundle smoke, live cached-sandbox
-proof, macOS target probing, and explicit Linux arm64 and amd64 Docker
-build-and-run checks. It does not spend GitHub Actions minutes.
+That adds workspace verification, release archive proof, the plugin bundle
+smoke, live cached-sandbox proof, macOS target probing, and explicit Linux arm64
+and amd64 Docker build-and-run checks. It does not spend runner credits.

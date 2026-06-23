@@ -10,7 +10,7 @@ build:
 
 # Build the release binary.
 release:
-    cargo build --release
+    cargo build --release --locked
 
 # Format the whole workspace.
 fmt:
@@ -79,6 +79,10 @@ plugin-smoke:
 install-smoke:
     ./scripts/install-smoke.sh
 
+# Verify the self-contained release archive layout before tagging.
+release-archive-smoke: release
+    bash -c 'set -euo pipefail; version="$(cargo pkgid | sed "s/.*#//")"; target="$(rustc -vV | sed -n "s/^host: //p")"; name="augenmass-v${version}-${target}"; out="dist/local-release-archive-smoke"; binary="augenmass"; case "${target}" in *windows*) binary="augenmass.exe";; esac; rm -rf "${out}"; mkdir -p "${out}/${name}"; cp "target/release/${binary}" "${out}/${name}/"; cp README.md LICENSE NOTICE "${out}/${name}/"; cp -R docs examples fixtures "${out}/${name}/"; tar -C "${out}" -czf "${out}/${name}.tar.gz" "${name}"; ./scripts/release-archive-smoke.sh "${out}/${name}.tar.gz"'
+
 # Verify the live cached-sandbox path against the public sandbox API.
 live-cache-smoke:
     ./scripts/live-cache-smoke.sh
@@ -99,11 +103,11 @@ docker-smoke-amd64:
 platform-smoke:
     ./scripts/platform-smoke.sh
 
-# Local shipping proof that avoids remote GitHub CI runner minutes.
+# Local shipping proof that avoids remote GitHub CI runner credits.
 shipping-smoke: plugin-smoke live-cache-smoke docker-smoke
 
 # Strongest local release proof; no GitHub Actions, but two Linux Docker builds.
-local-release-proof: verify demo-run plugin-smoke install-smoke live-cache-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64
+local-release-proof: verify demo-run plugin-smoke install-smoke release-archive-smoke live-cache-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64
 
 # Bundle the release binary into the plugin (Apple Silicon macOS).
 bundle: release

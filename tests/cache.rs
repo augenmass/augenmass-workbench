@@ -2,6 +2,7 @@
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use assert_cmd::Command;
 use augenmass_workbench::cache_server::{router, AppState};
@@ -12,6 +13,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Clone)]
 struct UpstreamState {
@@ -32,6 +34,14 @@ fn test_db(prefix: &str) -> String {
         .to_string()
 }
 
+fn upstream_state() -> UpstreamState {
+    UpstreamState {
+        schema_hits: Arc::new(AtomicUsize::new(0)),
+        registration_hits: Arc::new(AtomicUsize::new(0)),
+        fail_registrations: Arc::new(AtomicBool::new(false)),
+    }
+}
+
 async fn spawn_upstream(state: UpstreamState) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -47,6 +57,37 @@ async fn spawn_upstream(state: UpstreamState) -> String {
         .with_state(state);
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
+    });
+    format!("http://{addr}/api")
+}
+
+async fn spawn_chunked_oversize_upstream() -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind chunked upstream");
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.expect("accept chunked upstream");
+        let mut buffer = [0_u8; 1024];
+        let _ = stream.read(&mut buffer).await;
+        stream
+            .write_all(
+                b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ntransfer-encoding: chunked\r\n\r\n",
+            )
+            .await
+            .expect("write headers");
+        let chunk = vec![b'a'; 64 * 1024];
+        let header = format!("{:x}\r\n", chunk.len());
+        for _ in 0..82 {
+            stream
+                .write_all(header.as_bytes())
+                .await
+                .expect("write chunk header");
+            stream.write_all(&chunk).await.expect("write chunk");
+            stream.write_all(b"\r\n").await.expect("write chunk break");
+        }
+        stream.flush().await.expect("flush chunks");
+        tokio::time::sleep(Duration::from_secs(30)).await;
     });
     format!("http://{addr}/api")
 }
@@ -79,7 +120,7 @@ async fn spawn_cache_with_admin(
     format!("http://{addr}/api")
 }
 
-async fn schema_metadata(State(state): State<UpstreamState>) -> Json<Value> {
+async fn schema_metadata(State(state): State<UpstreamState>) -> Response {
     state.schema_hits.fetch_add(1, Ordering::SeqCst);
     Json(json!([
         {
@@ -88,6 +129,7 @@ async fn schema_metadata(State(state): State<UpstreamState>) -> Json<Value> {
             "source": "stub"
         }
     ]))
+    .into_response()
 }
 
 async fn schema_vocabularies(State(state): State<UpstreamState>) -> Json<Value> {
@@ -131,11 +173,7 @@ fn cache_header(headers: &HeaderMap, name: &str) -> String {
 
 #[tokio::test]
 async fn schema_metadata_is_cached_with_provenance_headers() {
-    let upstream_state = UpstreamState {
-        schema_hits: Arc::new(AtomicUsize::new(0)),
-        registration_hits: Arc::new(AtomicUsize::new(0)),
-        fail_registrations: Arc::new(AtomicBool::new(false)),
-    };
+    let upstream_state = upstream_state();
     let upstream = spawn_upstream(upstream_state.clone()).await;
     let cache = spawn_cache(&upstream, 3600).await;
     let client = reqwest::Client::new();
@@ -173,12 +211,39 @@ async fn schema_metadata_is_cached_with_provenance_headers() {
 }
 
 #[tokio::test]
+async fn schema_metadata_refuses_body_above_cache_cap_without_storing() {
+    let upstream = spawn_chunked_oversize_upstream().await;
+    let cache = spawn_cache(&upstream, 3600).await;
+    let client = reqwest::Client::new();
+
+    let response = tokio::time::timeout(
+        Duration::from_secs(5),
+        client.get(format!("{cache}/schema-metadata")).send(),
+    )
+    .await
+    .expect("cache fails before oversized upstream finishes")
+    .expect("oversized cache request");
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let text = response.text().await.expect("oversized error text");
+    assert!(text.contains("above the cache body cap"));
+
+    let status: Value = client
+        .get(format!("{cache}/cache/status"))
+        .send()
+        .await
+        .expect("cache status")
+        .json()
+        .await
+        .expect("status json");
+    assert_eq!(
+        status["entries"].as_array().expect("entries array").len(),
+        0
+    );
+}
+
+#[tokio::test]
 async fn registration_list_falls_back_to_stale_cache_on_upstream_failure() {
-    let upstream_state = UpstreamState {
-        schema_hits: Arc::new(AtomicUsize::new(0)),
-        registration_hits: Arc::new(AtomicUsize::new(0)),
-        fail_registrations: Arc::new(AtomicBool::new(false)),
-    };
+    let upstream_state = upstream_state();
     let upstream = spawn_upstream(upstream_state.clone()).await;
     let cache = spawn_cache(&upstream, 3600).await;
     let client = reqwest::Client::new();
@@ -212,11 +277,7 @@ async fn registration_list_falls_back_to_stale_cache_on_upstream_failure() {
 
 #[tokio::test]
 async fn registration_refresh_requires_rp() {
-    let upstream_state = UpstreamState {
-        schema_hits: Arc::new(AtomicUsize::new(0)),
-        registration_hits: Arc::new(AtomicUsize::new(0)),
-        fail_registrations: Arc::new(AtomicBool::new(false)),
-    };
+    let upstream_state = upstream_state();
     let upstream = spawn_upstream(upstream_state).await;
     let cache = spawn_cache(&upstream, 3600).await;
     let response = reqwest::Client::new()
@@ -231,11 +292,7 @@ async fn registration_refresh_requires_rp() {
 
 #[tokio::test]
 async fn registration_list_rejects_malformed_rp_before_upstream() {
-    let upstream_state = UpstreamState {
-        schema_hits: Arc::new(AtomicUsize::new(0)),
-        registration_hits: Arc::new(AtomicUsize::new(0)),
-        fail_registrations: Arc::new(AtomicBool::new(false)),
-    };
+    let upstream_state = upstream_state();
     let upstream = spawn_upstream(upstream_state.clone()).await;
     let cache = spawn_cache(&upstream, 3600).await;
     let response = reqwest::Client::new()
@@ -249,11 +306,7 @@ async fn registration_list_rejects_malformed_rp_before_upstream() {
 
 #[tokio::test]
 async fn cache_warm_cli_refreshes_demo_routes() {
-    let upstream_state = UpstreamState {
-        schema_hits: Arc::new(AtomicUsize::new(0)),
-        registration_hits: Arc::new(AtomicUsize::new(0)),
-        fail_registrations: Arc::new(AtomicBool::new(false)),
-    };
+    let upstream_state = upstream_state();
     let upstream = spawn_upstream(upstream_state.clone()).await;
     let cache = spawn_cache_with_admin(&upstream, 3600, Some("secret".to_string())).await;
 
@@ -290,11 +343,7 @@ async fn cache_warm_cli_refreshes_demo_routes() {
 
 #[tokio::test]
 async fn health_stays_public_when_admin_token_is_configured() {
-    let upstream_state = UpstreamState {
-        schema_hits: Arc::new(AtomicUsize::new(0)),
-        registration_hits: Arc::new(AtomicUsize::new(0)),
-        fail_registrations: Arc::new(AtomicBool::new(false)),
-    };
+    let upstream_state = upstream_state();
     let upstream = spawn_upstream(upstream_state).await;
     let cache = spawn_cache_with_admin(&upstream, 3600, Some("secret".to_string())).await;
     let health: Value = reqwest::Client::new()
@@ -311,11 +360,7 @@ async fn health_stays_public_when_admin_token_is_configured() {
 
 #[tokio::test]
 async fn admin_token_protects_cache_status_and_refresh() {
-    let upstream_state = UpstreamState {
-        schema_hits: Arc::new(AtomicUsize::new(0)),
-        registration_hits: Arc::new(AtomicUsize::new(0)),
-        fail_registrations: Arc::new(AtomicBool::new(false)),
-    };
+    let upstream_state = upstream_state();
     let upstream = spawn_upstream(upstream_state.clone()).await;
     let cache = spawn_cache_with_admin(&upstream, 3600, Some("secret".to_string())).await;
     let client = reqwest::Client::new();
