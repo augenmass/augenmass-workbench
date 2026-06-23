@@ -224,9 +224,10 @@ cached-sandbox mirror, and the live wallet-interaction debugger.
   full-fidelity local debug artifacts (raw `direct_post` body, decrypted response
   when an encrypted wallet response is decrypted, per-session private key, signed
   request object, decoded request payload, and verification replay context) to
-  `<dir>/<session>/` with owner-only permissions (dirs `0700`, files `0600`) and a sensitive-marked
-  `debug-manifest.json`, recorded in the trace as `ARTIFACT_SAVED` with file name,
-  label, length, SHA-256, and the redaction fields `unsafeDebugArtifacts`,
+  `<dir>/<session>/` with owner-only permissions on Unix (dirs `0700`, files
+  `0600`) and a sensitive-marked `debug-manifest.json` carrying platform handling
+  caveats, recorded in the trace as `ARTIFACT_SAVED` with file name, label,
+  length, SHA-256, and the redaction fields `unsafeDebugArtifacts`,
   `pathRedacted`, `redacted`, and `redaction`. Never served over HTTP. This
   restores raw-material debugging for developers who explicitly opt in, after the
   default trace was made safe.

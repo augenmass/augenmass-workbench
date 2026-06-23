@@ -23,6 +23,9 @@ cargo build --release --locked
 # add ./target/release to PATH, or copy ./target/release/augenmass somewhere on it
 ```
 
+On Windows PowerShell, the built binary is `.\target\release\augenmass.exe`.
+From Windows Git Bash, use `./target/release/augenmass.exe`.
+
 You can also install from the repo into a local Cargo root:
 
 ```sh
@@ -31,7 +34,7 @@ cargo install --locked --path . --bin augenmass --root "$HOME/.local"
 
 ## Pre-commit hook
 
-Refuse to commit a registration body that over-asks. Save this as `.git/hooks/pre-commit` (or wire it into your hook manager) and make it executable.
+Refuse to commit a registration body that over-asks. This example is a POSIX hook for macOS, Linux, or Windows Git Bash. Save it as `.git/hooks/pre-commit` (or wire it into your hook manager) and make it executable.
 
 ```sh
 #!/usr/bin/env sh

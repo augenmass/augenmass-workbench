@@ -220,6 +220,7 @@ fn build_bundle(session_dir: &Path, signing_key: Option<&Path>) -> Result<Eviden
         caveats: vec![
             "contains raw wallet direct_post material and decrypted authorization-response material when present".to_string(),
             "contains verifier session response encryption key material when captured".to_string(),
+            evidence_bundle_permission_caveat().to_string(),
             "share only through an explicit evidence handling process".to_string(),
         ],
     };
@@ -318,6 +319,16 @@ fn media_type(filename: &str) -> &'static str {
     } else {
         "text/plain"
     }
+}
+
+#[cfg(unix)]
+fn evidence_bundle_permission_caveat() -> &'static str {
+    "bundle file permissions are tightened to owner-only mode on Unix (0600)"
+}
+
+#[cfg(not(unix))]
+fn evidence_bundle_permission_caveat() -> &'static str {
+    "bundle file permissions are not tightened by this build; store the bundle in a private or encrypted workspace"
 }
 
 fn write_bundle(path: &Path, bundle: &EvidenceBundle) -> Result<()> {
@@ -1029,6 +1040,12 @@ mod tests {
         let replay = serde_json::to_string(&check.bundle.payload.replay_trace).unwrap();
         assert!(replay.contains("bodySha256"));
         assert!(!replay.contains("secret-claim"));
+        assert!(check
+            .bundle
+            .payload
+            .caveats
+            .iter()
+            .any(|caveat| caveat == evidence_bundle_permission_caveat()));
 
         #[cfg(unix)]
         {

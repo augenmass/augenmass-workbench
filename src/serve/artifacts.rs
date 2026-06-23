@@ -140,6 +140,7 @@ fn update_manifest(dir: &Path, session: Uuid, artifact: &DebugArtifact) -> Resul
         "caveats": [
             "contains verifier session private encryption key material",
             "contains raw wallet direct_post and decrypted authorization-response material when available",
+            debug_artifact_permission_caveat(),
             "this file is written only when --unsafe-debug-artifacts is explicitly enabled"
         ]
     });
@@ -155,6 +156,16 @@ fn display_path(path: &Path) -> String {
         .unwrap_or_else(|_| PathBuf::from(path))
         .display()
         .to_string()
+}
+
+#[cfg(unix)]
+fn debug_artifact_permission_caveat() -> &'static str {
+    "local filesystem permissions are tightened to owner-only mode on Unix (directories 0700, files 0600)"
+}
+
+#[cfg(not(unix))]
+fn debug_artifact_permission_caveat() -> &'static str {
+    "owner-only filesystem permissions are not enforced by this build; store artifacts in a private or encrypted workspace"
 }
 
 #[cfg(unix)]
@@ -207,6 +218,11 @@ mod tests {
         )
         .expect("manifest json");
         assert_eq!(manifest["sensitive"], true);
+        assert!(manifest["caveats"]
+            .as_array()
+            .expect("manifest caveats")
+            .iter()
+            .any(|caveat| caveat.as_str() == Some(debug_artifact_permission_caveat())));
 
         #[cfg(unix)]
         {

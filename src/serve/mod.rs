@@ -180,8 +180,9 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         args.unsafe_debug_artifacts
             .as_ref()
             .map(|path| format!(
-                "UNSAFE local capture ON, writing raw wallet material to {} (owner-only); never served over HTTP",
-                path.display()
+                "UNSAFE local capture ON, writing raw wallet material to {} ({}); never served over HTTP",
+                path.display(),
+                unsafe_artifact_banner_hint()
             ))
             .unwrap_or_else(|| {
                 "off (set --unsafe-debug-artifacts <dir> to capture raw wallet material locally; UNSAFE)"
@@ -216,6 +217,16 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     tracing::info!("listening on http://{}:{}", args.host, args.port);
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+#[cfg(unix)]
+fn unsafe_artifact_banner_hint() -> &'static str {
+    "owner-only on Unix"
+}
+
+#[cfg(not(unix))]
+fn unsafe_artifact_banner_hint() -> &'static str {
+    "store in a private or encrypted workspace"
 }
 
 fn is_loopback_host(host: &str) -> bool {

@@ -157,6 +157,12 @@ and run this gate with `AUGENMASS_BIN`:
 AUGENMASS_BIN=./target/release/augenmass just serve-smoke
 ```
 
+On Windows Git Bash, point at the `.exe`:
+
+```sh
+AUGENMASS_BIN=./target/release/augenmass.exe just serve-smoke
+```
+
 The release-archive gate is:
 
 ```sh

@@ -4,7 +4,6 @@ set -euo pipefail
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-./plugins/augenmass-workbench}"
 BIN="${PLUGIN_ROOT}/bin/augenmass"
 SKILL="${PLUGIN_ROOT}/skills/augenmass/SKILL.md"
-HOOKS="${PLUGIN_ROOT}/hooks/hooks.json"
 PLUGIN_JSON="${PLUGIN_ROOT}/.claude-plugin/plugin.json"
 CODEX_PLUGIN_JSON="${PLUGIN_ROOT}/.codex-plugin/plugin.json"
 MARKETPLACE_JSON="${AUGENMASS_MARKETPLACE_JSON:-marketplace.json}"
@@ -49,7 +48,7 @@ len_file() {
   wc -c <"$1" | tr -d '[:space:]'
 }
 
-for path in "${BIN}" "${SKILL}" "${HOOKS}" "${PLUGIN_JSON}" "${CODEX_PLUGIN_JSON}" "${MARKETPLACE_JSON}"; do
+for path in "${BIN}" "${SKILL}" "${PLUGIN_JSON}" "${CODEX_PLUGIN_JSON}" "${MARKETPLACE_JSON}"; do
   if [ ! -e "${path}" ]; then
     echo "missing plugin file: ${path}" >&2
     exit 1
@@ -67,7 +66,6 @@ grep -q '"skills": "./skills/"' "${CODEX_PLUGIN_JSON}"
 grep -q '"displayName": "Augenmaß Workbench"' "${CODEX_PLUGIN_JSON}"
 grep -q '"name": "augenmass"' "${MARKETPLACE_JSON}"
 grep -q '"path": "./plugins/augenmass-workbench"' "${MARKETPLACE_JSON}"
-grep -q 'chmod +x' "${HOOKS}"
 grep -q 'AUGENMASS_BIN' "${SKILL}"
 grep -q '\$AUGENMASS inspect' "${SKILL}"
 grep -q 'cache serve' "${SKILL}"

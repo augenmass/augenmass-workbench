@@ -86,7 +86,7 @@ install-smoke:
 
 # Verify the self-contained release archive layout before tagging.
 release-archive-smoke: release
-    bash -c 'set -euo pipefail; target="$(rustc -vV | sed -n "s/^host: //p")"; binary="augenmass"; case "${target}" in *windows*) binary="augenmass.exe";; esac; out="dist/local-release-archive-smoke"; rm -rf "${out}"; mkdir -p "${out}"; archive="$(./scripts/package-release-archive.sh "${target}" "target/release/${binary}" tar.gz "${out}")"; ./scripts/release-archive-smoke.sh "${archive}"'
+    bash -c 'set -euo pipefail; target="$(rustc -vV | sed -n "s/^host: //p")"; binary="augenmass"; package_ext="tar.gz"; case "${target}" in *windows*) binary="augenmass.exe"; package_ext="zip";; esac; out="dist/local-release-archive-smoke"; rm -rf "${out}"; mkdir -p "${out}"; archive="$(./scripts/package-release-archive.sh "${target}" "target/release/${binary}" "${package_ext}" "${out}")"; ./scripts/release-archive-smoke.sh "${archive}"'
 
 # Verify the live cached-sandbox path against the public sandbox API.
 live-cache-smoke:

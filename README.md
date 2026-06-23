@@ -29,13 +29,20 @@ codex plugin add augenmass-workbench@augenmass
 
 The Claude Code marketplace path is currently a private preview, so it resolves only for accounts with repository access. The Codex commands above install from the checked-out local repository. Once the repository is published, the same plugin metadata can back a public marketplace install.
 
-The bundled plugin binary currently supports macOS Apple Silicon only. On other platforms, build from source with `cargo build --release --locked` and set `AUGENMASS_BIN=./target/release/augenmass`, or use the native CLI archives published by the release workflow once a version tag is cut.
+The bundled plugin binary currently supports macOS Apple Silicon only. On other platforms, build from source with `cargo build --release --locked` and set `AUGENMASS_BIN` to the native binary (`./target/release/augenmass` on Unix-like shells, `./target/release/augenmass.exe` from Windows Git Bash), or use the native CLI archives published by the release workflow once a version tag is cut.
 
-The skill is a thin layer over a plain CLI you can also build and run on its own, with or without an agent. This source build always works:
+The skill is a thin layer over a plain CLI you can also build and run on its own, with or without an agent. On Unix-like shells:
 
 ```sh
 cargo build --release --locked
 ./target/release/augenmass --help
+```
+
+On Windows PowerShell:
+
+```powershell
+cargo build --release --locked
+.\target\release\augenmass.exe --help
 ```
 
 For a local source install into your own bin directory:
@@ -86,7 +93,7 @@ See `docs/GUARDRAILS.md` for hook and pipeline recipes. The point of the skill i
 
 ## The CLI underneath
 
-Everything the skill does, it does by running these commands, so you can run them yourself. Artifact inputs accept file paths, inline values, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Read-only commands accept `--json` where they render machine output. The examples below use committed fixtures under `fixtures/`; run them with the plugin binary or a local build such as `./target/release/augenmass`.
+Everything the skill does, it does by running these commands, so you can run them yourself. Artifact inputs accept file paths, inline values, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Read-only commands accept `--json` where they render machine output. The examples below use committed fixtures under `fixtures/`; run them with the plugin binary or a local build such as `./target/release/augenmass` (`.\target\release\augenmass.exe` on Windows).
 
 Auto-detect any artifact and decode it:
 
