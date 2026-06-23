@@ -1061,7 +1061,7 @@ Options (all optional):
 - `--trust-anchor <TRUST_ANCHOR>` (env `TRUST_ANCHOR_PATH`): a PID issuer trust anchor PEM. When set, the response path rejects issuers that do not chain to it; when unset, issuer trust is not enforced.
 - `--live-status` (env `LIVE_STATUS`): resolve the token-status-list over the network on the response path and reject a revoked or suspended PID. Default `false` (offline-friendly). Only takes effect when `--trust-anchor` is also set.
 - `--quiet`: suppress the live per-step trace on the console. The trace still records and is served at `/trace/<session>` and `/api/trace/<session>`.
-- `--unsafe-debug-artifacts <UNSAFE_DEBUG_ARTIFACTS>` (env `AUGENMASS_UNSAFE_DEBUG_ARTIFACTS`): opt-in, off by default. Write full-fidelity debug artifacts for each session under `<dir>/<session>/`: the raw `direct_post` body, the decrypted authorization response, the per-session private encryption key, and the signed request object (JAR), plus a `debug-manifest.json` marked sensitive. Files are owner-only (dirs `0700`, files `0600`). UNSAFE: this writes raw wallet material, including personal data, to local disk in the clear. It is never served over HTTP; the trace records only the file name, a label, the length, and a SHA-256, never a path or a value.
+- `--unsafe-debug-artifacts <UNSAFE_DEBUG_ARTIFACTS>` (env `AUGENMASS_UNSAFE_DEBUG_ARTIFACTS`): opt-in, off by default. Write full-fidelity debug artifacts for each session under `<dir>/<session>/`: the raw `direct_post` body, the decrypted authorization response when an encrypted wallet response is decrypted, the per-session private encryption key, the signed request object (JAR), and the decoded request payload, plus a `debug-manifest.json` marked sensitive. Files are owner-only (dirs `0700`, files `0600`). UNSAFE: this writes raw wallet material, including personal data, to local disk in the clear. It is never served over HTTP; the trace records the file name, a label, the length, a SHA-256, and the redaction fields `unsafeDebugArtifacts`, `pathRedacted`, `redacted`, and `redaction`, never a path or a value.
 
 Runtime behavior: this command does not exit on its own and does not use `--json`. It binds the listener and serves until Ctrl-C. On startup it prints the open URL, the computed `client_id`, whether the cert is throwaway or the registrar leaf, whether issuer trust is enforced, whether status checks are live, where the trace is served, and whether unsafe local debug artifacts are enabled.
 
@@ -1115,7 +1115,7 @@ The codes, in typical order:
 | `OVER_ASK_ANALYZED` | What the wallet actually disclosed is run through the over-ask inspector. |
 | `NOTE` | An informational annotation. |
 | `ERROR` | An error step. |
-| `ARTIFACT_SAVED` | Only with `--unsafe-debug-artifacts`: a debug artifact was written to local disk. The detail records the file name, a label, the length, and a SHA-256 only, never a path or a value. |
+| `ARTIFACT_SAVED` | Only with `--unsafe-debug-artifacts`: a debug artifact was written to local disk. The detail records the file name, a label, the length, a SHA-256, and the redaction fields `unsafeDebugArtifacts`, `pathRedacted`, `redacted`, and `redaction` only, never a path or a value. |
 
 The same trace is available three ways: live on the console (ANSI color only when stderr is a TTY; suppressed with `--quiet`), the browser timeline at `/trace/:id`, and JSON at `/api/trace/:id`.
 
@@ -1123,7 +1123,7 @@ The same trace is available three ways: live on the console (ANSI color only whe
 
 The trace is redacted by default: no endpoint, including the unauthenticated `/api/trace/:id`, carries the raw POST body, the decrypted payload, or any disclosed claim value. Each session uses a fresh ephemeral response-encryption key, used once and dropped after the response is processed (and on the reject and malformed-parse paths). A plaintext `direct_post` is rejected with HTTP 422 because the verifier advertises the encrypted `direct_post.jwt` profile.
 
-The `--live-status` fetch is hardened against SSRF: it is pinned to the addresses it vetted before connecting (it does not re-resolve the hostname at connect time, which closes the DNS-rebinding window), stays https-only with redirects disabled and a timeout, caps the response body, and denies loopback, private, link-local, CGNAT, unique-local, and IPv4-mapped IPv6 addresses.
+The `--live-status` fetch is hardened against SSRF: it is pinned to the addresses it vetted before connecting (it does not re-resolve the hostname at connect time, which closes the DNS-rebinding window), stays https-only with redirects disabled and a timeout, caps the response body, normalizes IPv4-mapped IPv6 before vetting, and denies loopback, private, link-local, CGNAT, and unique-local targets.
 
 When you need the raw bytes for local debugging, opt in with `--unsafe-debug-artifacts` (UNSAFE, local only, never served over HTTP):
 

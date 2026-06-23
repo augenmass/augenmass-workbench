@@ -185,13 +185,15 @@ wallet-interaction debugger.
   `direct_post.jwt` profile, so an unencrypted response is refused (HTTP 422) and
   traced as `REJECTED` rather than verified.
 - `serve --unsafe-debug-artifacts <dir>` (opt-in, off by default): writes
-  full-fidelity local debug artifacts (raw `direct_post` body, decrypted response,
-  per-session private key, signed request object) to `<dir>/<session>/` with
-  owner-only permissions (dirs `0700`, files `0600`) and a sensitive-marked
-  `debug-manifest.json`, recorded in the trace as `ARTIFACT_SAVED` with only file
-  name, label, length, and SHA-256. Never served over HTTP. This restores
-  raw-material debugging for developers who explicitly opt in, after the default
-  trace was made safe.
+  full-fidelity local debug artifacts (raw `direct_post` body, decrypted response
+  when an encrypted wallet response is decrypted, per-session private key, signed
+  request object, and decoded request payload) to `<dir>/<session>/` with owner-only
+  permissions (dirs `0700`, files `0600`) and a sensitive-marked
+  `debug-manifest.json`, recorded in the trace as `ARTIFACT_SAVED` with file name,
+  label, length, SHA-256, and the redaction fields `unsafeDebugArtifacts`,
+  `pathRedacted`, `redacted`, and `redaction`. Never served over HTTP. This
+  restores raw-material debugging for developers who explicitly opt in, after the
+  default trace was made safe.
 - `serve` now mints a fresh ephemeral response-encryption key per Authorization
   Request, advertised in that request's client metadata, used once, and dropped
   after the response is processed (and on the reject and malformed-parse paths).
