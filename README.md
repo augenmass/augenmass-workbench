@@ -17,6 +17,8 @@ cargo build --release
 
 The same tool also ships as a Claude Code plugin. The skill auto-triggers on EUDI registration and verifier-debugging work, and underneath it is the same plain CLI you can call directly.
 
+This repository is currently private, so the marketplace commands below resolve to it only for accounts that have access; building from source (above) is the path that always works. Once the repository is published publicly, the same commands work for everyone.
+
 ```
 /plugin marketplace add augenmass/augenmass-workbench
 /plugin install augenmass-workbench@augenmass
