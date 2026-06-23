@@ -217,6 +217,7 @@ fn cache_serve_help_exposes_loopback_proxy_options() {
         .stdout(contains("--upstream"))
         .stdout(contains("--ttl-secs"))
         .stdout(contains("--timeout-secs"))
+        .stdout(contains("--max-entries"))
         .stdout(contains("--admin-token"));
 }
 

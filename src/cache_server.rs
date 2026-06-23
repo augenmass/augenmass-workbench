@@ -34,6 +34,7 @@ pub const DEFAULT_CACHE_HOST: &str = "127.0.0.1";
 pub const DEFAULT_CACHE_PORT: u16 = 8081;
 pub const DEFAULT_CACHE_TTL_SECS: u64 = 3600;
 pub const DEFAULT_CACHE_TIMEOUT_SECS: u64 = 10;
+pub const DEFAULT_CACHE_MAX_ENTRIES: usize = 512;
 
 #[derive(Debug, Clone)]
 pub struct ServeConfig {
@@ -43,6 +44,7 @@ pub struct ServeConfig {
     pub upstream: String,
     pub ttl_secs: u64,
     pub timeout_secs: u64,
+    pub max_entries: usize,
     pub admin_token: Option<String>,
 }
 
@@ -52,6 +54,7 @@ pub struct AppState {
     client: Client,
     upstream: String,
     ttl: Duration,
+    max_entries: usize,
     admin_token: Option<String>,
 }
 
@@ -124,6 +127,7 @@ pub async fn serve(config: ServeConfig) -> Result<()> {
     let addr = resolve_bind_addr(&config.host, config.port)?;
     let admin_token = normalize_token(config.admin_token.clone());
     require_admin_token_for_public_bind(addr, admin_token.as_deref())?;
+    validate_max_entries(config.max_entries)?;
 
     let conn = Connection::open(&config.db_path)
         .with_context(|| format!("open SQLite db {}", config.db_path))?;
@@ -137,6 +141,7 @@ pub async fn serve(config: ServeConfig) -> Result<()> {
             .build()?,
         upstream: trim_base(&config.upstream),
         ttl: Duration::from_secs(config.ttl_secs),
+        max_entries: config.max_entries,
         admin_token: admin_token.clone(),
     };
 
@@ -148,6 +153,7 @@ pub async fn serve(config: ServeConfig) -> Result<()> {
     println!("upstream: {}", trim_base(&config.upstream));
     println!("ttl: {}s", config.ttl_secs);
     println!("upstream timeout: {}s", config.timeout_secs);
+    println!("max entries: {}", config.max_entries);
     println!(
         "admin endpoints: {}",
         if admin_token.is_some() {
@@ -200,6 +206,25 @@ impl AppState {
         timeout_secs: u64,
         admin_token: Option<String>,
     ) -> Result<Self> {
+        Self::new_with_limits(
+            db_path,
+            upstream,
+            ttl_secs,
+            timeout_secs,
+            admin_token,
+            DEFAULT_CACHE_MAX_ENTRIES,
+        )
+    }
+
+    pub fn new_with_limits(
+        db_path: &str,
+        upstream: &str,
+        ttl_secs: u64,
+        timeout_secs: u64,
+        admin_token: Option<String>,
+        max_entries: usize,
+    ) -> Result<Self> {
+        validate_max_entries(max_entries)?;
         let conn =
             Connection::open(db_path).with_context(|| format!("open SQLite db {db_path}"))?;
         init_db(&conn)?;
@@ -211,6 +236,7 @@ impl AppState {
                 .build()?,
             upstream: trim_base(upstream),
             ttl: Duration::from_secs(ttl_secs),
+            max_entries,
             admin_token: normalize_token(admin_token),
         })
     }
@@ -220,8 +246,8 @@ async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
     Json(json!({
         "status": "ok",
         "service": "augenmass cache",
-        "upstream": state.upstream,
         "ttlSecs": state.ttl.as_secs(),
+        "maxEntries": state.max_entries,
     }))
 }
 
@@ -274,6 +300,7 @@ async fn cache_status(
         "kind": "augenmass-cache-status",
         "upstream": state.upstream,
         "ttlSecs": state.ttl.as_secs(),
+        "maxEntries": state.max_entries,
         "entries": rows,
     })))
 }
@@ -322,12 +349,13 @@ async fn cached_or_fetch(state: &AppState, request: CacheRequest, force: bool) -
             if let Some(stale) = cached {
                 response_from_cache(&stale, CacheDisposition::Stale)
             } else {
+                eprintln!(
+                    "cache upstream fetch failed for {} ({}): {error:#}",
+                    request.key, request.upstream_url
+                );
                 (
                     StatusCode::BAD_GATEWAY,
-                    format!(
-                        "upstream fetch failed for {}: {error}",
-                        request.upstream_url
-                    ),
+                    format!("upstream fetch failed for {}", request.key),
                 )
                     .into_response()
             }
@@ -464,6 +492,30 @@ fn store_cached(state: &AppState, cached: &CachedResponse) -> Result<()> {
         ],
     )
     .context("store cached response")?;
+    evict_oldest_entries(&db, state.max_entries)?;
+    Ok(())
+}
+
+fn evict_oldest_entries(db: &Connection, max_entries: usize) -> Result<()> {
+    validate_max_entries(max_entries)?;
+    let count: i64 = db
+        .query_row("select count(*) from cached_responses", [], |row| {
+            row.get(0)
+        })
+        .context("count cached responses")?;
+    let overflow = count.saturating_sub(max_entries as i64);
+    if overflow > 0 {
+        db.execute(
+            "delete from cached_responses \
+             where key in ( \
+               select key from cached_responses \
+               order by fetched_at asc, key asc \
+               limit ?1 \
+             )",
+            params![overflow],
+        )
+        .context("evict oldest cached responses")?;
+    }
     Ok(())
 }
 
@@ -571,7 +623,6 @@ fn response_from_cache(cached: &CachedResponse, disposition: CacheDisposition) -
         &cached.fetched_at.to_rfc3339(),
     );
     insert_header(headers, "x-augenmass-cache-sha256", &cached.sha256);
-    insert_header(headers, "x-augenmass-cache-upstream", &cached.upstream_url);
     response
 }
 
@@ -640,6 +691,13 @@ fn require_admin_token_for_public_bind(addr: SocketAddr, admin_token: Option<&st
         anyhow::bail!(
             "AUGENMASS_CACHE_ADMIN_TOKEN is required when cache serve binds to non-loopback {addr}; set --admin-token or AUGENMASS_CACHE_ADMIN_TOKEN, or bind --host 127.0.0.1 for local-only use"
         );
+    }
+    Ok(())
+}
+
+fn validate_max_entries(max_entries: usize) -> Result<()> {
+    if max_entries == 0 {
+        anyhow::bail!("cache max entries must be at least 1");
     }
     Ok(())
 }

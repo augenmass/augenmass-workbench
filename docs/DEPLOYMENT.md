@@ -21,6 +21,8 @@ address such as `0.0.0.0`, `AUGENMASS_CACHE_ADMIN_TOKEN` or `--admin-token` is
 required before the server starts. When set, `/api/cache/status` and
 `/api/cache/refresh` require
 `Authorization: Bearer <token>` or `x-augenmass-cache-admin: <token>`.
+The cache is bounded by `AUGENMASS_CACHE_MAX_ENTRIES` / `--max-entries`
+(default `512`); after that, the oldest rows are evicted.
 
 The cache stores public sandbox responses only. It still deserves a persistent
 database and an admin token because refresh and status expose operational
@@ -42,6 +44,7 @@ The server can be configured with flags or environment variables.
 | Upstream API base | `AUGENMASS_CACHE_UPSTREAM` | `https://sandbox.eudi-wallet.org/api` |
 | Freshness window | `AUGENMASS_CACHE_TTL_SECS` | `3600` |
 | Upstream timeout | `AUGENMASS_CACHE_TIMEOUT_SECS` | `10` |
+| Max cached entries | `AUGENMASS_CACHE_MAX_ENTRIES` | `512` |
 | Admin token | `AUGENMASS_CACHE_ADMIN_TOKEN` | unset for loopback; required for non-loopback binds |
 
 Local run:
@@ -93,7 +96,9 @@ Each cached response carries provenance headers:
 - `x-augenmass-cache-key`
 - `x-augenmass-cache-fetched-at`
 - `x-augenmass-cache-sha256`
-- `x-augenmass-cache-upstream`
+
+Full upstream URLs are intentionally not exposed on public cached responses.
+They are visible through protected `/api/cache/status` for operators.
 
 ## Railway
 
@@ -107,10 +112,15 @@ Recommended Railway variables:
 AUGENMASS_CACHE_ADMIN_TOKEN=<secret>
 AUGENMASS_CACHE_DB=/data/augenmass-cache.sqlite
 AUGENMASS_CACHE_HOST=0.0.0.0
+AUGENMASS_CACHE_MAX_ENTRIES=512
 AUGENMASS_CACHE_TTL_SECS=3600
 AUGENMASS_CACHE_TIMEOUT_SECS=10
 AUGENMASS_CACHE_UPSTREAM=https://sandbox.eudi-wallet.org/api
 ```
+
+`AUGENMASS_CACHE_ADMIN_TOKEN` is mandatory for this Railway shape. Without it,
+the server refuses the non-loopback bind and the health check fails. That is
+intentional: do not make public refresh/status unauthenticated.
 
 Attach a persistent volume at `/data`. Without a volume, the service still runs,
 but the cache is rebuilt after each redeploy.
@@ -175,7 +185,7 @@ Deployed cache proof, once Railway or a VPS URL exists:
 ```sh
 AUGENMASS_DEPLOYED_CACHE_API_BASE=https://cache.example/api \
 AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN=<token> \
-  just deployed-cache-smoke
+  just deployed-cache-smoke-required
 ```
 
 Without `AUGENMASS_DEPLOYED_CACHE_API_BASE`, the deployed smoke exits cleanly so
@@ -183,6 +193,8 @@ local release gates do not depend on a hosted service. With only the API base, i
 checks health, public cached reads, and the CLI `cached-sandbox` path. With the
 admin token, it also proves `/cache/status` is protected, verifies authenticated
 status access, runs `cache warm`, and confirms warmed entries are visible.
+Use `just deployed-cache-smoke-required` when you want that URL to be mandatory
+instead of skipped.
 
 ## Fly.io and Render
 
@@ -198,7 +210,7 @@ After deploying either host, prove it from your laptop with:
 ```sh
 AUGENMASS_DEPLOYED_CACHE_API_BASE=https://cache.example/api \
 AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN=<token> \
-  just deployed-cache-smoke
+  just deployed-cache-smoke-required
 ```
 
 ## Cloudflare

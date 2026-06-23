@@ -1371,7 +1371,8 @@ With a non-default port, point the read/write commands at it via `AUGENMASS_CLON
 Run a read-through cached-sandbox target for public sandbox GET routes.
 It mirrors successful upstream responses into SQLite, returns fresh hits from
 disk, and falls back to stale cached data if a forced refresh or expired entry
-cannot reach the upstream. It never caches writes.
+cannot reach the upstream. It evicts the oldest rows after the configured entry
+cap is reached, and it never caches writes.
 
 ```
 Usage: augenmass cache serve [OPTIONS]
@@ -1385,6 +1386,7 @@ Options:
 - `--upstream <UPSTREAM>`: the upstream API base. Default `https://sandbox.eudi-wallet.org/api`; env `AUGENMASS_CACHE_UPSTREAM`.
 - `--ttl-secs <TTL_SECS>`: freshness window in seconds. Default `3600`; env `AUGENMASS_CACHE_TTL_SECS`.
 - `--timeout-secs <TIMEOUT_SECS>`: upstream request timeout in seconds. Default `10`; env `AUGENMASS_CACHE_TIMEOUT_SECS`.
+- `--max-entries <MAX_ENTRIES>`: maximum stored cache entries before oldest rows are evicted. Default `512`; env `AUGENMASS_CACHE_MAX_ENTRIES`.
 - `--admin-token <ADMIN_TOKEN>`: protect `GET /api/cache/status` and `POST /api/cache/refresh`; env `AUGENMASS_CACHE_ADMIN_TOKEN`.
 - `-h, --help`.
 
@@ -1399,8 +1401,8 @@ via `POST /api/cache/refresh?route=<route>[&rp=<id>]`. If an admin token is
 configured, status and refresh require `Authorization: Bearer <token>` or
 `x-augenmass-cache-admin: <token>`. Responses carry provenance
 headers: `x-augenmass-cache`, `x-augenmass-cache-key`,
-`x-augenmass-cache-fetched-at`, `x-augenmass-cache-sha256`, and
-`x-augenmass-cache-upstream`.
+`x-augenmass-cache-fetched-at`, and `x-augenmass-cache-sha256`. Full upstream
+URLs are available only through protected cache status.
 
 Example:
 

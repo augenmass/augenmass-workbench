@@ -100,6 +100,10 @@ public-sandbox-snapshot:
 deployed-cache-smoke:
     ./scripts/deployed-cache-smoke.sh
 
+# Require and verify an already deployed cache backend before claiming hosted readiness.
+deployed-cache-smoke-required:
+    AUGENMASS_DEPLOYED_CACHE_REQUIRED=1 ./scripts/deployed-cache-smoke.sh
+
 # Verify the bundled verifier-in-a-box runtime over loopback HTTP.
 serve-smoke:
     ./scripts/serve-smoke.sh

@@ -131,6 +131,7 @@ help_has clone serve
 
 help_has cache serve
 grep -q -- '--admin-token' "${OUT}"
+grep -q -- '--max-entries' "${OUT}"
 grep -q -- '--timeout-secs' "${OUT}"
 
 help_has cache warm

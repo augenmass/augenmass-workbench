@@ -86,6 +86,8 @@ It runs:
   deployed cache URL is configured, or checks a Railway/VPS cache URL with
   health, public cached reads, CLI `cached-sandbox`, and protected admin/warm
   checks when `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` is set.
+- `just deployed-cache-smoke-required`: hosted-readiness proof. It fails unless
+  `AUGENMASS_DEPLOYED_CACHE_API_BASE` points at a deployed cache backend.
 - `just docker-smoke`: builds the Docker image locally, runs the cache backend
   container, checks `/api/health`, verifies it runs as uid `10001`, and proves
   admin-token protection.
@@ -100,6 +102,7 @@ just serve-smoke
 just live-cache-smoke
 just public-sandbox-snapshot
 just deployed-cache-smoke
+just deployed-cache-smoke-required
 just live-sandbox-smoke
 just docker-smoke
 ```

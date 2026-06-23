@@ -42,7 +42,10 @@ fetch() {
   local url="$1"
   local headers="$2"
   local body="$3"
-  curl --max-time "${TIMEOUT}" -fsS -D "${headers}" -o "${body}" "${url}" >/dev/null
+  if ! curl --max-time "${TIMEOUT}" --max-filesize "${MAX_BYTES}" -fsS -D "${headers}" -o "${body}" "${url}" >/dev/null; then
+    echo "fetch failed or exceeded AUGENMASS_PUBLIC_SANDBOX_MAX_BYTES=${MAX_BYTES}: ${url}" >&2
+    exit 1
+  fi
 }
 
 body_bytes() {

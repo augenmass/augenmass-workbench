@@ -101,16 +101,26 @@ async fn spawn_cache_with_admin(
     ttl_secs: u64,
     admin_token: Option<String>,
 ) -> String {
+    spawn_cache_with_limits(upstream, ttl_secs, admin_token, 512).await
+}
+
+async fn spawn_cache_with_limits(
+    upstream: &str,
+    ttl_secs: u64,
+    admin_token: Option<String>,
+    max_entries: usize,
+) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind cache");
     let addr = listener.local_addr().unwrap();
-    let state = AppState::new_with_options(
+    let state = AppState::new_with_limits(
         &test_db("augenmass-cache-test"),
         upstream,
         ttl_secs,
         10,
         admin_token,
+        max_entries,
     )
     .expect("cache state");
     let app = router(state);
@@ -187,6 +197,7 @@ async fn schema_metadata_is_cached_with_provenance_headers() {
     assert_eq!(cache_header(first.headers(), "x-augenmass-cache"), "MISS");
     assert!(first.headers().contains_key("x-augenmass-cache-fetched-at"));
     assert!(first.headers().contains_key("x-augenmass-cache-sha256"));
+    assert!(!first.headers().contains_key("x-augenmass-cache-upstream"));
 
     let second = client
         .get(format!("{cache}/schema-metadata"))
@@ -207,7 +218,13 @@ async fn schema_metadata_is_cached_with_provenance_headers() {
         .json()
         .await
         .expect("status json");
+    assert_eq!(status["maxEntries"], 512);
+    assert!(status["upstream"].as_str().unwrap().starts_with("http://"));
     assert_eq!(status["entries"][0]["key"], "schema-metadata");
+    assert!(status["entries"][0]["upstream_url"]
+        .as_str()
+        .unwrap()
+        .contains("/schema-metadata"));
 }
 
 #[tokio::test]
@@ -225,7 +242,8 @@ async fn schema_metadata_refuses_body_above_cache_cap_without_storing() {
     .expect("oversized cache request");
     assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
     let text = response.text().await.expect("oversized error text");
-    assert!(text.contains("above the cache body cap"));
+    assert!(text.contains("upstream fetch failed for schema-metadata"));
+    assert!(!text.contains(&upstream));
 
     let status: Value = client
         .get(format!("{cache}/cache/status"))
@@ -239,6 +257,42 @@ async fn schema_metadata_refuses_body_above_cache_cap_without_storing() {
         status["entries"].as_array().expect("entries array").len(),
         0
     );
+}
+
+#[tokio::test]
+async fn cache_evicts_oldest_entries_when_limit_is_reached() {
+    let upstream_state = upstream_state();
+    let upstream = spawn_upstream(upstream_state).await;
+    let cache = spawn_cache_with_limits(&upstream, 3600, None, 2).await;
+    let client = reqwest::Client::new();
+
+    for rp in ["rp-1", "rp-2", "rp-3"] {
+        let response = client
+            .get(format!("{cache}/registration-certificates?rp={rp}"))
+            .send()
+            .await
+            .expect("registration list");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    let status: Value = client
+        .get(format!("{cache}/cache/status"))
+        .send()
+        .await
+        .expect("cache status")
+        .json()
+        .await
+        .expect("status json");
+    let entries = status["entries"].as_array().expect("entries array");
+    assert_eq!(status["maxEntries"], 2);
+    assert_eq!(entries.len(), 2);
+    let keys = entries
+        .iter()
+        .map(|entry| entry["key"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert!(keys.contains(&"registration-certificates?rp=rp-2"));
+    assert!(keys.contains(&"registration-certificates?rp=rp-3"));
+    assert!(!keys.contains(&"registration-certificates?rp=rp-1"));
 }
 
 #[tokio::test]
@@ -356,6 +410,8 @@ async fn health_stays_public_when_admin_token_is_configured() {
         .expect("health json");
     assert_eq!(health["status"], "ok");
     assert_eq!(health["service"], "augenmass cache");
+    assert_eq!(health["maxEntries"], 512);
+    assert!(health.get("upstream").is_none());
 }
 
 #[tokio::test]

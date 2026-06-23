@@ -15,6 +15,7 @@ BIN="$(resolve_bin)"
 BASE="${1:-${AUGENMASS_DEPLOYED_CACHE_API_BASE:-}}"
 ADMIN="${AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN:-}"
 RP="${AUGENMASS_DEPLOYED_CACHE_RP:-2af138a8-59ea-4a84-aea3-666cafdb1369}"
+REQUIRED="${AUGENMASS_DEPLOYED_CACHE_REQUIRED:-0}"
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/augenmass-deployed-cache-smoke.XXXXXX")"
 HEADERS="${WORKDIR}/headers"
 BODY="${WORKDIR}/body"
@@ -52,6 +53,10 @@ require awk
 require grep
 
 if [ -z "${BASE}" ]; then
+  if [ "${REQUIRED}" = "1" ]; then
+    echo "deployed cache smoke requires AUGENMASS_DEPLOYED_CACHE_API_BASE or an API base argument" >&2
+    exit 1
+  fi
   echo "skipping deployed cache smoke: set AUGENMASS_DEPLOYED_CACHE_API_BASE or pass the API base URL" >&2
   exit 0
 fi

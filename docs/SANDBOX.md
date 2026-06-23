@@ -87,6 +87,8 @@ drifting, or briefly unreachable.
 Responses are capped at 5 MiB while streaming from the upstream. Oversized
 responses are refused before being stored, and an existing stale response can
 still be used when a refresh fails.
+The cache is also bounded: after `AUGENMASS_CACHE_MAX_ENTRIES` / `--max-entries`
+is reached, the oldest cached rows are evicted.
 
 Run it with:
 
@@ -102,6 +104,7 @@ Flags (verified):
 - `--upstream <URL>`: sandbox API base. Default `https://sandbox.eudi-wallet.org/api`.
 - `--ttl-secs <SECS>`: freshness window for cached responses. Default `3600`.
 - `--timeout-secs <SECS>`: upstream request timeout. Default `10`.
+- `--max-entries <N>`: maximum stored entries before oldest rows are evicted. Default `512`.
 - `--admin-token <TOKEN>`: protect status and refresh endpoints.
 
 The default server listens on `http://127.0.0.1:8081/api`. Point the CLI at it
@@ -123,7 +126,7 @@ It also exposes cache metadata:
 
 - `GET /api/health`: public health check for deploy platforms.
 - `GET /api/cache/status`: list cached entries, upstream URL, fetch time, size,
-  and SHA-256.
+  SHA-256, and the configured max-entry cap.
 - `POST /api/cache/refresh?route=schema-metadata`
 - `POST /api/cache/refresh?route=schema-metadata/vocabularies`
 - `POST /api/cache/refresh?route=registration-certificates&rp=<id>`
@@ -141,7 +144,10 @@ Every cached response carries provenance headers:
 - `x-augenmass-cache-key`: the canonical cache key.
 - `x-augenmass-cache-fetched-at`: the upstream fetch time.
 - `x-augenmass-cache-sha256`: SHA-256 of the response body.
-- `x-augenmass-cache-upstream`: the exact upstream URL.
+
+Full upstream URLs are intentionally not exposed on public cached responses.
+They are visible only through `GET /api/cache/status`, which should be protected
+with an admin token on shared or deployed instances.
 
 The cache stores only successful upstream responses. If an entry is stale and
 the upstream refresh fails, it returns the stale entry with

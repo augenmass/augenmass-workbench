@@ -132,17 +132,18 @@ cached-sandbox mirror, and the live wallet-interaction debugger.
   replay decrypts and verifies the SD-JWT VC offline against the captured nonce,
   audience, vct, clock, and freshness window.
 - `cache serve`: a server-side read-through cached-sandbox mirror for public
-  sandbox GET routes. It stores successful upstream responses in SQLite, exposes
-  provenance headers (`x-augenmass-cache`, cache key, fetched-at, SHA-256, and
-  upstream URL), serves fresh hits locally, and falls back to stale cached data
-  when a refresh fails. `list --target cached-sandbox` reads through it, while
-  confirmed writes to `--target cached-sandbox` are refused before any network
-  call.
+  sandbox GET routes. It stores successful upstream responses in SQLite with a
+  bounded entry cap, exposes public provenance headers (`x-augenmass-cache`, cache
+  key, fetched-at, and SHA-256), serves fresh hits locally, and falls back to
+  stale cached data when a refresh fails. Full upstream URLs stay in protected
+  cache status instead of public response headers. `list --target cached-sandbox`
+  reads through it, while confirmed writes to `--target cached-sandbox` are
+  refused before any network call.
 - Deployable cache backend hardening: `cache serve` now supports explicit bind
-  host, `PORT`, persistent database path, upstream timeout, TTL, public health
-  check, and optional admin-token protection for cache status and refresh
-  endpoints. The repository includes a Dockerfile and Railway configuration for
-  the current Axum plus SQLite backend.
+  host, `PORT`, persistent database path, upstream timeout, TTL, max entries,
+  public health check, and optional admin-token protection for cache status and
+  refresh endpoints. The repository includes a Dockerfile and Railway
+  configuration for the current Axum plus SQLite backend.
 - Native CI and release automation: GitHub Actions now offers a manual fmt,
   clippy, test, and release-build matrix on Linux, Windows, and macOS runners,
   with release archives for Linux x86_64, Windows x86_64, macOS Intel, and macOS

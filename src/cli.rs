@@ -11,8 +11,8 @@ use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 use crate::cache_server::{
-    DEFAULT_CACHE_DB, DEFAULT_CACHE_HOST, DEFAULT_CACHE_PORT, DEFAULT_CACHE_TIMEOUT_SECS,
-    DEFAULT_CACHE_TTL_SECS,
+    DEFAULT_CACHE_DB, DEFAULT_CACHE_HOST, DEFAULT_CACHE_MAX_ENTRIES, DEFAULT_CACHE_PORT,
+    DEFAULT_CACHE_TIMEOUT_SECS, DEFAULT_CACHE_TTL_SECS,
 };
 use crate::commands::decode::Decoded;
 use crate::commands::{
@@ -361,6 +361,9 @@ enum CacheCmd {
         /// Upstream request timeout in seconds (env AUGENMASS_CACHE_TIMEOUT_SECS).
         #[arg(long, env = "AUGENMASS_CACHE_TIMEOUT_SECS", default_value_t = DEFAULT_CACHE_TIMEOUT_SECS)]
         timeout_secs: u64,
+        /// Maximum stored cache entries before oldest rows are evicted (env AUGENMASS_CACHE_MAX_ENTRIES).
+        #[arg(long, env = "AUGENMASS_CACHE_MAX_ENTRIES", default_value_t = DEFAULT_CACHE_MAX_ENTRIES)]
+        max_entries: usize,
         /// Protect /api/cache/status and /api/cache/refresh (env AUGENMASS_CACHE_ADMIN_TOKEN).
         #[arg(long, env = "AUGENMASS_CACHE_ADMIN_TOKEN")]
         admin_token: Option<String>,
@@ -465,6 +468,7 @@ pub async fn run() -> Result<()> {
                 upstream,
                 ttl_secs,
                 timeout_secs,
+                max_entries,
                 admin_token,
             } => {
                 cache::serve(cache::ServeArgs {
@@ -474,6 +478,7 @@ pub async fn run() -> Result<()> {
                     upstream,
                     ttl_secs,
                     timeout_secs,
+                    max_entries,
                     admin_token,
                 })
                 .await?

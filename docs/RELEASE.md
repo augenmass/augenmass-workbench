@@ -123,16 +123,18 @@ exports the resulting archives to:
 `shipping-smoke` covers the plugin bundle, the `serve` runtime smoke, the live
 cached-sandbox path, and the Docker backend. `deployed-cache-smoke` is opt-in for
 a Railway/VPS cache URL and skips cleanly when `AUGENMASS_DEPLOYED_CACHE_API_BASE`
-is unset. `platform-smoke` checks the host target and any locally available
-cross-targets; by default it skips Linux or Windows targets when the required
-cross C/MSVC toolchain is missing. Set
+is unset. `deployed-cache-smoke-required` is the hosted-readiness gate; it fails
+without `AUGENMASS_DEPLOYED_CACHE_API_BASE`. `platform-smoke` checks the host
+target and any locally available cross-targets; by default it skips Linux or
+Windows targets when the required cross C/MSVC toolchain is missing. Set
 `AUGENMASS_STRICT_PLATFORM_SMOKE=1` on a release machine if missing targets
 should fail the gate.
 
 Runtime smokes that touch a running server or hosted cache (`serve-smoke`,
-`live-cache-smoke`, `deployed-cache-smoke`, `live-sandbox-smoke`) resolve the CLI
-as: script-specific override, then `AUGENMASS_BIN`, then the bundled plugin
-binary. `demo-run` is also portable: it resolves `AUGENMASS_DEMO_BIN`, then
+`live-cache-smoke`, `deployed-cache-smoke`, `deployed-cache-smoke-required`,
+`live-sandbox-smoke`) resolve the CLI as: script-specific override, then
+`AUGENMASS_BIN`, then the bundled plugin binary. `demo-run` is also portable: it
+resolves `AUGENMASS_DEMO_BIN`, then
 `AUGENMASS_BIN`, then the bundled binary. Plugin-bundle gates (`plugin-smoke`,
 `plugin-demo-run`) intentionally stay bound to the committed plugin binary.
 

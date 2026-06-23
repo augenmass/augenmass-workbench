@@ -17,6 +17,7 @@ pub struct ServeArgs {
     pub upstream: String,
     pub ttl_secs: u64,
     pub timeout_secs: u64,
+    pub max_entries: usize,
     pub admin_token: Option<String>,
 }
 
@@ -47,6 +48,7 @@ pub async fn serve(args: ServeArgs) -> Result<()> {
         upstream: args.upstream,
         ttl_secs: args.ttl_secs,
         timeout_secs: args.timeout_secs,
+        max_entries: args.max_entries,
         admin_token: args.admin_token,
     })
     .await

@@ -185,5 +185,6 @@ fn demo_targets_are_safe_without_live_credentials() {
         .assert()
         .success()
         .stdout(contains("--upstream"))
-        .stdout(contains("--ttl-secs"));
+        .stdout(contains("--ttl-secs"))
+        .stdout(contains("--max-entries"));
 }

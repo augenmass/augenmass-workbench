@@ -37,7 +37,7 @@ commands. At the time of this status note, the suite includes:
 
 - 46 unit tests.
 - 43 CLI integration tests.
-- 8 cache integration tests.
+- 9 cache integration tests.
 - 5 demo-proof integration tests.
 - 1 serve integration test.
 
@@ -63,6 +63,9 @@ That proves:
   `https://sandbox.eudi-wallet.org/api`.
 - The schema endpoint fetched `113804` bytes from the public sandbox, then served
   a cache hit.
+- The latest public sandbox snapshot saw 558 registration certificates across 90
+  relying parties, with newest public entries on 2026-06-23 and the configured RP
+  still returning one registration.
 - The configured RP
   `2af138a8-59ea-4a84-aea3-666cafdb1369` returned one cached-sandbox
   registration.
@@ -161,6 +164,8 @@ These are good to show on stage or in a recording:
   `AUGENMASS_DEPLOYED_CACHE_API_BASE`; with a Railway/VPS URL it checks health,
   public cached reads, CLI `cached-sandbox`, and admin/warm protection when an
   admin token is provided.
+- `deployed-cache-smoke-required`: the same hosted-cache proof, but it fails
+  without a deployed cache URL and should gate any hosted-readiness claim.
 
 ## Backend deployment verdict
 
@@ -174,6 +179,8 @@ The Docker image has the right shape for Railway:
 - It should be deployed with a persistent volume and
   `AUGENMASS_CACHE_ADMIN_TOKEN`; non-loopback binds now refuse to start without
   that token.
+- It bounds stored rows with `AUGENMASS_CACHE_MAX_ENTRIES` / `--max-entries`
+  and evicts the oldest entries after the cap is reached.
 - Because the image runs as uid `10001`, hosted volumes must be writable by that
   user before the service is routed publicly.
 
@@ -187,7 +194,7 @@ validate it locally with:
 ```sh
 AUGENMASS_DEPLOYED_CACHE_API_BASE=https://cache.example/api \
 AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN=<token> \
-  just deployed-cache-smoke
+  just deployed-cache-smoke-required
 ```
 
 ## Cross-platform status
