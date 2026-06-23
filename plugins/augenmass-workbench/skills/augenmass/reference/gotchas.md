@@ -7,7 +7,7 @@ Two facts to keep straight throughout:
 - A registration body (the JSON you POST to the registrar, keyed by `rpId`) and a signed request / JAR (the OpenID4VP `oauth-authz-req+jwt` the verifier sends the wallet) are different documents with different rules. `check` is the gate for registration bodies; `doctor` is the gate for signed requests. Do not run one on the other.
 - Static artifact checks below run fully offline. Explicit live surfaces are registrar targets, the cache server, and `serve`. Commands exit non-zero on the bad outcome, so they drop straight into CI.
 
-All commands are shown relative to the repo root.
+All commands are shown relative to the repo root with bare `augenmass` for readability. Inside the Claude Code skill, agents should prefer `${CLAUDE_PLUGIN_ROOT}/bin/augenmass` so they run the bundled plugin binary the user installed.
 
 ---
 

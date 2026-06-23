@@ -42,7 +42,7 @@ local evidence bundles. Offline commands stay deterministic; live features are \
 explicit targets such as sandbox, cached-sandbox, clone, cache, and serve."
 )]
 struct Cli {
-    /// Emit machine-readable JSON instead of a text rendering (read-only commands).
+    /// Emit machine-readable JSON instead of a text rendering on commands that render structured output.
     #[arg(long, global = true)]
     json: bool,
 

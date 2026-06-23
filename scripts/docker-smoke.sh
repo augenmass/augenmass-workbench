@@ -6,6 +6,7 @@ PORT="${AUGENMASS_DOCKER_SMOKE_PORT:-18984}"
 NAME="${AUGENMASS_DOCKER_SMOKE_NAME:-augenmass-cache-smoke-$$}"
 VOLUME="${AUGENMASS_DOCKER_SMOKE_VOLUME:-${NAME}-data}"
 ADMIN="${AUGENMASS_DOCKER_SMOKE_ADMIN_TOKEN:-local-smoke-token}"
+PLATFORM="${AUGENMASS_DOCKER_PLATFORM:-}"
 BASE="http://127.0.0.1:${PORT}/api"
 BODY="$(mktemp "${TMPDIR:-/tmp}/augenmass-docker-smoke.XXXXXX")"
 
@@ -27,11 +28,21 @@ if ! command -v curl >/dev/null 2>&1; then
 fi
 
 docker info >/dev/null
-docker build -t "${IMAGE}" .
+BUILD_ARGS=()
+RUN_ARGS=()
+if [ -n "${PLATFORM}" ]; then
+  BUILD_ARGS+=(--platform "${PLATFORM}")
+  RUN_ARGS+=(--platform "${PLATFORM}")
+  echo "docker platform: ${PLATFORM}"
+else
+  echo "docker platform: daemon default"
+fi
+
+docker build "${BUILD_ARGS[@]}" -t "${IMAGE}" .
 
 docker rm -f "${NAME}" >/dev/null 2>&1 || true
 docker volume rm "${VOLUME}" >/dev/null 2>&1 || true
-docker run --rm -d \
+docker run "${RUN_ARGS[@]}" --rm -d \
   --name "${NAME}" \
   -p "127.0.0.1:${PORT}:${PORT}" \
   -e "PORT=${PORT}" \

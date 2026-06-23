@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "augenmass",
-  "description": "Claude Code plugins for the Augenmaß EUDI Wallet workbench.",
+  "description": "Skill-first EUDI Wallet workbench for developers, auditors, privacy reviewers, and demo operators.",
   "owner": {
     "name": "Augenmaß"
   },

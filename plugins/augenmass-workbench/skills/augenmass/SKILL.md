@@ -61,7 +61,7 @@ Writes are guarded. Reason before you write.
 - Never pass `--yes` or `--force` on the user's behalf. Only add them when the user explicitly asks to write, and `--force` only when they explicitly accept an over-ask warning. `--force` requires `--yes`.
 - Default to the clone target (`--target clone`) for writes. Use `--target cached-sandbox` only for read-only cached sandbox reads, and only touch `--target sandbox` when the user asks to rehearse against the real registrar.
 - Never echo, log, or commit tokens, certificates, or keys. Decode and describe; do not paste raw secrets back.
-- Use `--json` whenever you feed output back into your own reasoning or into CI; it is available on the read-only commands.
+- Use `--json` whenever you feed output back into your own reasoning or into CI; it is effective on commands that render structured output.
 - Write only to the relying party and target the user explicitly names; never invent or reuse a demo relying party id.
 
 ## Explaining findings in plain language
@@ -109,7 +109,7 @@ Never paste raw tokens, certificates, claim values, or keys back to anyone. Deco
 | Run the read-through cached-sandbox mirror | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass cache serve [--db --host --port --upstream --ttl-secs --timeout-secs --admin-token]` |
 | Prewarm the cached-sandbox mirror before a demo | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass cache warm [--api-base --admin-token --rp]` |
 
-Artifact inputs accept file paths, inline values, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Read-only commands accept `--json` where they render machine output.
+Artifact inputs accept file paths, inline values, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Commands that render structured output accept `--json`.
 
 The read-only commands exit non-zero on the bad outcome so they slot into CI: `check` and `audit` exit 1 on over-ask (and `check` also on a blocking format error), `verify` exits 1 when not verified, untrusted, revoked, or erroring, `x509-hash --client-id` exits 1 on mismatch, `doctor` exits 1 when it has findings, and `evidence verify` / `evidence replay` exit non-zero when hashes, replay determinism, or signatures fail.
 

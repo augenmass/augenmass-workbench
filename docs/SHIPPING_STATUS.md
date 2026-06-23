@@ -67,6 +67,28 @@ That proves:
 
 No remote GitHub Actions run is required for these gates.
 
+The local platform probe is:
+
+```sh
+just platform-smoke
+```
+
+It checks the host target and any installed cross-targets that have the required
+local C/MSVC toolchain. On this macOS development machine, native macOS builds
+are locally provable; Linux and Windows are skipped unless their cross toolchains
+are installed or strict mode is enabled on a release machine.
+
+The strongest local release proof is:
+
+```sh
+just local-release-proof
+```
+
+This gate passed locally on 2026-06-23. It combines the deterministic Rust
+gates, plugin smoke, live cached-sandbox smoke, platform smoke, and explicit
+Docker cache-backend builds/runs for `linux/arm64` and `linux/amd64`. It still
+does not replace native Windows or native Linux release-archive testing.
+
 ## Presentation-safe surfaces
 
 These are good to show on stage or in a recording:
@@ -107,17 +129,22 @@ Proven:
 
 - macOS Apple Silicon source build and test.
 - macOS Apple Silicon bundled plugin binary.
-- Linux container build and runtime for the cache backend.
+- macOS Intel target check from the Apple Silicon development machine when the
+  `x86_64-apple-darwin` Rust target is installed.
+- Linux arm64 container build and runtime for the cache backend.
+- Linux amd64 container build and runtime for the cache backend, including a
+  full `cargo build --release --locked` inside the amd64 Docker build and the
+  same health, uid, writable `/data`, and admin-token checks.
 
 Not yet fully proven:
 
-- Native Windows binary.
-- Native Linux release archive outside Docker.
+- Native Windows binary on Windows.
+- Native Linux release archive outside Docker or a native Linux runner.
 - Claude Code plugin bundle on Windows or Linux.
 
 The code is Rust-only, but the shipped plugin binary is currently a macOS
-Apple Silicon artifact. Treat broader platform support as source-build capable
-until native release archives are built and manually tested.
+Apple Silicon artifact. Treat broader platform support as source-build and
+container-capable until native release archives are built and manually tested.
 
 ## Remaining polish
 

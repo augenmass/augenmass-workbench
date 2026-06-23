@@ -19,7 +19,7 @@ Commands are grouped by intent:
 
 ## Global flag: `--json`
 
-Read-only commands that render structured output accept `--json` to emit machine-readable JSON instead of the text rendering. This is the contract for agents and CI. The flag is accepted both before the command and as a trailing flag on the command itself; both forms are equivalent:
+Commands that render structured output accept `--json` to emit machine-readable JSON instead of the text rendering. This is the contract for agents and CI. The flag is accepted both before the command and as a trailing flag on the command itself; both forms are equivalent:
 
 ```
 augenmass --json check examples/min.json

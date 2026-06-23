@@ -339,9 +339,10 @@ A non-zero exit on any of these commands is the finding. For machine-readable au
 
 You are building a relying party and want to register without over-asking, and you want to debug a verifier request that the wallet rejects.
 
-1. Generate a proportionate body, check it, register it. The check is the gate; do not skip it.
+1. Start the local clone store, then generate a proportionate body, check it, and register it. The check is the gate; do not skip it. Confirmed clone writes require the clone server to be running.
 
 ```
+augenmass clone serve                         # terminal 1
 augenmass generate regbody > /tmp/regbody.json
 augenmass check /tmp/regbody.json           # exits 1 if over-ask or malformed
 augenmass register /tmp/regbody.json         # dry-run first
@@ -350,10 +351,9 @@ augenmass register /tmp/regbody.json --yes   # writes to the local clone (defaul
 
 Writes are dry-run by default. `--yes` performs the write. The local `clone` target is a registrar-compatible store with no signing and no auth, safe for rehearsal; `--target sandbox` reaches the real registrar and is for off-stage rehearsal only. If `check` flags over-ask but you have a defensible reason, `register --yes --force` writes past the warning, but `--force` requires `--yes` and you should be certain.
 
-To run the local clone store and read registrations back:
+To read registrations back from the running local clone store:
 
 ```
-augenmass clone serve
 augenmass list                  # reads back the configured relying party, decoded
 ```
 

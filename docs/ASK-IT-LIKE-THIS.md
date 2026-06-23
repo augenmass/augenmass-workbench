@@ -49,6 +49,9 @@ Tell the skill to enable local debug artifacts. It adds `--unsafe-debug-artifact
 "Turn that captured session into something I can replay in a review."
 The skill runs `evidence export`, then `evidence verify` to check the hashes and any signature, and `evidence replay` to render a redacted timeline you can show on a projector without leaking wallet contents.
 
+"Keep sandbox reads stable for a demo."
+The skill starts `cache serve`, runs `cache warm` for the relying party you name, then reads through `list --target cached-sandbox`. The first call refreshes from the public sandbox, later calls can use the local cache, and stale fallback keeps the demo readable if the sandbox has a bad moment.
+
 ## If you want it to stop the next mistake
 
 "Add a check that fails my build if a registration over-asks."

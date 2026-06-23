@@ -1,11 +1,11 @@
 # Augenmaß Workbench: end-to-end use cases
 
-Five complete walkthroughs. Every command here runs against the real binary as written, using committed fixtures under `fixtures/` and `examples/`. Paths are relative to the repo root. The binary is `augenmass`; in this repo a local debug build is `./target/debug/augenmass`.
+Five complete walkthroughs. Every command here runs against the real binary as written, using committed fixtures under `fixtures/` and `examples/`. Paths are relative to the repo root. The examples use bare `augenmass` for readability; inside the Claude Code skill, prefer `${CLAUDE_PLUGIN_ROOT}/bin/augenmass`. In this repo a local debug build is `./target/debug/augenmass`.
 
 Conventions used throughout:
 
 - Artifact inputs accept a file path, an inline value, or `-` for stdin.
-- Read-only commands take `--json` for machine output (CI and agents).
+- Commands that render structured output take `--json` for machine output (CI and agents).
 - Exit codes are CI-friendly: a command exits non-zero on its "bad" outcome (over-ask, rejection, mismatch, findings) and `0` when clean. Each walkthrough notes the relevant codes.
 - Verification is offline. The clock is injectable with `--now` (Unix seconds), so fixture-based runs are reproducible. The fixtures use `--now 1780435200`.
 

@@ -142,10 +142,11 @@ Live cache proof:
 just live-cache-smoke
 ```
 
-That starts a local cache server, fetches public sandbox data, proves `MISS` and
-`HIT`, reads registrations through `list --target cached-sandbox`, then proves
-stale fallback with an intentionally broken upstream. It uses no sandbox
-credentials.
+That starts a local cache server with an admin token, fetches public sandbox
+data, proves `MISS` and `HIT`, reads registrations through
+`list --target cached-sandbox`, runs `cache warm` through the protected refresh
+API, then proves stale fallback with an intentionally broken upstream. It uses no
+sandbox credentials.
 
 ## Cloudflare
 

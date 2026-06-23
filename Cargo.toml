@@ -15,6 +15,10 @@ path = "src/main.rs"
 name = "augenmass_workbench"
 path = "src/lib.rs"
 
+[workspace]
+members = [".", "crates/augenmass-core"]
+resolver = "2"
+
 [dependencies]
 augenmass-core = { path = "crates/augenmass-core" }
 openid4vp = { git = "https://github.com/spruceid/openid4vp", rev = "d2847dfcd07d1ea70ffc0c713ad650519d424a82" }

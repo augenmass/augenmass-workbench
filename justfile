@@ -18,14 +18,14 @@ fmt:
 
 # Run the full test suite (unit + integration against the offline fixtures).
 test:
-    cargo test
+    cargo test --workspace
 
 # The gate: formatting, lints, tests, and a battery of real-fixture smoke checks.
 verify:
     cargo fmt --all --check
-    cargo clippy --all-targets -- -D warnings
-    cargo test
-    cargo build
+    cargo clippy --workspace --all-targets -- -D warnings
+    cargo test --workspace
+    cargo build --workspace
     # generated bodies round-trip through check
     cargo run --quiet -- generate regbody | cargo run --quiet -- check -
     # over-broad generation must block
@@ -83,8 +83,23 @@ live-cache-smoke:
 docker-smoke:
     ./scripts/docker-smoke.sh
 
+# Build and run the cache backend container as Linux arm64.
+docker-smoke-arm64:
+    AUGENMASS_DOCKER_PLATFORM=linux/arm64 AUGENMASS_DOCKER_IMAGE=augenmass-cache-smoke-arm64 AUGENMASS_DOCKER_SMOKE_PORT=18986 ./scripts/docker-smoke.sh
+
+# Build and run the cache backend container as Linux amd64.
+docker-smoke-amd64:
+    AUGENMASS_DOCKER_PLATFORM=linux/amd64 AUGENMASS_DOCKER_IMAGE=augenmass-cache-smoke-amd64 AUGENMASS_DOCKER_SMOKE_PORT=18985 ./scripts/docker-smoke.sh
+
+# Check host and available cross-target builds without remote CI.
+platform-smoke:
+    ./scripts/platform-smoke.sh
+
 # Local shipping proof that avoids remote GitHub CI runner minutes.
 shipping-smoke: plugin-smoke live-cache-smoke docker-smoke
+
+# Strongest local release proof; no GitHub Actions, but two Linux Docker builds.
+local-release-proof: verify demo-run plugin-smoke live-cache-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64
 
 # Bundle the release binary into the plugin (Apple Silicon macOS).
 bundle: release

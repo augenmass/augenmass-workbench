@@ -6,9 +6,9 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
 ## TL;DR of status
 
 - Repo: `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench`, its own git repo on `main`.
-- A working, fully-tested Rust CLI `augenmass` (v0.2.0) plus a Claude Code skill and full docs.
+- A working, fully-tested Rust CLI `augenmass` (v0.2.0) plus a Claude Code skill, cache backend, Docker image, and full docs.
 - Build green, zero warnings, clippy clean, `cargo fmt --check` clean.
-- Tests: 38 unit + 38 CLI integration + 1 serve integration = 77, all passing, against real committed offline fixtures.
+- Tests at last shipping pass: 41 unit + 43 CLI integration + 7 cache integration + 5 demo-proof integration + 1 serve integration, all passing against real committed offline fixtures.
 - Every command verified by hand against the real fixtures (verification, revocation, x509_hash, over-ask, the guarded clone write/read loop, the live serve flow).
 - HEADLINE capability built: `augenmass serve`, a live wallet-interaction debugger (P2 done), since hardened to be safe-by-default (the P0 security PR) with an `evidence` export/verify/replay group built on top.
 - Commits on `main` (newest first): `1d1206a` evidence bundle caveats doc; `b22c73a` evidence
@@ -27,8 +27,11 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
   sensitive audit bundles built from those captures: canonical hashing, optional ES256 signing, and a
   redacted projector-safe replay that can decrypt and offline-verify a captured response). Both were
   verified against the running binary and fast-forward merged to `main`.
+- Added since: `cache serve`, `cache warm`, `cached-sandbox` read-through behavior, local
+  `plugin-smoke`, `live-cache-smoke`, `docker-smoke`, explicit Linux Docker platform smokes,
+  `shipping-smoke`, `platform-smoke`, and `local-release-proof` gates.
 - NOT finished: the rest of P3 (mdoc cryptographic VERIFY, trust-list parse, PE->DCQL, OpenID4VCI
-  metadata, full JAR signature verify) and P6 (release binaries). See "Next work".
+  metadata, full JAR signature verify) and fully proven native Windows/Linux release archives. See "Next work".
 - The previously deferred review finding (LOW: serve reused one response-encryption key across
   requests) is now CLOSED by the P0 PR: per-session ephemeral keys, single-use, with cleanup on the
   success, plaintext-reject, and malformed-parse paths.
@@ -66,7 +69,7 @@ Every artifact arg accepts a file path, an inline value, or `-` for stdin. Comma
 - DIAGNOSE: `doctor <request>` (JAR x5c/client_id gotchas), `validate dcql <input>` (DCQL semantic validation: unique ids, credential_sets refs, per-format claim paths; CI-gateable, src/commands/validate.rs)
 - DEBUG (live): `serve` (verifier-in-a-box; a real wallet presents and the whole OpenID4VP exchange is traced)
 - EVIDENCE (offline audit): `evidence {export|verify|replay}` (turn a `serve --unsafe-debug-artifacts` capture into a sensitive, hash-verified, optionally ES256-signed bundle, then render a redacted projector-safe replay timeline)
-- WRITE (guard-railed): `register <body> --target {clone|cached-sandbox|sandbox} [--yes --force]`, `list`, `clone serve`, `cache serve`
+- WRITE / CACHE (guard-railed): `register <body> --target {clone|cached-sandbox|sandbox} [--yes --force]`, `list`, `clone serve`, `cache serve`, `cache warm`
 
 The `serve` command (src/serve/{mod,state,handlers,view,trace}.rs) is the headline
 wallet-interaction debugger, ported and extended from `verifier/verifier-service`.
@@ -112,8 +115,11 @@ verification reject, untrusted, revoked, x509_hash mismatch, doctor findings).
 ```
 cd augenmass-workbench
 cargo build
-cargo test                 # 15 unit + 30 integration
+cargo test --workspace     # full workspace suite, including the reusable core crate
 just verify                # fmt --check, clippy -D warnings, test, + real-fixture smoke battery
+just shipping-smoke        # plugin bundle + live cached-sandbox + Docker cache backend
+just platform-smoke        # host/cross-target cargo checks; skips missing cross toolchains unless strict
+just local-release-proof   # strongest local gate; includes linux/arm64 and linux/amd64 Docker smokes
 just bundle                # release build -> plugins/augenmass-workbench/bin/augenmass (arm64)
 ```
 
