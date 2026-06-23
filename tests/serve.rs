@@ -13,13 +13,19 @@ use augenmass_workbench::serve::handlers::router;
 use augenmass_workbench::serve::state::{AppState, CertSource};
 
 async fn spawn_server() -> (String, reqwest::Client) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind ephemeral port");
+    let addr = listener.local_addr().unwrap();
+    let base = format!("http://{addr}/");
     let state = Arc::new(
         AppState::new(
-            "http://127.0.0.1:0/".parse().unwrap(),
+            base.parse().unwrap(),
             CertSource::Ephemeral,
             "event_checkin",
             None,
             false,
+            None,
             None,
             false,
         )
@@ -27,14 +33,13 @@ async fn spawn_server() -> (String, reqwest::Client) {
         .expect("build app state"),
     );
     let app = router(state);
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind ephemeral port");
-    let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    (format!("http://{addr}"), reqwest::Client::new())
+    (
+        base.trim_end_matches('/').to_string(),
+        reqwest::Client::new(),
+    )
 }
 
 #[tokio::test]

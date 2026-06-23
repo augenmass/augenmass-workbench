@@ -3,7 +3,7 @@
 //!
 //! The report rendering mirrors the over-ask CLI's text output on purpose. The
 //! trace timeline is the browser face of the debugger: every recorded step with
-//! its raw artifact, refreshing live while a wallet interacts.
+//! redacted protocol detail, refreshing live while a wallet interacts.
 
 use uuid::Uuid;
 
@@ -87,7 +87,7 @@ pub fn landing_page(state: &AppState, session_id: &Uuid, auth_url: &str) -> Stri
          <p class=\"mono\"><code>{auth}</code></p>\
          <p>client_id: <code>{cid}</code></p></section>\
          <section class=\"card\"><h3>Watch the exchange</h3>\
-         <p class=\"blurb\">The wallet-interaction trace shows every step (request fetched, response decrypted, verification, trust, revocation, over-ask) with the raw artifacts, refreshing live.</p>\
+         <p class=\"blurb\">The wallet-interaction trace shows every step (request fetched, response decrypted, verification, trust, revocation, over-ask) with PID-bearing wallet material redacted by default.</p>\
          <p><a class=\"btn\" href=\"{trace}\">Open the live trace</a></p></section>\
          <section class=\"card\"><h3>Inspect the request</h3>\
          <p class=\"blurb\">See the over-ask analysis without presenting anything.</p>\
@@ -307,7 +307,7 @@ pub fn trace_page(state: &AppState, session: &Uuid, trace: Option<&SessionTrace>
          <main>{dev}\
          <section class=\"card\">{timeline}</section>\
          <p class=\"blurb\">Machine-readable: <a href=\"{json}\">{json}</a></p></main>\
-         <footer><p class=\"note\">Each step carries the raw artifact the wallet sent or the verifier produced; expand \"detail\".</p></footer>",
+         <footer><p class=\"note\">PID-bearing wallet response material is redacted in the HTTP trace API; expand \"detail\" for hashes, shapes, request context, and verifier outcomes.</p></footer>",
         short = esc(&short),
         live = live,
         count = count,

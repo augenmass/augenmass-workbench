@@ -8,7 +8,8 @@
 //! is observable end to end.
 
 use std::collections::HashMap;
-use std::net::{IpAddr, ToSocketAddrs};
+use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -34,7 +35,7 @@ use p256::ecdsa::SigningKey;
 use p256::SecretKey;
 use ssi::jwk::JWK;
 use tokio::sync::Mutex;
-use url::Url;
+use url::{Host, Url};
 use x509_cert::{der::Decode, Certificate};
 
 use augenmass_core::inspector::{self, PurposeBaseline};
@@ -50,6 +51,7 @@ const BUNDLED_RC: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/fixtures/regcert/rc-by-id.json"
 ));
+pub(crate) const MAX_STATUS_LIST_BYTES: usize = 2_000_000;
 
 /// Where the verifier's signing identity comes from.
 pub enum CertSource {
@@ -64,7 +66,7 @@ pub struct AppState {
     pub wallet_metadata: WalletMetadata,
     pub public_url: Url,
     pub client_id: String,
-    pub encryption_key_jwk: JWK,
+    pub(crate) encryption_keys: Mutex<HashMap<uuid::Uuid, JWK>>,
     pub registered_scope: Option<RegisteredScope>,
     pub baseline: Option<PurposeBaseline>,
     /// Verification outcomes, keyed by session id, for the inspector view.
@@ -85,6 +87,9 @@ pub struct AppState {
     /// The per-session wallet-interaction trace (the debugger's event log).
     pub trace: TraceStore,
     pub(crate) status_fetcher: StatusFetcher,
+    /// Explicit opt-in path for private replay artifacts. Never served over the
+    /// trace API; used only for local end-to-end debugging.
+    pub(crate) unsafe_debug_artifacts: Option<PathBuf>,
 }
 
 pub(crate) enum StatusFetcher {
@@ -115,35 +120,30 @@ impl StatusFetcher {
                 // loopback, private, link-local, or otherwise non-public addresses,
                 // and disable redirects so a public host cannot bounce us inward.
                 let host = url
-                    .host_str()
+                    .host()
                     .ok_or_else(|| anyhow::anyhow!("status-list uri has no host ({uri})"))?;
                 let port = url.port_or_known_default().unwrap_or(443);
-                let addrs: Vec<std::net::SocketAddr> = (host, port)
-                    .to_socket_addrs()
-                    .with_context(|| format!("resolve status-list host {host}"))?
-                    .collect();
-                if addrs.is_empty() {
-                    anyhow::bail!("status-list host {host} did not resolve ({uri})");
-                }
-                if let Some(addr) = addrs.iter().find(|a| is_non_public_ip(&a.ip())) {
-                    anyhow::bail!(
-                        "refusing to fetch status-list from non-public address {} ({uri})",
-                        addr.ip()
-                    );
-                }
-                let client = reqwest::Client::builder()
+                let (addrs, pin_domain) = match host {
+                    Host::Domain(domain) => (resolve_status_addrs(domain, port)?, Some(domain)),
+                    Host::Ipv4(ip) => (vec![SocketAddr::new(IpAddr::V4(ip), port)], None),
+                    Host::Ipv6(ip) => (vec![SocketAddr::new(IpAddr::V6(ip), port)], None),
+                };
+                let vetted = vet_resolved_status_addrs(uri, addrs)?;
+                let mut builder = reqwest::Client::builder()
                     .redirect(reqwest::redirect::Policy::none())
-                    .timeout(Duration::from_secs(10))
-                    .build()
-                    .context("build status-list http client")?;
-                let jws = client
+                    .timeout(Duration::from_secs(10));
+                if let Some(domain) = pin_domain {
+                    builder = builder.resolve_to_addrs(domain, &vetted);
+                }
+                let client = builder.build().context("build status-list http client")?;
+                let response = client
                     .get(url)
                     .send()
                     .await
                     .with_context(|| format!("fetch status-list token from {uri}"))?
                     .error_for_status()
-                    .with_context(|| format!("status-list token request to {uri} failed"))?
-                    .text()
+                    .with_context(|| format!("status-list token request to {uri} failed"))?;
+                let jws = read_status_body_limited(response)
                     .await
                     .with_context(|| format!("read status-list token body from {uri}"))?;
                 Ok(jws)
@@ -162,19 +162,64 @@ impl StatusFetcher {
     }
 }
 
+pub(crate) fn resolve_status_addrs(host: &str, port: u16) -> Result<Vec<SocketAddr>> {
+    (host, port)
+        .to_socket_addrs()
+        .with_context(|| format!("resolve status-list host {host}"))
+        .map(|iter| iter.collect())
+}
+
+pub(crate) fn vet_resolved_status_addrs(
+    uri: &str,
+    addrs: Vec<SocketAddr>,
+) -> Result<Vec<SocketAddr>> {
+    if addrs.is_empty() {
+        anyhow::bail!("status-list host did not resolve ({uri})");
+    }
+    if let Some(addr) = addrs.iter().find(|a| is_non_public_ip(&a.ip())) {
+        anyhow::bail!(
+            "refusing to fetch status-list from non-public address {} ({uri})",
+            addr.ip()
+        );
+    }
+    Ok(addrs)
+}
+
+async fn read_status_body_limited(mut response: reqwest::Response) -> Result<String> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        append_status_chunk(&mut bytes, &chunk)?;
+    }
+    String::from_utf8(bytes).context("status-list token body is not UTF-8")
+}
+
+pub(crate) fn append_status_chunk(buffer: &mut Vec<u8>, chunk: &[u8]) -> Result<()> {
+    if buffer.len().saturating_add(chunk.len()) > MAX_STATUS_LIST_BYTES {
+        anyhow::bail!(
+            "status-list token body is too large: more than {MAX_STATUS_LIST_BYTES} bytes"
+        );
+    }
+    buffer.extend_from_slice(chunk);
+    Ok(())
+}
+
 /// Is this address one we must not fetch from (the SSRF deny list): loopback,
 /// private, link-local, unspecified, or multicast?
-fn is_non_public_ip(ip: &IpAddr) -> bool {
+pub(crate) fn is_non_public_ip(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
             v4.is_loopback()
                 || v4.is_private()
+                || (v4.octets()[0] == 100 && (v4.octets()[1] & 0xc0) == 0x40)
                 || v4.is_link_local()
                 || v4.is_unspecified()
                 || v4.is_broadcast()
                 || v4.is_multicast()
         }
         IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_non_public_ip(&IpAddr::V4(v4));
+            }
             v6.is_loopback()
                 || v6.is_unspecified()
                 || v6.is_multicast()
@@ -195,8 +240,12 @@ impl AppState {
         trust_anchors: Option<TrustAnchors>,
         live_status: bool,
         anchor_pem: Option<String>,
+        unsafe_debug_artifacts: Option<PathBuf>,
         console_trace: bool,
     ) -> Result<Self> {
+        if let Some(root) = unsafe_debug_artifacts.as_ref() {
+            crate::serve::artifacts::prepare_root(root)?;
+        }
         let ephemeral = matches!(source, CertSource::Ephemeral);
         let (signing_key, leaf) = match source {
             CertSource::Files { key_pem, leaf_pem } => {
@@ -216,17 +265,13 @@ impl AppState {
         let submission_endpoint = public_url.join("response")?;
         let request_uri_base = public_url.join("request")?;
 
-        let (encryption_key_jwk, public_jwk) = generate_encryption_key()?;
-        let client_metadata = build_client_metadata(&public_jwk);
-
         let mut builder = Verifier::builder()
             .with_client(client)
             .with_session_store(session_store)
             .with_submission_endpoint(submission_endpoint)
             .by_reference(request_uri_base)
             .with_default_request_parameter(ResponseType::VpToken)
-            .with_default_request_parameter(ResponseMode::DirectPostJwt)
-            .with_default_request_parameter(client_metadata);
+            .with_default_request_parameter(ResponseMode::DirectPostJwt);
 
         // Embed our registration certificate as `verifier_info` in every emitted
         // request object: a German PID presentation requires it, and its absence
@@ -251,7 +296,7 @@ impl AppState {
             wallet_metadata,
             public_url,
             client_id,
-            encryption_key_jwk,
+            encryption_keys: Mutex::new(HashMap::new()),
             registered_scope,
             baseline,
             results: Mutex::new(HashMap::new()),
@@ -261,6 +306,7 @@ impl AppState {
             anchor_pem,
             trace: TraceStore::new(console_trace),
             status_fetcher: StatusFetcher::Http,
+            unsafe_debug_artifacts,
         })
     }
 }
@@ -353,7 +399,9 @@ fn generate_cert(domain: &str) -> Result<(SigningKey, Certificate)> {
 }
 
 /// Generate an ECDH-ES encryption key pair for the `direct_post.jwt` response.
-fn generate_encryption_key() -> Result<(JWK, serde_json::Map<String, serde_json::Value>)> {
+pub(crate) fn generate_encryption_key(
+    kid: &str,
+) -> Result<(JWK, serde_json::Map<String, serde_json::Value>)> {
     use rand::rngs::OsRng;
 
     let secret_key = SecretKey::random(&mut OsRng);
@@ -362,18 +410,18 @@ fn generate_encryption_key() -> Result<(JWK, serde_json::Map<String, serde_json:
     let mut private_jwk: JWK =
         serde_json::from_str(&secret_key.to_jwk_string()).context("private enc JWK")?;
     private_jwk.public_key_use = Some("enc".into());
-    private_jwk.key_id = Some("enc-key-1".into());
+    private_jwk.key_id = Some(kid.into());
 
     let mut public_jwk: serde_json::Map<String, serde_json::Value> =
         serde_json::from_str(&public_key.to_jwk_string()).context("public enc JWK")?;
     public_jwk.insert("use".to_string(), serde_json::json!("enc"));
     public_jwk.insert("alg".to_string(), serde_json::json!("ECDH-ES"));
-    public_jwk.insert("kid".to_string(), serde_json::json!("enc-key-1"));
+    public_jwk.insert("kid".to_string(), serde_json::json!(kid));
 
     Ok((private_jwk, public_jwk))
 }
 
-fn build_client_metadata(
+pub(crate) fn build_client_metadata(
     encryption_public_jwk: &serde_json::Map<String, serde_json::Value>,
 ) -> ClientMetadata {
     let mut vp_formats = ClaimFormatMap::new();
@@ -412,4 +460,92 @@ fn create_wallet_metadata(authorization_endpoint: Url) -> Result<WalletMetadata>
         ClientIdScheme::X509_HASH.to_string(),
     )]));
     Ok(metadata)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+
+    use super::*;
+
+    #[test]
+    fn deny_list_covers_mapped_ipv6_and_cgnat() {
+        for ip in [
+            IpAddr::V6("::ffff:127.0.0.1".parse::<Ipv6Addr>().unwrap()),
+            IpAddr::V6("::ffff:169.254.169.254".parse::<Ipv6Addr>().unwrap()),
+            IpAddr::V6("::ffff:10.0.0.1".parse::<Ipv6Addr>().unwrap()),
+            IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1)),
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+            IpAddr::V4(Ipv4Addr::new(169, 254, 169, 254)),
+            IpAddr::V6(Ipv6Addr::LOCALHOST),
+            IpAddr::V6("fc00::1".parse::<Ipv6Addr>().unwrap()),
+            IpAddr::V6("fe80::1".parse::<Ipv6Addr>().unwrap()),
+        ] {
+            assert!(is_non_public_ip(&ip), "{ip} should be denied");
+        }
+        assert!(!is_non_public_ip(&IpAddr::V4(Ipv4Addr::new(
+            93, 184, 216, 34
+        ))));
+        assert!(!is_non_public_ip(&IpAddr::V6(
+            "2606:2800:220:1:248:1893:25c8:1946"
+                .parse::<Ipv6Addr>()
+                .unwrap()
+        )));
+    }
+
+    #[test]
+    fn pure_status_addr_vetter_returns_only_vetted_public_addrs() {
+        let public = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34)), 443);
+        let vetted = vet_resolved_status_addrs("https://example.com/status", vec![public])
+            .expect("public address passes");
+        assert_eq!(vetted, vec![public]);
+
+        for ip in [
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+            IpAddr::V4(Ipv4Addr::new(169, 254, 169, 254)),
+            IpAddr::V6("::ffff:127.0.0.1".parse::<Ipv6Addr>().unwrap()),
+            IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1)),
+        ] {
+            let err = vet_resolved_status_addrs(
+                "https://example.com/status",
+                vec![SocketAddr::new(ip, 443)],
+            )
+            .expect_err("non-public address rejected");
+            assert!(
+                err.to_string().contains("non-public"),
+                "unexpected error: {err}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn http_status_fetcher_rejects_literal_non_public_hosts_before_network() {
+        for uri in [
+            "https://127.0.0.1/",
+            "https://169.254.169.254/",
+            "https://[::ffff:127.0.0.1]/",
+        ] {
+            let err = StatusFetcher::Http
+                .fetch(uri)
+                .await
+                .expect_err("literal non-public host rejected");
+            assert!(
+                err.to_string().contains("non-public"),
+                "unexpected error for {uri}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn status_body_cap_rejects_above_limit() {
+        let mut buffer = Vec::new();
+        append_status_chunk(&mut buffer, &vec![b'a'; MAX_STATUS_LIST_BYTES])
+            .expect("exact limit allowed");
+        assert_eq!(buffer.len(), MAX_STATUS_LIST_BYTES);
+        let err = append_status_chunk(&mut buffer, b"x").expect_err("above limit rejected");
+        assert!(
+            err.to_string().contains("too large"),
+            "unexpected error: {err}"
+        );
+    }
 }

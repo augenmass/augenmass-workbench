@@ -31,7 +31,11 @@ use augenmass_core::{
     RequestBinding, StatusInput, TrustOptions, VerifiedPid, PID_VCT,
 };
 
-use crate::serve::state::{status_signer_from_anchor, AppState, SessionResult};
+use crate::serve::artifacts::sha256_hex;
+use crate::serve::state::{
+    build_client_metadata, generate_encryption_key, status_signer_from_anchor, AppState,
+    SessionResult,
+};
 use crate::serve::trace::{TraceKind, TraceLevel};
 use crate::serve::view;
 
@@ -86,6 +90,48 @@ async fn get_request_object(
         "header": decoded.as_ref().map(|d| d.header.clone()),
         "payload": decoded.as_ref().map(|d| d.payload.clone()),
     });
+    if let Some(root) = state.unsafe_debug_artifacts.as_ref() {
+        let artifact = crate::serve::artifacts::write_text(
+            root,
+            uuid,
+            "request.jwt",
+            "signed authorization request JAR",
+            &jwt,
+        )
+        .map_err(|e| AppError::internal(format!("write unsafe debug request JAR: {e}")))?;
+        state
+            .trace
+            .record(
+                uuid,
+                TraceKind::ArtifactSaved,
+                "saved unsafe debug request JAR artifact",
+                Some(artifact.trace_detail()),
+            )
+            .await;
+        if let Some(payload) = detail.get("payload") {
+            if !payload.is_null() {
+                let artifact = crate::serve::artifacts::write_json(
+                    root,
+                    uuid,
+                    "request.payload.json",
+                    "decoded authorization request payload",
+                    payload,
+                )
+                .map_err(|e| {
+                    AppError::internal(format!("write unsafe debug request payload: {e}"))
+                })?;
+                state
+                    .trace
+                    .record(
+                        uuid,
+                        TraceKind::ArtifactSaved,
+                        "saved unsafe debug request payload artifact",
+                        Some(artifact.trace_detail()),
+                    )
+                    .await;
+            }
+        }
+    }
     state
         .trace
         .record(
@@ -113,8 +159,39 @@ async fn receive_response(
     let uuid: Uuid = id
         .parse()
         .map_err(|_| AppError::bad("invalid session id"))?;
-    let response = AuthorizationResponse::from_x_www_form_urlencoded(body.as_bytes())
-        .map_err(|e| AppError::bad(format!("invalid authorization response: {e}")))?;
+    state
+        .verifier
+        .retrieve_authorization_request(uuid)
+        .await
+        .map_err(|e| AppError::not_found(format!("session not found: {e}")))?;
+    if let Some(root) = state.unsafe_debug_artifacts.as_ref() {
+        let artifact = crate::serve::artifacts::write_text(
+            root,
+            uuid,
+            "direct-post.body",
+            "raw direct_post form body",
+            &body,
+        )
+        .map_err(|e| AppError::internal(format!("write unsafe debug direct_post body: {e}")))?;
+        state
+            .trace
+            .record(
+                uuid,
+                TraceKind::ArtifactSaved,
+                "saved unsafe debug direct_post body artifact",
+                Some(artifact.trace_detail()),
+            )
+            .await;
+    }
+    let response = match AuthorizationResponse::from_x_www_form_urlencoded(body.as_bytes()) {
+        Ok(response) => response,
+        Err(e) => {
+            state.encryption_keys.lock().await.remove(&uuid);
+            return Err(AppError::bad(format!(
+                "invalid authorization response: {e}"
+            )));
+        }
+    };
     let now_unix = now_unix();
 
     let mode = match &response {
@@ -127,12 +204,46 @@ async fn receive_response(
             uuid,
             TraceKind::ResponseReceived,
             format!("wallet posted its response ({mode})"),
-            Some(json!({ "mode": mode, "rawBody": body })),
+            Some(redacted_response_detail(mode, &body, &response)),
         )
         .await;
 
+    if matches!(response, AuthorizationResponse::Unencoded(_)) {
+        let reason = "plaintext direct_post response rejected: this verifier advertises direct_post.jwt and requires response encryption";
+        state
+            .trace
+            .record_at(
+                uuid,
+                TraceKind::Rejected,
+                TraceLevel::Bad,
+                reason,
+                Some(json!({
+                    "reason": reason,
+                    "redacted": true,
+                })),
+            )
+            .await;
+        state
+            .results
+            .lock()
+            .await
+            .insert(uuid, SessionResult::Rejected(reason.to_string()));
+        state.encryption_keys.lock().await.remove(&uuid);
+        let inspect = format!("{}inspect/{}", state.public_url, uuid);
+        let trace = format!("{}trace/{}", state.public_url, uuid);
+        return Ok((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({
+                "status": "rejected",
+                "reason": reason,
+                "inspect": inspect,
+                "trace": trace,
+            })),
+        ));
+    }
+
     let st = state.clone();
-    state
+    let verify_result = state
         .verifier
         .verify_response(uuid, response, move |session, response| {
             let st = st.clone();
@@ -159,8 +270,9 @@ async fn receive_response(
                 }
             })
         })
-        .await
-        .map_err(|e| AppError::internal(format!("verification error: {e}")))?;
+        .await;
+    state.encryption_keys.lock().await.remove(&uuid);
+    verify_result.map_err(|e| AppError::internal(format!("verification error: {e}")))?;
 
     let inspect = format!("{}inspect/{}", state.public_url, uuid);
     let trace = format!("{}trace/{}", state.public_url, uuid);
@@ -196,7 +308,19 @@ async fn verify_any(
     let sid = session.uuid;
     match response {
         AuthorizationResponse::Jwt(jwt) => {
-            let decrypted = match decrypt_jwe(&jwt.response, &st.encryption_key_jwk) {
+            let encryption_key = {
+                let keys = st.encryption_keys.lock().await;
+                keys.get(&sid).cloned()
+            };
+            let Some(encryption_key) = encryption_key else {
+                let reason =
+                    "missing session encryption key for direct_post.jwt response".to_string();
+                st.trace
+                    .record_at(sid, TraceKind::Rejected, TraceLevel::Bad, &reason, None)
+                    .await;
+                return Err(reason);
+            };
+            let decrypted = match decrypt_jwe(&jwt.response, &encryption_key) {
                 Ok(v) => v,
                 Err(e) => {
                     let reason = format!("failed to decrypt response: {e}");
@@ -206,29 +330,61 @@ async fn verify_any(
                     return Err(reason);
                 }
             };
+            if let Some(root) = st.unsafe_debug_artifacts.as_ref() {
+                match crate::serve::artifacts::write_json(
+                    root,
+                    sid,
+                    "auth-response.json",
+                    "decrypted authorization response",
+                    &decrypted,
+                ) {
+                    Ok(artifact) => {
+                        st.trace
+                            .record(
+                                sid,
+                                TraceKind::ArtifactSaved,
+                                "saved unsafe debug decrypted authorization response artifact",
+                                Some(artifact.trace_detail()),
+                            )
+                            .await;
+                    }
+                    Err(e) => {
+                        let reason =
+                            format!("failed to write unsafe debug decrypted response: {e}");
+                        st.trace
+                            .record_at(sid, TraceKind::Error, TraceLevel::Bad, &reason, None)
+                            .await;
+                        return Err(reason);
+                    }
+                }
+            }
             st.trace
                 .record(
                     sid,
                     TraceKind::ResponseDecrypted,
                     "decrypted the JWE response (ECDH-ES)",
-                    Some(decrypted.clone()),
+                    Some(redacted_decrypted_detail(&decrypted)),
                 )
                 .await;
             verify_vp_token(st, sid, &decrypted, &binding, now_unix).await
         }
         AuthorizationResponse::Unencoded(unencoded) => {
             let value = serde_json::to_value(&unencoded.vp_token)
-                .map_err(|e| format!("vp_token not serializable: {e}"))?;
-            let wrapped = json!({ "vp_token": value });
+                .unwrap_or_else(|_| Value::String("<unserializable>".to_string()));
             st.trace
-                .record(
+                .record_at(
                     sid,
-                    TraceKind::ResponseDecrypted,
-                    "response was plaintext (no JWE to decrypt)",
-                    Some(wrapped.clone()),
+                    TraceKind::Rejected,
+                    TraceLevel::Bad,
+                    "plaintext direct_post response rejected",
+                    Some(json!({
+                        "vpTokenPresent": !value.is_null(),
+                        "vpTokenShape": value_shape(&value),
+                        "redacted": true,
+                    })),
                 )
                 .await;
-            verify_vp_token(st, sid, &wrapped, &binding, now_unix).await
+            Err("plaintext direct_post response rejected".to_string())
         }
     }
 }
@@ -490,6 +646,86 @@ async fn record_over_ask(st: &AppState, sid: Uuid, disclosed: &[String]) {
         .await;
 }
 
+fn redacted_response_detail(mode: &str, body: &str, response: &AuthorizationResponse) -> Value {
+    let mut fields = url::form_urlencoded::parse(body.as_bytes())
+        .map(|(key, _)| key.into_owned())
+        .collect::<Vec<_>>();
+    fields.sort();
+    fields.dedup();
+    let response_value = match response {
+        AuthorizationResponse::Jwt(jwt) => compact_jwe_summary(&jwt.response),
+        AuthorizationResponse::Unencoded(_) => json!({
+            "present": false,
+            "plaintext": true,
+            "redacted": true,
+        }),
+    };
+    let state = url::form_urlencoded::parse(body.as_bytes())
+        .find(|(key, _)| key == "state")
+        .map(|(_, value)| value.into_owned());
+    json!({
+        "mode": mode,
+        "bodyLen": body.len(),
+        "bodySha256": sha256_hex(body.as_bytes()),
+        "fields": fields,
+        "state": state,
+        "response": response_value,
+        "redacted": true,
+        "redaction": "direct_post body and wallet tokens are not exposed by the unauthenticated trace API"
+    })
+}
+
+fn compact_jwe_summary(response: &str) -> Value {
+    let parts = response.split('.').collect::<Vec<_>>();
+    json!({
+        "present": true,
+        "len": response.len(),
+        "sha256": sha256_hex(response.as_bytes()),
+        "partCount": parts.len(),
+        "compactJwe": parts.len() == 5,
+        "protectedHeaderB64Len": parts.first().map(|part| part.len()).unwrap_or(0),
+        "redacted": true,
+    })
+}
+
+fn redacted_decrypted_detail(value: &Value) -> Value {
+    let bytes = serde_json::to_vec(value).unwrap_or_default();
+    let body = value
+        .get("authorization_response")
+        .or_else(|| value.get("auth_response"))
+        .or_else(|| value.get("body"))
+        .and_then(Value::as_object)
+        .or_else(|| value.as_object());
+    let mut fields = body
+        .map(|body| body.keys().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    fields.sort();
+    let vp_token = body
+        .and_then(|body| body.get("vp_token"))
+        .unwrap_or(&Value::Null);
+    json!({
+        "bodyLen": bytes.len(),
+        "bodySha256": sha256_hex(&bytes),
+        "fields": fields,
+        "state": body.and_then(|body| body.get("state")).and_then(Value::as_str),
+        "vpTokenPresent": !vp_token.is_null(),
+        "vpTokenShape": value_shape(vp_token),
+        "redacted": true,
+        "redaction": "decrypted authorization response and wallet tokens are not exposed by the unauthenticated trace API"
+    })
+}
+
+fn value_shape(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
 fn request_binding(session: &Session) -> RequestBinding {
     let nonce = session.authorization_request_object.nonce().to_string();
     let aud = session
@@ -585,15 +821,26 @@ async fn sessions_json(State(state): State<Arc<AppState>>) -> Json<Value> {
 
 async fn create_request(state: &AppState) -> Result<(Uuid, String), AppError> {
     let nonce = Uuid::new_v4().to_string();
-    let (session_id, url) = state
+    let session_id = Uuid::new_v4();
+    let key_id = format!("enc-{session_id}");
+    let (private_jwk, public_jwk) = generate_encryption_key(&key_id)
+        .map_err(|e| AppError::internal(format!("failed to create response key: {e}")))?;
+    let client_metadata = build_client_metadata(&public_jwk);
+    let url = state
         .verifier
         .build_authorization_request()
         .with_dcql_query(pid::pid_dcql_minimal())
         .with_request_parameter(Nonce::from(nonce.clone()))
-        .build(state.wallet_metadata.clone())
+        .with_request_parameter(client_metadata)
+        .build_with_session_id(session_id, state.wallet_metadata.clone())
         .await
         .map_err(|e| AppError::internal(format!("failed to build request: {e}")))?;
     let auth_url = url.to_string();
+    state
+        .encryption_keys
+        .lock()
+        .await
+        .insert(session_id, private_jwk);
 
     state
         .trace
@@ -604,6 +851,39 @@ async fn create_request(state: &AppState) -> Result<(Uuid, String), AppError> {
             None,
         )
         .await;
+    if let Some(root) = state.unsafe_debug_artifacts.as_ref() {
+        let private_jwk = {
+            let keys = state.encryption_keys.lock().await;
+            keys.get(&session_id).cloned()
+        }
+        .ok_or_else(|| AppError::internal("missing generated response encryption key"))?;
+        let private_jwk = serde_json::to_value(&private_jwk)
+            .map_err(|e| AppError::internal(format!("serialize session encryption JWK: {e}")))?;
+        let artifact = match crate::serve::artifacts::write_json(
+            root,
+            session_id,
+            "session-enc-key.jwk",
+            "session response encryption private JWK",
+            &private_jwk,
+        ) {
+            Ok(artifact) => artifact,
+            Err(e) => {
+                state.encryption_keys.lock().await.remove(&session_id);
+                return Err(AppError::internal(format!(
+                    "write unsafe debug session key: {e}"
+                )));
+            }
+        };
+        state
+            .trace
+            .record(
+                session_id,
+                TraceKind::ArtifactSaved,
+                "saved unsafe debug session encryption private JWK artifact",
+                Some(artifact.trace_detail()),
+            )
+            .await;
+    }
     state
         .trace
         .record(
@@ -614,12 +894,14 @@ async fn create_request(state: &AppState) -> Result<(Uuid, String), AppError> {
                 "authorizationRequest": auth_url,
                 "nonce": nonce,
                 "clientId": state.client_id,
+                "responseEncryptionKeyId": key_id,
             })),
         )
         .await;
     Ok((session_id, auth_url))
 }
 
+#[derive(Debug)]
 pub enum AppError {
     Bad(String),
     NotFound(String),
@@ -651,6 +933,7 @@ impl IntoResponse for AppError {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
@@ -689,12 +972,211 @@ mod tests {
             Some(trust_anchors),
             true,
             Some(anchor_pem),
+            None,
             false,
         )
         .await
         .expect("build offline app state");
         st.status_fetcher = StatusFetcher::Recording(counter);
         st
+    }
+
+    async fn state_for_response_tests(
+        unsafe_debug_artifacts: Option<std::path::PathBuf>,
+    ) -> Arc<AppState> {
+        Arc::new(
+            AppState::new(
+                Url::parse("http://127.0.0.1:0/").unwrap(),
+                CertSource::Ephemeral,
+                "event_checkin",
+                None,
+                false,
+                None,
+                unsafe_debug_artifacts,
+                false,
+            )
+            .await
+            .expect("build app state"),
+        )
+    }
+
+    fn plaintext_body() -> String {
+        "vp_token=%7B%22pid%22%3A%5B%22secret-claim%22%5D%7D&state=abc".to_string()
+    }
+
+    #[tokio::test]
+    async fn create_request_uses_distinct_session_encryption_keys() {
+        let state = state_for_response_tests(None).await;
+        let (sid1, _) = create_request(&state).await.expect("first request");
+        let (sid2, _) = create_request(&state).await.expect("second request");
+
+        let jar1 = state
+            .verifier
+            .retrieve_authorization_request(sid1)
+            .await
+            .expect("first jar");
+        let jar2 = state
+            .verifier
+            .retrieve_authorization_request(sid2)
+            .await
+            .expect("second jar");
+        let payload1 = crate::jose::decode_compact(&jar1)
+            .expect("decode first jar")
+            .payload;
+        let payload2 = crate::jose::decode_compact(&jar2)
+            .expect("decode second jar")
+            .payload;
+        let key1 = &payload1["client_metadata"]["jwks"]["keys"][0];
+        let key2 = &payload2["client_metadata"]["jwks"]["keys"][0];
+
+        assert_eq!(key1["kid"], format!("enc-{sid1}"));
+        assert_eq!(key2["kid"], format!("enc-{sid2}"));
+        assert_ne!(key1["x"], key2["x"]);
+        assert_ne!(key1["y"], key2["y"]);
+
+        let keys = state.encryption_keys.lock().await;
+        assert!(keys.contains_key(&sid1));
+        assert!(keys.contains_key(&sid2));
+    }
+
+    #[test]
+    fn redaction_helpers_omit_raw_body_and_claim_values() {
+        let raw_body =
+            "response=a.b.c.d.e&state=abc&vp_token=secret-claim&presentation=other-secret";
+        let response =
+            AuthorizationResponse::from_x_www_form_urlencoded(raw_body.as_bytes()).unwrap();
+        let received = redacted_response_detail("direct_post.jwt (encrypted)", raw_body, &response);
+        let received_text = received.to_string();
+        assert_eq!(received["bodyLen"], raw_body.len());
+        assert_eq!(received["bodySha256"].as_str().unwrap().len(), 64);
+        assert!(received_text.contains("response"));
+        assert!(!received_text.contains("secret-claim"));
+        assert!(!received_text.contains("other-secret"));
+        assert!(!received_text.contains(raw_body));
+        assert!(received.get("rawBody").is_none());
+
+        let decrypted = json!({
+            "vp_token": {
+                "pid": ["secret-claim"]
+            },
+            "state": "abc",
+        });
+        let decrypted_detail = redacted_decrypted_detail(&decrypted);
+        let decrypted_text = decrypted_detail.to_string();
+        assert_eq!(decrypted_detail["vpTokenPresent"], true);
+        assert_eq!(decrypted_detail["vpTokenShape"], "object");
+        assert!(decrypted_text.contains("vp_token"));
+        assert!(!decrypted_text.contains("secret-claim"));
+    }
+
+    #[tokio::test]
+    async fn plaintext_direct_post_rejects_and_removes_session_key() {
+        let state = state_for_response_tests(None).await;
+        let (sid, _) = create_request(&state).await.expect("request");
+        assert!(state.encryption_keys.lock().await.contains_key(&sid));
+
+        let (status, Json(value)) = receive_response(
+            State(state.clone()),
+            Path(sid.to_string()),
+            plaintext_body(),
+        )
+        .await
+        .expect("plaintext rejection response");
+
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(value["status"], "rejected");
+        assert!(value["reason"]
+            .as_str()
+            .unwrap()
+            .contains("direct_post.jwt"));
+        assert!(!state.encryption_keys.lock().await.contains_key(&sid));
+
+        let trace = state.trace.get(sid).await.expect("trace");
+        let trace_value = serde_json::to_value(&trace).expect("trace json");
+        let trace_text = trace_value.to_string();
+        let codes: Vec<&str> = trace.events.iter().map(|event| event.code).collect();
+        assert!(codes.contains(&"RESPONSE_RECEIVED"), "codes: {codes:?}");
+        assert!(codes.contains(&"REJECTED"), "codes: {codes:?}");
+        assert!(!trace_text.contains("rawBody"));
+        assert!(!trace_text.contains("secret-claim"));
+    }
+
+    #[tokio::test]
+    async fn malformed_authorization_response_removes_session_key() {
+        let state = state_for_response_tests(None).await;
+        let (sid, _) = create_request(&state).await.expect("request");
+        assert!(state.encryption_keys.lock().await.contains_key(&sid));
+
+        let err = receive_response(
+            State(state.clone()),
+            Path(sid.to_string()),
+            "vp_token=%7B%22pid%22%3A%5B".to_string(),
+        )
+        .await
+        .expect_err("malformed response rejects");
+
+        assert!(matches!(err, AppError::Bad(_)));
+        assert!(!state.encryption_keys.lock().await.contains_key(&sid));
+    }
+
+    #[tokio::test]
+    async fn unsafe_debug_artifacts_write_locally_but_trace_stays_redacted() {
+        let root = std::env::temp_dir().join(format!("augenmass-serve-{}", Uuid::new_v4()));
+        let state = state_for_response_tests(Some(root.clone())).await;
+        let (sid, _) = create_request(&state).await.expect("request");
+        let _ = get_request_object(State(state.clone()), Path(sid.to_string()))
+            .await
+            .expect("request object");
+
+        let (status, _) = receive_response(
+            State(state.clone()),
+            Path(sid.to_string()),
+            plaintext_body(),
+        )
+        .await
+        .expect("plaintext rejection response");
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+        let dir = root.join(sid.to_string());
+        assert!(dir.join("session-enc-key.jwk").exists());
+        assert!(dir.join("request.jwt").exists());
+        assert!(dir.join("request.payload.json").exists());
+        assert!(dir.join("direct-post.body").exists());
+        assert!(fs::read_to_string(dir.join("direct-post.body"))
+            .unwrap()
+            .contains("secret-claim"));
+
+        let manifest: Value = serde_json::from_str(
+            &fs::read_to_string(dir.join("debug-manifest.json")).expect("read manifest"),
+        )
+        .expect("manifest json");
+        assert_eq!(manifest["sensitive"], true);
+
+        let trace = state.trace.get(sid).await.expect("trace");
+        let trace_value = serde_json::to_value(&trace).expect("trace json");
+        let trace_text = trace_value.to_string();
+        assert!(trace
+            .events
+            .iter()
+            .any(|event| event.code == "ARTIFACT_SAVED"));
+        assert!(!trace_text.contains("secret-claim"));
+        assert!(!trace_text.contains(&root.display().to_string()));
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let dir_mode = fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+            let file_mode = fs::metadata(dir.join("direct-post.body"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(dir_mode, 0o700);
+            assert_eq!(file_mode, 0o600);
+        }
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[tokio::test]

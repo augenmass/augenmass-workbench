@@ -2,12 +2,12 @@
 //! captures every step of the OpenID4VP exchange (request built, the signed
 //! request object fetched by the wallet, the encrypted response received, the
 //! JWE decrypted, the presentation verified, plus trust, revocation, and the
-//! over-ask analysis) together with the raw artifacts at each step.
+//! over-ask analysis) together with redacted protocol detail at each step.
 //!
 //! This is what turns the verifier-in-a-box into a wallet *debugger*: the same
 //! events stream live to the console, render as a browser timeline, and
-//! serialize at `/api/trace/:id`, so a developer can see exactly what their
-//! wallet sent and where the exchange succeeded or broke.
+//! serialize at `/api/trace/:id`, so a developer can see where the exchange
+//! succeeded or broke without exposing raw wallet tokens by default.
 
 use std::collections::HashMap;
 use std::io::IsTerminal;
@@ -41,6 +41,7 @@ pub enum TraceKind {
     Rejected,
     StatusChecked,
     OverAskAnalyzed,
+    ArtifactSaved,
     Note,
     Error,
 }
@@ -57,6 +58,7 @@ impl TraceKind {
             Self::Rejected => "REJECTED",
             Self::StatusChecked => "STATUS_CHECKED",
             Self::OverAskAnalyzed => "OVER_ASK_ANALYZED",
+            Self::ArtifactSaved => "ARTIFACT_SAVED",
             Self::Note => "NOTE",
             Self::Error => "ERROR",
         }
@@ -87,8 +89,9 @@ pub struct TraceEvent {
     pub level: TraceLevel,
     /// A one-line, human-legible summary.
     pub summary: String,
-    /// Structured detail: the raw artifact, decoded payload, or reason at this
-    /// step. Present for most events, omitted when there is nothing to attach.
+    /// Structured detail: request context, redacted response metadata, decoded
+    /// summaries, or rejection reasons. Present for most events, omitted when
+    /// there is nothing to attach.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<Value>,
 }

@@ -12,6 +12,7 @@
 //! leaf (so the client_id matches the registered identity), set `--key`/`--leaf`
 //! (or `RP_KEY_PATH`/`RP_LEAF_PATH`).
 
+pub mod artifacts;
 pub mod handlers;
 pub mod state;
 pub mod trace;
@@ -61,6 +62,10 @@ pub struct ServeArgs {
     /// served at /trace/:id and /api/trace/:id).
     #[arg(long, env = "QUIET", default_value_t = false)]
     pub quiet: bool,
+    /// Opt in to writing raw wallet material and session key material to local
+    /// disk under <dir>/<session> for private debugging.
+    #[arg(long, env = "AUGENMASS_UNSAFE_DEBUG_ARTIFACTS")]
+    pub unsafe_debug_artifacts: Option<PathBuf>,
 }
 
 pub async fn run(args: ServeArgs) -> Result<()> {
@@ -128,6 +133,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
             trust_anchors,
             args.live_status,
             anchor_pem,
+            args.unsafe_debug_artifacts.clone(),
             console_trace,
         )
         .await?,
@@ -164,10 +170,23 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     eprintln!(
         "  trace        : {}",
         if console_trace {
-            "live on this console; also at <base>/trace/<session> and /api/trace/<session>"
+            "redacted by default; live on this console; also at <base>/trace/<session> and /api/trace/<session>"
         } else {
-            "quiet on console; at <base>/trace/<session> and /api/trace/<session>"
+            "redacted by default; quiet on console; at <base>/trace/<session> and /api/trace/<session>"
         }
+    );
+    eprintln!(
+        "  artifacts    : {}",
+        args.unsafe_debug_artifacts
+            .as_ref()
+            .map(|path| format!(
+                "UNSAFE local capture ON, writing raw wallet material to {} (owner-only); never served over HTTP",
+                path.display()
+            ))
+            .unwrap_or_else(|| {
+                "off (set --unsafe-debug-artifacts <dir> to capture raw wallet material locally; UNSAFE)"
+                    .to_string()
+            })
     );
     if bind_mismatch {
         eprintln!();
