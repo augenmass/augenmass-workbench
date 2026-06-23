@@ -87,6 +87,10 @@ release-archive-smoke: release
 live-cache-smoke:
     ./scripts/live-cache-smoke.sh
 
+# Verify live sandbox configuration without mutating it by default.
+live-sandbox-smoke:
+    ./scripts/live-sandbox-smoke.sh
+
 # Build and run the cache backend container locally.
 docker-smoke:
     ./scripts/docker-smoke.sh

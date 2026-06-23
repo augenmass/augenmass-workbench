@@ -121,6 +121,10 @@ impl CacheDisposition {
 }
 
 pub async fn serve(config: ServeConfig) -> Result<()> {
+    let addr = resolve_bind_addr(&config.host, config.port)?;
+    let admin_token = normalize_token(config.admin_token.clone());
+    require_admin_token_for_public_bind(addr, admin_token.as_deref())?;
+
     let conn = Connection::open(&config.db_path)
         .with_context(|| format!("open SQLite db {}", config.db_path))?;
     init_db(&conn)?;
@@ -133,11 +137,10 @@ pub async fn serve(config: ServeConfig) -> Result<()> {
             .build()?,
         upstream: trim_base(&config.upstream),
         ttl: Duration::from_secs(config.ttl_secs),
-        admin_token: normalize_token(config.admin_token.clone()),
+        admin_token: admin_token.clone(),
     };
 
     let app = router(state);
-    let addr = resolve_bind_addr(&config.host, config.port)?;
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .with_context(|| format!("bind {addr}"))?;
@@ -147,11 +150,7 @@ pub async fn serve(config: ServeConfig) -> Result<()> {
     println!("upstream timeout: {}s", config.timeout_secs);
     println!(
         "admin endpoints: {}",
-        if config
-            .admin_token
-            .as_deref()
-            .is_some_and(|token| !token.trim().is_empty())
-        {
+        if admin_token.is_some() {
             "protected by token"
         } else {
             "open on this listener"
@@ -636,6 +635,15 @@ fn resolve_bind_addr(host: &str, port: u16) -> Result<SocketAddr> {
         .ok_or_else(|| anyhow::anyhow!("bind host {host}:{port} did not resolve"))
 }
 
+fn require_admin_token_for_public_bind(addr: SocketAddr, admin_token: Option<&str>) -> Result<()> {
+    if !addr.ip().is_loopback() && admin_token.is_none() {
+        anyhow::bail!(
+            "AUGENMASS_CACHE_ADMIN_TOKEN is required when cache serve binds to non-loopback {addr}; set --admin-token or AUGENMASS_CACHE_ADMIN_TOKEN, or bind --host 127.0.0.1 for local-only use"
+        );
+    }
+    Ok(())
+}
+
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
@@ -680,5 +688,19 @@ mod tests {
         assert!(validate_rp("").is_err());
         assert!(validate_rp(&"a".repeat(MAX_RP_LEN + 1)).is_err());
         assert!(validate_rp("2af138a8-59ea-4a84-aea3-666cafdb1369").is_ok());
+    }
+
+    #[test]
+    fn public_bind_requires_admin_token() {
+        let loopback: SocketAddr = "127.0.0.1:8081".parse().unwrap();
+        let unspecified_v4: SocketAddr = "0.0.0.0:8081".parse().unwrap();
+        let unspecified_v6: SocketAddr = "[::]:8081".parse().unwrap();
+
+        assert!(require_admin_token_for_public_bind(loopback, None).is_ok());
+        assert!(require_admin_token_for_public_bind(unspecified_v4, None).is_err());
+        assert!(require_admin_token_for_public_bind(unspecified_v6, None).is_err());
+        assert!(
+            require_admin_token_for_public_bind(unspecified_v4, Some("local-smoke-token")).is_ok()
+        );
     }
 }

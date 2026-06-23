@@ -1380,7 +1380,7 @@ Usage: augenmass cache serve [OPTIONS]
 Options:
 
 - `--db <DB>`: the SQLite database path. Default `./augenmass-cache.sqlite`; env `AUGENMASS_CACHE_DB`.
-- `--host <HOST>`: bind host. Default `127.0.0.1`; env `AUGENMASS_CACHE_HOST`. Use `0.0.0.0` only when deploying behind TLS or a private network.
+- `--host <HOST>`: bind host. Default `127.0.0.1`; env `AUGENMASS_CACHE_HOST`. Use `0.0.0.0` only when deploying behind TLS or a private network; non-loopback binds require `--admin-token` or `AUGENMASS_CACHE_ADMIN_TOKEN`.
 - `--port <PORT>`: listen port. Env `AUGENMASS_CACHE_PORT` wins, then `PORT`, then default `8081`.
 - `--upstream <UPSTREAM>`: the upstream API base. Default `https://sandbox.eudi-wallet.org/api`; env `AUGENMASS_CACHE_UPSTREAM`.
 - `--ttl-secs <TTL_SECS>`: freshness window in seconds. Default `3600`; env `AUGENMASS_CACHE_TTL_SECS`.

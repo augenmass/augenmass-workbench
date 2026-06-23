@@ -15,8 +15,11 @@ reads stable for demos, audit sessions, and shared team use.
 
 It stores successful upstream responses in SQLite, returns fresh local hits, and
 falls back to stale data if a refresh fails. It does not cache writes. It exposes
-`/api/health` for deploy health checks. If `AUGENMASS_CACHE_ADMIN_TOKEN` is set,
-`/api/cache/status` and `/api/cache/refresh` require
+`/api/health` for deploy health checks. If `cache serve` binds to loopback, the
+admin token is optional for local-only work. If it binds to a non-loopback
+address such as `0.0.0.0`, `AUGENMASS_CACHE_ADMIN_TOKEN` or `--admin-token` is
+required before the server starts. When set, `/api/cache/status` and
+`/api/cache/refresh` require
 `Authorization: Bearer <token>` or `x-augenmass-cache-admin: <token>`.
 
 The cache stores public sandbox responses only. It still deserves a persistent
@@ -39,7 +42,7 @@ The server can be configured with flags or environment variables.
 | Upstream API base | `AUGENMASS_CACHE_UPSTREAM` | `https://sandbox.eudi-wallet.org/api` |
 | Freshness window | `AUGENMASS_CACHE_TTL_SECS` | `3600` |
 | Upstream timeout | `AUGENMASS_CACHE_TIMEOUT_SECS` | `10` |
-| Admin token | `AUGENMASS_CACHE_ADMIN_TOKEN` | unset |
+| Admin token | `AUGENMASS_CACHE_ADMIN_TOKEN` | unset for loopback; required for non-loopback binds |
 
 Local run:
 

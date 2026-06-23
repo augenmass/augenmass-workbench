@@ -71,12 +71,15 @@ Use the smaller gates when you are only touching one surface:
 ```sh
 just plugin-smoke
 just live-cache-smoke
+just live-sandbox-smoke
 just docker-smoke
 ```
 
 `live-cache-smoke` intentionally touches `https://sandbox.eudi-wallet.org/api`.
-It does not use sandbox credentials. `docker-smoke` requires a running Docker
-daemon. Neither gate starts remote GitHub CI.
+It does not use sandbox credentials. `live-sandbox-smoke` skips without
+credentials, dry-runs sandbox registration when credentials are present, and
+only writes if `AUGENMASS_LIVE_SANDBOX_WRITE=1` is set. `docker-smoke` requires
+a running Docker daemon. None of these gates starts remote GitHub CI.
 
 ## Stable rehearsal sequence
 

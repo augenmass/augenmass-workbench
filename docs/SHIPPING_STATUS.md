@@ -127,6 +127,9 @@ These are good to show on stage or in a recording:
 - `cache serve` and `cache warm`: a small backend for stable cached-sandbox reads.
 - `register --target cached-sandbox`: dry-run symmetry only; confirmed writes are
   refused because cached-sandbox is read-only.
+- `live-sandbox-smoke`: a credential-gated, non-mutating rehearsal for the real
+  sandbox path. It skips without credentials and only performs a confirmed write
+  when `AUGENMASS_LIVE_SANDBOX_WRITE=1` is set.
 
 ## Backend deployment verdict
 
@@ -138,7 +141,8 @@ The Docker image has the right shape for Railway:
 - It stores SQLite under `/data`.
 - It runs as non-root uid `10001`.
 - It should be deployed with a persistent volume and
-  `AUGENMASS_CACHE_ADMIN_TOKEN`.
+  `AUGENMASS_CACHE_ADMIN_TOKEN`; non-loopback binds now refuse to start without
+  that token.
 
 Cloudflare Workers and Vercel are not the best fit for the current Rust binary
 plus SQLite backend. They would need either a rewrite against their storage model

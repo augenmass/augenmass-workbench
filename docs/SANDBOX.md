@@ -132,7 +132,8 @@ If `AUGENMASS_CACHE_ADMIN_TOKEN` or `--admin-token` is set, `cache/status` and
 `cache/refresh` require either `Authorization: Bearer <token>` or
 `x-augenmass-cache-admin: <token>`. The read-through registrar routes and
 `/api/health` stay public because `list --target cached-sandbox` depends on
-them.
+them. Loopback binds may run without a token for local-only work; non-loopback
+binds such as `0.0.0.0` refuse to start without a token.
 
 Every cached response carries provenance headers:
 
@@ -291,6 +292,17 @@ augenmass register examples/over.json --target clone --yes --force
 That reprints the same verdict, then writes with an explicit warning (`Warning: writing an over-asking registration because --force was given.`) and exits 0. Use `--force` only when over-asking is intentional and justified; the default refusal is the point of the gate.
 
 The same gate runs before a confirmed write to any target, so a body that the clone refuses will be refused against the sandbox too. Prove proportionality locally, then rehearse against the sandbox.
+
+For a read-only sandbox rehearsal that skips cleanly when credentials are not
+configured, run:
+
+```sh
+just live-sandbox-smoke
+```
+
+It checks the local guardrail, dry-runs `register --target sandbox`, and reads
+the relying party with `list --target sandbox`. It does not perform a confirmed
+write unless `AUGENMASS_LIVE_SANDBOX_WRITE=1` is explicitly set.
 
 ## Caveat to verify at sandbox time: VCT URN vs @IsUrl
 
