@@ -57,6 +57,7 @@ verify:
 demo-proof:
     cargo test --test demo_proof
     cargo test --test serve request_side_and_trace_flow
+    ./scripts/serve-smoke.sh
     cargo test --test cache
 
 # Print the stable offline presentation sequence from the bundled plugin binary.
@@ -99,6 +100,10 @@ live-cache-smoke:
 deployed-cache-smoke:
     ./scripts/deployed-cache-smoke.sh
 
+# Verify the bundled verifier-in-a-box runtime over loopback HTTP.
+serve-smoke:
+    ./scripts/serve-smoke.sh
+
 # Verify live sandbox configuration without mutating it by default.
 live-sandbox-smoke:
     ./scripts/live-sandbox-smoke.sh
@@ -131,10 +136,10 @@ platform-smoke:
     ./scripts/platform-smoke.sh
 
 # Local shipping proof that avoids remote GitHub CI runner credits.
-shipping-smoke: plugin-smoke claude-plugin-smoke codex-plugin-smoke live-cache-smoke deployed-cache-smoke docker-smoke
+shipping-smoke: plugin-smoke claude-plugin-smoke codex-plugin-smoke serve-smoke live-cache-smoke deployed-cache-smoke docker-smoke
 
 # Strongest local release proof; no GitHub Actions, but multiple Linux Docker builds.
-local-release-proof: verify demo-run plugin-smoke claude-plugin-smoke codex-plugin-smoke install-smoke release-archive-smoke live-cache-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64 docker-release-archive-smoke-linux
+local-release-proof: verify demo-run plugin-smoke claude-plugin-smoke codex-plugin-smoke serve-smoke install-smoke release-archive-smoke live-cache-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64 docker-release-archive-smoke-linux
 
 # Bundle the release binary into the plugin (Apple Silicon macOS).
 bundle: release

@@ -91,13 +91,16 @@ machine matching the target. The plugin marketplace bundle remains a separate
 artifact from the CLI release archives.
 
 `just install-smoke`, `just claude-plugin-smoke`, `just codex-plugin-smoke`,
-`just release-archive-smoke`, `just shipping-smoke`, `just deployed-cache-smoke`,
-and `just platform-smoke` are local. They do not start GitHub Actions.
+`just serve-smoke`, `just release-archive-smoke`, `just shipping-smoke`,
+`just deployed-cache-smoke`, and `just platform-smoke` are local. They do not
+start GitHub Actions.
 `install-smoke` proves a fresh source install into a temporary local root.
 `claude-plugin-smoke` proves local Claude Code marketplace installation in a
 temporary `HOME`.
 `codex-plugin-smoke` proves local Codex marketplace installation in a temporary
 `CODEX_HOME`.
+`serve-smoke` proves the bundled verifier-in-a-box runtime over loopback HTTP:
+session minting, JAR fetch, JSON/HTML trace, plaintext rejection, and redaction.
 `release-archive-smoke` builds the host release archive, extracts it, then runs
 the packaged binary against packaged docs, examples, and fixtures.
 `docker-release-archive-smoke-linux` builds Linux arm64 and amd64 archives
@@ -107,12 +110,12 @@ exports the resulting archives to:
 - `dist/docker-release-archive-smoke/linux-arm64/augenmass-v<version>-aarch64-unknown-linux-gnu.tar.gz`
 - `dist/docker-release-archive-smoke/linux-amd64/augenmass-v<version>-x86_64-unknown-linux-gnu.tar.gz`
 
-`shipping-smoke` covers the plugin bundle, the live cached-sandbox path, and the
-Docker backend. `deployed-cache-smoke` is opt-in for a Railway/VPS cache URL and
-skips cleanly when `AUGENMASS_DEPLOYED_CACHE_API_BASE` is unset. `platform-smoke`
-checks the host target and any locally available cross-targets; by default it
-skips Linux or Windows targets when the required cross C/MSVC toolchain is
-missing. Set
+`shipping-smoke` covers the plugin bundle, the `serve` runtime smoke, the live
+cached-sandbox path, and the Docker backend. `deployed-cache-smoke` is opt-in for
+a Railway/VPS cache URL and skips cleanly when `AUGENMASS_DEPLOYED_CACHE_API_BASE`
+is unset. `platform-smoke` checks the host target and any locally available
+cross-targets; by default it skips Linux or Windows targets when the required
+cross C/MSVC toolchain is missing. Set
 `AUGENMASS_STRICT_PLATFORM_SMOKE=1` on a release machine if missing targets
 should fail the gate.
 

@@ -5,7 +5,7 @@ does not replace `just verify`; it gives the agents and presenter a small set of
 commands that are stable enough to rehearse and safe enough to run without
 sandbox credentials, secrets, or a live wallet.
 
-It covers three surfaces:
+It covers four surfaces:
 
 1. `tests/demo_proof.rs`: the agent-first command story.
    - Identify EUDI artifacts with `inspect`: SD-JWT VC, OpenID4VP JAR, and mdoc.
@@ -20,7 +20,13 @@ It covers three surfaces:
    - Starts the real Axum router on an ephemeral port.
    - Confirms the landing page, signed request object content type, session
      listing, JSON trace, and HTML trace.
-3. `tests/cache.rs`: the cached-sandbox mirror.
+3. `just serve-smoke`: the bundled CLI runtime over loopback HTTP.
+   - Starts `augenmass serve --quiet` on a throwaway port.
+   - Mints a session through the landing page, fetches the signed request
+     object, and reads the JSON/HTML trace endpoints.
+   - Posts a synthetic plaintext `direct_post` and proves it is rejected with
+     HTTP 422 while the unauthenticated trace stays redacted.
+4. `tests/cache.rs`: the cached-sandbox mirror.
    - Confirms cache provenance headers, hit/miss behavior, forced refresh
      validation, and stale fallback when the upstream is unavailable.
 
@@ -38,7 +44,7 @@ commands are the proof underneath, not the story the audience has to operate.
 | `What is this wallet request, and why might it fail?` | `inspect fixtures/requests/eudiplo-request.jwt`, then `doctor examples/bad-request.json` | "This is an OpenID4VP request. The shape that often breaks wallets is the signed request metadata: `x5c` must be an array, and `client_id` must match the certificate hash." |
 | `Is this age-check registration over-asking?` | `check examples/over.json`, then `check examples/min.json` | "The over-broad body asks for name, birthdate, address, and nationality when the purpose only needs proof of being over 18. The fixed body asks only for `age_equal_or_over.18`." |
 | `Can we trust this presentation and catch revocation?` | `verify presentation fixtures/presentations/erica-vp-VALID.sdjwt ...`, then the synthetic revoked fixture | "The valid fixture verifies with holder binding and trust anchoring. The revoked fixture fails closed, which is exactly what an auditor wants to see." |
-| `How would we debug this with a real phone wallet?` | `serve --help`, `cache serve --help`, and `tests/serve.rs` | "`serve` runs a verifier-in-a-box. It traces request, JAR fetch, response, decrypt, verify, trust, status, and over-ask with redacted traces by default." |
+| `How would we debug this with a real phone wallet?` | `serve --help`, `just serve-smoke`, `cache serve --help`, and `tests/serve.rs` | "`serve` runs a verifier-in-a-box. It traces request, JAR fetch, response, decrypt, verify, trust, status, and over-ask with redacted traces by default." |
 
 Run the full release gate before pushing:
 
@@ -62,6 +68,9 @@ It runs:
   temporary `HOME`, and confirms it is enabled.
 - `just codex-plugin-smoke`: installs the repo-local Codex marketplace and plugin
   into a temporary `CODEX_HOME`, then confirms the plugin is enabled.
+- `just serve-smoke`: starts the bundled `augenmass serve` runtime over
+  loopback HTTP, checks health, session minting, JAR fetch, JSON trace, HTML
+  trace, plaintext `direct_post` rejection, and trace redaction.
 - `just live-cache-smoke`: starts `cache serve`, reaches the public sandbox API,
   proves admin-token protection, proves `MISS` then `HIT`, reads the configured
   relying party through `list --target cached-sandbox`, prewarms with
@@ -81,6 +90,7 @@ Use the smaller gates when you are only touching one surface:
 just plugin-smoke
 just claude-plugin-smoke
 just codex-plugin-smoke
+just serve-smoke
 just live-cache-smoke
 just deployed-cache-smoke
 just live-sandbox-smoke

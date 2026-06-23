@@ -55,6 +55,10 @@ That proves:
   `augenmass-workbench@augenmass` in a temporary `HOME`, and reports it enabled.
 - The repo-local Codex marketplace installs `augenmass-workbench@augenmass` in a
   temporary `CODEX_HOME` and reports it enabled.
+- The bundled `serve` runtime starts over loopback HTTP, mints a session, serves
+  the signed request object, exposes JSON/HTML trace endpoints, rejects a
+  plaintext `direct_post` with HTTP 422, and keeps the unauthenticated trace
+  redacted.
 - The live public sandbox cache path works against
   `https://sandbox.eudi-wallet.org/api`.
 - The schema endpoint fetched `113804` bytes from the public sandbox, then served
@@ -126,6 +130,9 @@ These are good to show on stage or in a recording:
 - `verify presentation`, `verify trust`, and `verify status-list`: prove good
   fixtures and reject hostile ones.
 - `serve`: live verifier-in-a-box with redacted traces by default.
+- `serve-smoke`: a local runtime proof for the verifier-in-a-box without a phone
+  wallet; it exercises session minting, JAR fetch, trace endpoints, plaintext
+  rejection, and redaction.
 - `evidence export`, `evidence verify`, and `evidence replay`: signed,
   projector-safe replay of captured local debug artifacts.
 - `cache serve` and `cache warm`: a small backend for stable cached-sandbox reads.

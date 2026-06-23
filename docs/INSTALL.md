@@ -129,6 +129,18 @@ It uses a temporary `HOME`, validates the plugin and marketplace manifests with
 this checkout, and confirms the installed plugin is enabled. It does not modify
 your real Claude Code config.
 
+The live wallet-debugger runtime gate is:
+
+```sh
+just serve-smoke
+```
+
+It starts the bundled `augenmass serve` binary on a loopback port, mints a
+session, fetches the signed request object, reads the JSON/HTML trace endpoints,
+posts a synthetic plaintext `direct_post`, and confirms the trace stays redacted
+after the expected HTTP 422 rejection. It does not need a phone wallet or sandbox
+credentials.
+
 The release-archive gate is:
 
 ```sh
@@ -146,8 +158,8 @@ just local-release-proof
 ```
 
 That adds workspace verification, release archive proof, the plugin bundle
-smoke, live cached-sandbox proof, macOS target probing, explicit Linux arm64
-and amd64 Docker build-and-run checks, and Linux release archives smoke-tested
-inside matching Docker containers. `just deployed-cache-smoke` is separate and
-opt-in because it needs a hosted cache URL. None of these local gates spends
-runner credits.
+smoke, `serve` runtime proof, live cached-sandbox proof, macOS target probing,
+explicit Linux arm64 and amd64 Docker build-and-run checks, and Linux release
+archives smoke-tested inside matching Docker containers. The
+`deployed-cache-smoke` gate is separate and opt-in because it needs a hosted
+cache URL. None of these local gates spends runner credits.
