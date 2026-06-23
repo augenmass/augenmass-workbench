@@ -115,6 +115,12 @@ AUGENMASS_CACHE_UPSTREAM=https://sandbox.eudi-wallet.org/api
 Attach a persistent volume at `/data`. Without a volume, the service still runs,
 but the cache is rebuilt after each redeploy.
 
+The Docker image runs as uid `10001`. If the Railway volume is not writable by
+that user, fix the volume ownership during provisioning or with a one-time
+platform init step before routing public traffic. Do not remove the admin token
+to work around a volume problem; a public bind without
+`AUGENMASS_CACHE_ADMIN_TOKEN` is intentionally refused at startup.
+
 Railway references:
 
 - https://docs.railway.com/guides/axum
@@ -148,8 +154,9 @@ just docker-smoke
 ```
 
 That builds the Docker image, runs the cache backend, checks `/api/health`, checks
-that the process runs as the non-root uid `10001`, and verifies that cache status
-requires the admin token.
+that the process runs as the non-root uid `10001`, verifies that cache status
+requires the admin token, then fetches `schema-metadata` through the container
+and proves the first response is a `MISS` and the second is a `HIT`.
 
 Live cache proof:
 
@@ -176,6 +183,23 @@ local release gates do not depend on a hosted service. With only the API base, i
 checks health, public cached reads, and the CLI `cached-sandbox` path. With the
 admin token, it also proves `/cache/status` is protected, verifies authenticated
 status access, runs `cache warm`, and confirms warmed entries are visible.
+
+## Fly.io and Render
+
+Fly.io and Render are plausible container hosts for the current backend because
+they can run the Docker image as a long-lived service with persistent storage.
+Use the same model as Railway: one instance, a persistent disk mounted at `/data`,
+TLS at the platform edge, and `AUGENMASS_CACHE_ADMIN_TOKEN` set before public
+traffic is routed. SQLite is a single-node cache here; do not run multiple
+writers against the same database file.
+
+After deploying either host, prove it from your laptop with:
+
+```sh
+AUGENMASS_DEPLOYED_CACHE_API_BASE=https://cache.example/api \
+AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN=<token> \
+  just deployed-cache-smoke
+```
 
 ## Cloudflare
 

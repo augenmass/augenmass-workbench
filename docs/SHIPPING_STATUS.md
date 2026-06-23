@@ -72,7 +72,8 @@ That proves:
 - Stale fallback works with a deliberately broken upstream, returning the cached
   registration response with `x-augenmass-cache: STALE`.
 - The Docker cache image builds locally, runs as uid `10001`, can write `/data`,
-  exposes `/api/health`, and protects admin status without a token.
+  exposes `/api/health`, protects admin status without a token, and fetches
+  `schema-metadata` through the container with a `MISS` followed by a `HIT`.
 
 No remote GitHub Actions run is required for these gates.
 
@@ -118,6 +119,17 @@ builds/runs for `linux/arm64` and `linux/amd64`, plus Docker-built Linux
 release archives smoke-tested inside matching Linux containers. It still does
 not replace native Windows testing or a native Linux host check outside Docker.
 
+The most recent local Linux archive proof also passed separately on 2026-06-24:
+
+```sh
+just docker-release-archive-smoke-linux
+```
+
+It exported and smoke-tested:
+
+- `dist/docker-release-archive-smoke/linux-arm64/augenmass-v0.2.0-aarch64-unknown-linux-gnu.tar.gz`
+- `dist/docker-release-archive-smoke/linux-amd64/augenmass-v0.2.0-x86_64-unknown-linux-gnu.tar.gz`
+
 ## Presentation-safe surfaces
 
 These are good to show on stage or in a recording:
@@ -161,6 +173,8 @@ The Docker image has the right shape for Railway:
 - It should be deployed with a persistent volume and
   `AUGENMASS_CACHE_ADMIN_TOKEN`; non-loopback binds now refuse to start without
   that token.
+- Because the image runs as uid `10001`, hosted volumes must be writable by that
+  user before the service is routed publicly.
 
 Cloudflare Workers and Vercel are not the best fit for the current Rust binary
 plus SQLite backend. They would need either a rewrite against their storage model

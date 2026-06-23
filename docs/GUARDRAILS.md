@@ -19,7 +19,7 @@ Read-only commands that only describe local inputs (`inspect`, `decode`, `baseli
 The hook and CI examples call a bare `augenmass`. Make it available first by building the CLI and putting it on PATH, or call the binary by its explicit path:
 
 ```sh
-cargo build --release
+cargo build --release --locked
 # add ./target/release to PATH, or copy ./target/release/augenmass somewhere on it
 ```
 
@@ -63,7 +63,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Build the CLI
-        run: cargo build --release
+        run: cargo build --release --locked
       - name: Gate on over-ask and a well-formed request
         run: |
           ./target/release/augenmass check registration.json

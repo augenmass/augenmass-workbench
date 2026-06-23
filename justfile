@@ -147,8 +147,7 @@ local-release-proof: verify demo-run plugin-smoke claude-plugin-smoke codex-plug
 
 # Bundle the release binary into the plugin (Apple Silicon macOS).
 bundle: release
-    mkdir -p plugins/augenmass-workbench/bin
-    cp target/release/augenmass plugins/augenmass-workbench/bin/augenmass
+    bash -c 'set -euo pipefail; target="$(rustc -vV | sed -n "s/^host: //p")"; test "$target" = "aarch64-apple-darwin" || { echo "bundle writes the committed plugin binary and must run on aarch64-apple-darwin (got ${target})" >&2; exit 1; }; mkdir -p plugins/augenmass-workbench/bin; cp target/release/augenmass plugins/augenmass-workbench/bin/augenmass'
 
 # Demo: run the local clone store.
 demo:

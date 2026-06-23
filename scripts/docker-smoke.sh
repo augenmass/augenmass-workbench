@@ -9,11 +9,12 @@ ADMIN="${AUGENMASS_DOCKER_SMOKE_ADMIN_TOKEN:-local-smoke-token}"
 PLATFORM="${AUGENMASS_DOCKER_PLATFORM:-}"
 BASE="http://127.0.0.1:${PORT}/api"
 BODY="$(mktemp "${TMPDIR:-/tmp}/augenmass-docker-smoke.XXXXXX")"
+HEADERS="$(mktemp "${TMPDIR:-/tmp}/augenmass-docker-smoke-headers.XXXXXX")"
 
 cleanup() {
   docker rm -f "${NAME}" >/dev/null 2>&1 || true
   docker volume rm "${VOLUME}" >/dev/null 2>&1 || true
-  rm -f "${BODY}"
+  rm -f "${BODY}" "${HEADERS}"
 }
 trap cleanup EXIT
 
@@ -26,6 +27,18 @@ if ! command -v curl >/dev/null 2>&1; then
   echo "missing required command: curl" >&2
   exit 1
 fi
+if ! command -v awk >/dev/null 2>&1; then
+  echo "missing required command: awk" >&2
+  exit 1
+fi
+
+header_value() {
+  awk -F': ' -v name="$1" 'tolower($1)==tolower(name) {gsub(/\r/,"",$2); print $2; exit}' "$2"
+}
+
+body_bytes() {
+  wc -c <"$1" | tr -d '[:space:]'
+}
 
 docker info >/dev/null
 BUILD_ARGS=()
@@ -79,5 +92,17 @@ echo "admin status without token: ${code}"
 code="$(curl --max-time 5 -s -o "${BODY}" -w '%{http_code}' -H "Authorization: Bearer ${ADMIN}" "${BASE}/cache/status")"
 test "${code}" = "200"
 echo "admin status with token: ${code}"
+
+code="$(curl --max-time 15 -s -D "${HEADERS}" -o "${BODY}" -w '%{http_code}' "${BASE}/schema-metadata")"
+test "${code}" = "200"
+test "$(header_value x-augenmass-cache "${HEADERS}")" = "MISS"
+schema_bytes="$(body_bytes "${BODY}")"
+test "${schema_bytes}" -gt 1000
+echo "container schema first fetch: MISS, ${schema_bytes} bytes"
+
+code="$(curl --max-time 15 -s -D "${HEADERS}" -o "${BODY}" -w '%{http_code}' "${BASE}/schema-metadata")"
+test "${code}" = "200"
+test "$(header_value x-augenmass-cache "${HEADERS}")" = "HIT"
+echo "container schema second fetch: HIT"
 
 echo "docker smoke passed"

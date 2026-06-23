@@ -79,6 +79,10 @@ just bundle
 git status --short
 ```
 
+`just bundle` refuses to overwrite the committed plugin binary unless the host
+target is `aarch64-apple-darwin`, because the current plugin bundle is a private
+preview artifact for macOS Apple Silicon.
+
 Then tag from a clean tree:
 
 ```sh
@@ -134,6 +138,12 @@ builds and runtime checks for `linux/arm64` and `linux/amd64` using
 standalone Linux archive layout on those Linux platforms inside Docker. It still
 does not replace a native Linux host check outside Docker, and it does not prove
 the Windows archive. Those need native runners or manual machines.
+
+For a no-runner-credit Linux archive proof only, run:
+
+```sh
+just docker-release-archive-smoke-linux
+```
 
 ## Plugin bundle caveat
 

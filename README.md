@@ -29,12 +29,12 @@ codex plugin add augenmass-workbench@augenmass
 
 The Claude Code marketplace path is currently a private preview, so it resolves only for accounts with repository access. The Codex commands above install from the checked-out local repository. Once the repository is published, the same plugin metadata can back a public marketplace install.
 
-The bundled plugin binary currently supports macOS Apple Silicon only. On other platforms, build from source with `cargo build --release` and set `AUGENMASS_BIN=./target/release/augenmass`, or use the native CLI archives published by the release workflow once a version tag is cut.
+The bundled plugin binary currently supports macOS Apple Silicon only. On other platforms, build from source with `cargo build --release --locked` and set `AUGENMASS_BIN=./target/release/augenmass`, or use the native CLI archives published by the release workflow once a version tag is cut.
 
 The skill is a thin layer over a plain CLI you can also build and run on its own, with or without an agent. This source build always works:
 
 ```sh
-cargo build --release
+cargo build --release --locked
 ./target/release/augenmass --help
 ```
 
@@ -240,7 +240,7 @@ Zero-config, it runs on a throwaway development certificate (the client_id is th
 
 Safe by default for a real PID demo. The trace is built for a phone-wallet presentation that carries real personal data, so it never exposes raw wallet material over the unauthenticated trace API. The received response and the decrypted payload are recorded as shape only: byte length, a SHA-256 digest, the sorted field names, and whether a `vp_token` is present, never the raw body and never a disclosed claim value. Each Authorization Request mints its own ephemeral response-encryption key, used once and dropped after the response is processed, so no key is shared across sessions. A plaintext `direct_post` is rejected with HTTP 422, because the verifier advertises the encrypted `direct_post.jwt` profile. The credential-controlled status-list fetch behind `--live-status` connects only to the addresses it already vetted (no re-resolution at connect time, which closes the DNS-rebinding window), stays https-only with redirects disabled and a timeout, caps the response body, normalizes IPv4-mapped IPv6 before vetting, and denies loopback, private, link-local, CGNAT, and unique-local targets.
 
-Full-fidelity local debugging when you ask for it. When you need the raw bytes, `--unsafe-debug-artifacts <dir>` writes the raw `direct_post` body, the decrypted authorization response when an encrypted wallet response is decrypted, the per-session private key, the signed request object, the decoded request payload, and a verification context (`nonce`, `aud`, `vct`, clock, freshness window) to `<dir>/<session>/` with owner-only permissions (dirs `0700`, files `0600`) and a manifest marked sensitive. It is opt-in, local, and never served over HTTP; the trace records the file name, a label, the length, a SHA-256, and the redaction fields `unsafeDebugArtifacts`, `pathRedacted`, `redacted`, and `redaction`, never a path or a value. It is labeled UNSAFE in the startup banner. Leave it off for demos and shared machines.
+Full-fidelity local debugging when you ask for it. When you need the raw bytes, `--unsafe-debug-artifacts <dir>` writes the raw `direct_post` body, the decrypted authorization response when an encrypted wallet response is decrypted, the per-session private key, the signed request object, the decoded request payload, and a verification context (`nonce`, `aud`, `vct`, clock, freshness window) to `<dir>/<session>/` with owner-only permissions on Unix (dirs `0700`, files `0600`) and a manifest marked sensitive. It is opt-in, local, and never served over HTTP; the trace records the file name, a label, the length, a SHA-256, and the redaction fields `unsafeDebugArtifacts`, `pathRedacted`, `redacted`, and `redaction`, never a path or a value. It is labeled UNSAFE in the startup banner. Leave it off for demos and shared machines; on Windows, use it only in a private profile or encrypted workspace until native ACL hardening is added.
 
 Evidence replay turns that local capture into an audit artifact. Run `augenmass evidence export ./debug-out/<session> --out evidence.json` to create a sensitive bundle, optionally signed with `--signing-key`. Then run `augenmass evidence verify evidence.json` to check entry hashes, the canonical payload hash, replay determinism, and the optional signature. `augenmass evidence replay evidence.json` renders the same projector-safe timeline shape without exposing raw wallet material on stdout.
 

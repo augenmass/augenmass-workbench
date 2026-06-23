@@ -2,7 +2,10 @@
 **/target
 /dist
 /.git
+**/.git
 /.github
+**/.github
+/undefined
 *.sqlite
 *.sqlite-journal
 .env
