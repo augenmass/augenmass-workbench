@@ -47,8 +47,9 @@ It runs:
   small fixture-backed command sequence.
 - `just live-cache-smoke`: starts `cache serve`, reaches the public sandbox API,
   proves admin-token protection, proves `MISS` then `HIT`, reads the configured
-  relying party through `list --target cached-sandbox`, then restarts the cache
-  with a broken upstream and proves stale fallback.
+  relying party through `list --target cached-sandbox`, prewarms with
+  `cache warm`, then restarts the cache with a broken upstream and proves stale
+  fallback.
 - `just docker-smoke`: builds the Docker image locally, runs the cache backend
   container, checks `/api/health`, verifies it runs as uid `10001`, and proves
   admin-token protection.

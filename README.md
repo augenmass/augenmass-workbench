@@ -189,6 +189,7 @@ WRITE AND TARGETS (guard-railed)
 - `list --target {clone | cached-sandbox | sandbox} [--rp <id>]`: read registrations back for one relying party, decoded.
 - `clone serve [--db --port]`: run the registrar-compatible local clone store.
 - `cache serve [--db --host --port --upstream --ttl-secs --timeout-secs --admin-token]`: run a read-through cached-sandbox mirror for public sandbox GET routes.
+- `cache warm [--api-base --admin-token --rp]`: prewarm schema and registration reads before a demo or outage-sensitive rehearsal.
 
 ## Over-ask and the legal basis
 

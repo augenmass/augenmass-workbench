@@ -2,7 +2,7 @@
 
 A cookbook for developers and auditors working in the EUDI (European Digital Identity) Wallet ecosystem. The premise is simple: you are holding some EUDI artifact, a blob of base64 or a JSON body or a deep link, and you need to know what it is, what is inside it, and whether it is correct. This guide is organized by artifact. For each one you get a one-line "what it is", the command to decode it, the command to verify or audit it where that applies, and the gotchas that actually bite people.
 
-Every command below works as written against the `augenmass` binary. All decoding runs fully offline; only explicit live surfaces touch a network or store: `register`/`list` targets, `clone serve`, `cache serve`, and `serve` (the live wallet-interaction debugger, where a real wallet connects). Throughout, every artifact argument accepts a file path, an inline value, or `-` for stdin.
+Every command below works as written against the `augenmass` binary. All decoding runs fully offline; only explicit live surfaces touch a network or store: `register`/`list` targets, `clone serve`, `cache serve`, `cache warm`, and `serve` (the live wallet-interaction debugger, where a real wallet connects). Throughout, every artifact argument accepts a file path, an inline value, or `-` for stdin.
 
 If you only remember one command, remember this one:
 

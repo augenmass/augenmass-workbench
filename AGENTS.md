@@ -35,7 +35,7 @@ cargo build
 cargo test
 ```
 
-`cargo test` runs unit tests plus integration suites that drive the real binary against the committed fixtures. At this writing, that includes 41 unit tests under `src/` and `crates/`, 43 CLI integration tests, 5 demo-proof integration tests, 6 cache integration tests, and 1 serve integration test. There is a `just verify` convenience target that wraps the build, the test run, and smoke checks; `cargo build` and `cargo test` are the canonical path and always work.
+`cargo test` runs unit tests plus integration suites that drive the real binary against the committed fixtures. At this writing, that includes 41 unit tests under `src/` and `crates/`, 43 CLI integration tests, 5 demo-proof integration tests, 7 cache integration tests, and 1 serve integration test. There is a `just verify` convenience target that wraps the build, the test run, and smoke checks; `cargo build` and `cargo test` are the canonical path and always work.
 
 For presentation and skill wording changes, run the focused proof gate too:
 
@@ -79,7 +79,7 @@ PRODUCE: `generate {regbody|dcql}`.
 DIAGNOSE: `doctor <request>`, `validate dcql <input>`.
 DEBUG: `serve`.
 EVIDENCE: `evidence {export|verify|replay}`.
-WRITE AND TARGETS (guard-railed): `register <body> --target {clone|cached-sandbox|sandbox} [--yes --force]`, `list --target --rp`, `clone serve`, `cache serve`.
+WRITE AND TARGETS (guard-railed): `register <body> --target {clone|cached-sandbox|sandbox} [--yes --force]`, `list --target --rp`, `clone serve`, `cache serve`, `cache warm`.
 
 Input ergonomics: every artifact argument accepts a file path, an inline value, or `-` for stdin. Keep this contract when you add commands.
 

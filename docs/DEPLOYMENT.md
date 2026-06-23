@@ -67,16 +67,9 @@ RP=2af138a8-59ea-4a84-aea3-666cafdb1369
 TOKEN=<token>
 BASE=https://cache.example/api
 
+augenmass cache warm --api-base "$BASE" --admin-token "$TOKEN" --rp "$RP"
 curl -fsS -H "Authorization: Bearer $TOKEN" \
-  -X POST "$BASE/cache/refresh?route=schema-metadata"
-
-curl -fsS -H "Authorization: Bearer $TOKEN" \
-  -X POST "$BASE/cache/refresh?route=schema-metadata/vocabularies"
-
-curl -fsS -H "Authorization: Bearer $TOKEN" \
-  -X POST "$BASE/cache/refresh?route=registration-certificates&rp=$RP"
-
-curl -fsS -H "Authorization: Bearer $TOKEN" "$BASE/cache/status"
+  "$BASE/cache/status"
 ```
 
 Each cached response carries provenance headers:

@@ -19,7 +19,7 @@ use crate::commands::{
     audit, baselines, cache, check, clone, decode, doctor, evidence, generate, inspect, register,
     validate, verify, x509hash,
 };
-use crate::config::DEFAULT_API_BASE;
+use crate::config::{DEFAULT_API_BASE, DEFAULT_CACHE_API_BASE};
 use crate::generator::GenerateOptions;
 use crate::http_target::Target;
 use crate::mdoc;
@@ -365,6 +365,18 @@ enum CacheCmd {
         #[arg(long, env = "AUGENMASS_CACHE_ADMIN_TOKEN")]
         admin_token: Option<String>,
     },
+    /// Force-refresh the cache server's demo-critical public sandbox routes.
+    Warm {
+        /// Cache API base (env AUGENMASS_CACHE_API_BASE).
+        #[arg(long, env = "AUGENMASS_CACHE_API_BASE", default_value = DEFAULT_CACHE_API_BASE)]
+        api_base: String,
+        /// Admin token for protected refresh endpoints (env AUGENMASS_CACHE_ADMIN_TOKEN).
+        #[arg(long, env = "AUGENMASS_CACHE_ADMIN_TOKEN")]
+        admin_token: Option<String>,
+        /// Relying party id whose registration list should be warmed.
+        #[arg(long, default_value = DEFAULT_RP_ID)]
+        rp: String,
+    },
 }
 
 pub async fn run() -> Result<()> {
@@ -461,6 +473,21 @@ pub async fn run() -> Result<()> {
                     timeout_secs,
                     admin_token,
                 })
+                .await?
+            }
+            CacheCmd::Warm {
+                api_base,
+                admin_token,
+                rp,
+            } => {
+                cache::warm(
+                    cache::WarmArgs {
+                        api_base,
+                        admin_token,
+                        rp,
+                    },
+                    fmt,
+                )
                 .await?
             }
         },

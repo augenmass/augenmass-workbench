@@ -164,11 +164,10 @@ $BIN cache serve --db "$CACHE" --port 8081 --ttl-secs 315360000
 In another shell:
 
 ```
-curl -i -X POST "http://127.0.0.1:8081/api/cache/refresh?route=schema-metadata"
-curl -i -X POST "http://127.0.0.1:8081/api/cache/refresh?route=schema-metadata/vocabularies"
-curl -i -X POST "http://127.0.0.1:8081/api/cache/refresh?route=registration-certificates&rp=$RP"
-curl -s "http://127.0.0.1:8081/api/cache/status"
-AUGENMASS_CACHE_API_BASE=http://127.0.0.1:8081/api "$BIN" list --target cached-sandbox --rp "$RP"
+BASE=http://127.0.0.1:8081/api
+$BIN cache warm --api-base "$BASE" --rp "$RP"
+curl -s "$BASE/cache/status"
+AUGENMASS_CACHE_API_BASE="$BASE" "$BIN" list --target cached-sandbox --rp "$RP"
 ```
 
 For a shared backend, set an admin token and send it on refresh calls:
@@ -177,8 +176,7 @@ For a shared backend, set an admin token and send it on refresh calls:
 AUGENMASS_CACHE_ADMIN_TOKEN=<token> \
 augenmass cache serve --host 0.0.0.0 --port ${PORT:-8081} --db /data/augenmass-cache.sqlite
 
-curl -H "Authorization: Bearer <token>" \
-  -X POST "https://cache.example/api/cache/refresh?route=schema-metadata"
+augenmass cache warm --api-base https://cache.example/api --admin-token <token> --rp "$RP"
 ```
 
 ## Safety rules (targets)

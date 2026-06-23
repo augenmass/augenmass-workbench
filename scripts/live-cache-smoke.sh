@@ -88,6 +88,12 @@ curl --max-time 5 -fsS -H "Authorization: Bearer ${ADMIN}" "${BASE}/cache/status
 grep -q "schema-metadata" "${BODY}"
 grep -q "registration-certificates" "${BODY}"
 
+"${BIN}" cache warm --api-base "${BASE}" --admin-token "${ADMIN}" --rp "${RP}" >"${BODY}"
+grep -q "Cache warm complete" "${BODY}"
+grep -q "schema-metadata/vocabularies" "${BODY}"
+grep -q "registration-certificates?rp=${RP}" "${BODY}"
+echo "cache warm: $(sed -n '1p' "${BODY}")"
+
 kill "${PID}" 2>/dev/null || true
 wait "${PID}" 2>/dev/null || true
 PID=""

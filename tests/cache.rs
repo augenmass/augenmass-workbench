@@ -3,6 +3,7 @@
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
+use assert_cmd::Command;
 use augenmass_workbench::cache_server::{router, AppState};
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -38,6 +39,10 @@ async fn spawn_upstream(state: UpstreamState) -> String {
     let addr = listener.local_addr().unwrap();
     let app = Router::new()
         .route("/api/schema-metadata", get(schema_metadata))
+        .route(
+            "/api/schema-metadata/vocabularies",
+            get(schema_vocabularies),
+        )
         .route("/api/registration-certificates", get(registrations))
         .with_state(state);
     tokio::spawn(async move {
@@ -80,6 +85,17 @@ async fn schema_metadata(State(state): State<UpstreamState>) -> Json<Value> {
         {
             "id": "pid",
             "type": "schema",
+            "source": "stub"
+        }
+    ]))
+}
+
+async fn schema_vocabularies(State(state): State<UpstreamState>) -> Json<Value> {
+    state.schema_hits.fetch_add(1, Ordering::SeqCst);
+    Json(json!([
+        {
+            "id": "eu.europa.ec.eudi.pid.1",
+            "type": "vocabulary",
             "source": "stub"
         }
     ]))
@@ -229,6 +245,46 @@ async fn registration_list_rejects_malformed_rp_before_upstream() {
         .expect("list with malformed rp");
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     assert_eq!(upstream_state.registration_hits.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn cache_warm_cli_refreshes_demo_routes() {
+    let upstream_state = UpstreamState {
+        schema_hits: Arc::new(AtomicUsize::new(0)),
+        registration_hits: Arc::new(AtomicUsize::new(0)),
+        fail_registrations: Arc::new(AtomicBool::new(false)),
+    };
+    let upstream = spawn_upstream(upstream_state.clone()).await;
+    let cache = spawn_cache_with_admin(&upstream, 3600, Some("secret".to_string())).await;
+
+    let output = tokio::task::spawn_blocking(move || {
+        Command::cargo_bin("augenmass")
+            .expect("binary builds")
+            .args([
+                "cache",
+                "warm",
+                "--api-base",
+                cache.as_str(),
+                "--admin-token",
+                "secret",
+                "--rp",
+                "rp-1",
+            ])
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone()
+    })
+    .await
+    .expect("warm command task");
+    let stdout = String::from_utf8(output).expect("stdout is utf8");
+    assert!(stdout.contains("Cache warm complete"));
+    assert!(stdout.contains("schema-metadata"));
+    assert!(stdout.contains("schema-metadata/vocabularies"));
+    assert!(stdout.contains("registration-certificates?rp=rp-1"));
+    assert_eq!(upstream_state.schema_hits.load(Ordering::SeqCst), 2);
+    assert_eq!(upstream_state.registration_hits.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

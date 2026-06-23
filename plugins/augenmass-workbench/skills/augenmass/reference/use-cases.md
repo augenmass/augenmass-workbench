@@ -614,5 +614,6 @@ A note on replay: you cannot post a static or fixture wallet response to a runni
 | Read registrations back | `list --target <clone\|cached-sandbox\|sandbox> [--rp <id>]` | (read-only) |
 | Run the local clone store | `clone serve [--db <path> --port <n>]` | (server) |
 | Run the cached-sandbox mirror | `cache serve [--db <path> --host <host> --port <n> --upstream <url> --ttl-secs <n> --timeout-secs <n> --admin-token <token>]` | (server) |
+| Prewarm the cached-sandbox mirror | `cache warm [--api-base <url> --admin-token <token> --rp <id>]` | refresh failure |
 
 Add `--json` to any read-only command for machine output. Compose freely with `-` for stdin, as in `generate regbody | check -` and `generate regbody --over-broad | register - --target clone --yes`.
