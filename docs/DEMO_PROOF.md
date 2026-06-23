@@ -28,6 +28,18 @@ Use this gate when changing pitch, skill, or demo wording. If the wording says
 "ask the agent to debug this JAR" or "show the over-ask guard", the corresponding
 command should remain inside this proof set or be added here before shipping.
 
+## Skill transcript proof
+
+For the presentation, narrate this as an agent-assisted workflow first. The
+commands are the proof underneath, not the story the audience has to operate.
+
+| User prompt | Internal command proof | Reviewer-facing summary |
+| --- | --- | --- |
+| `What is this wallet request, and why might it fail?` | `inspect fixtures/requests/eudiplo-request.jwt`, then `doctor examples/bad-request.json` | "This is an OpenID4VP request. The shape that often breaks wallets is the signed request metadata: `x5c` must be an array, and `client_id` must match the certificate hash." |
+| `Is this age-check registration over-asking?` | `check examples/over.json`, then `check examples/min.json` | "The over-broad body asks for name, birthdate, address, and nationality when the purpose only needs proof of being over 18. The fixed body asks only for `age_equal_or_over.18`." |
+| `Can we trust this presentation and catch revocation?` | `verify presentation fixtures/presentations/erica-vp-VALID.sdjwt ...`, then the synthetic revoked fixture | "The valid fixture verifies with holder binding and trust anchoring. The revoked fixture fails closed, which is exactly what an auditor wants to see." |
+| `How would we debug this with a real phone wallet?` | `serve --help`, `cache serve --help`, and `tests/serve.rs` | "`serve` runs a verifier-in-a-box. It traces request, JAR fetch, response, decrypt, verify, trust, status, and over-ask with redacted traces by default." |
+
 Run the full release gate before pushing:
 
 ```sh

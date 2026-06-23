@@ -16,6 +16,22 @@ Private preview install:
 /plugin install augenmass-workbench@augenmass
 ```
 
+## First run in Claude Code
+
+After installing the plugin, start with the skill, not the terminal. These
+prompts are safe against the committed offline fixtures:
+
+| Audience | Prompt | Expected outcome |
+| --- | --- | --- |
+| Developer | `Use the augenmass skill: inspect fixtures/requests/eudiplo-request.jwt and tell me why a wallet might reject it.` | The agent identifies the OpenID4VP JAR, checks the request shape, and explains verifier gotchas such as `x5c` and `x509_hash` binding without pasting secrets. |
+| Auditor | `Use the augenmass skill: is examples/over.json over-asking for an age check? Explain it for a privacy review.` | The agent reports the extra claims, cites the data-minimisation basis, and proposes the minimal `age_equal_or_over.18` request. |
+| Non-technical reviewer | `Use the augenmass skill: explain in plain language what is wrong with examples/over.json and what we should ask for instead.` | The agent avoids JSON detail, names the unnecessary data, explains the risk, and gives the safer replacement. |
+
+For live wallet debugging, ask for the workflow first: `Use the augenmass skill:
+prepare a safe live wallet debug run with redacted traces.` The agent should
+explain `serve`, `--public-url`, trust/status caveats, and why
+`--unsafe-debug-artifacts` is opt-in local sensitive capture.
+
 The bundled plugin binary in this repository is currently macOS Apple Silicon.
 Inside the skill, agents should call the bundled binary on macOS Apple Silicon:
 

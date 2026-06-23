@@ -51,6 +51,12 @@ The skill is the front door. You talk to it the way you would talk to a colleagu
 - "Run a verifier so I can test with a real wallet, and show me every step." It starts `augenmass serve`, a local verifier-in-a-box, and traces the exchange with raw wallet data redacted by default.
 - "Explain this finding for someone non-technical." It restates the over-ask in plain language and ties it to the rule it breaks.
 
+For example, a privacy reviewer should not have to read JSON first. The skill
+can answer: "This age-check registration asks for the person's full birthdate,
+name, address, and nationality. For an over-18 check, that is more information
+than the stated purpose needs. Ask only for `age_equal_or_over.18`; it proves the
+same thing without exposing a birthdate or identity details."
+
 See `docs/ASK-IT-LIKE-THIS.md` for more, and `docs/EXPLAINER.md` for the plain-language version of what over-ask is and why it matters.
 
 ## Use it as a guardrail

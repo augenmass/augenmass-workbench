@@ -61,10 +61,12 @@ fi
 
 grep -q '"name": "augenmass-workbench"' "${PLUGIN_JSON}"
 grep -q 'chmod +x' "${HOOKS}"
-grep -q '\${CLAUDE_PLUGIN_ROOT}/bin/augenmass' "${SKILL}"
+grep -q 'AUGENMASS_BIN' "${SKILL}"
+grep -q '\$AUGENMASS inspect' "${SKILL}"
 grep -q 'cache serve' "${SKILL}"
 grep -q 'Prewarm the cached-sandbox mirror before a demo' "${SKILL}"
 grep -q 'Debug a live wallet interaction' "${SKILL}"
+grep -q 'Response contracts' "${SKILL}"
 grep -q 'evidence replay' "${SKILL}"
 
 CARGO_VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"

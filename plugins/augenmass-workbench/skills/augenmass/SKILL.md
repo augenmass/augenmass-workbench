@@ -33,6 +33,8 @@ Resolve the binary once before running commands:
 2. Otherwise use `${CLAUDE_PLUGIN_ROOT}/bin/augenmass`.
 3. Use a bare `augenmass` only when Claude Code or the shell has a compatible binary on PATH.
 
+For the rest of this skill, call the resolved path `$AUGENMASS`. That is a convention for the agent's own reasoning and examples, not a variable the user has to set. Do not lead with shell commands unless the user asks for them or needs a reproducible hook; lead with the answer, the evidence, the caveat, and the fix.
+
 ## How to think about it
 
 The central idea is Augenmaß: a sense of proportion. A relying party should ask for exactly the personal data its stated purpose needs, and no more. Most of what people bring you is some variation on that one question.
@@ -79,39 +81,69 @@ Many of the people who care about over-ask are not engineers: auditors, privacy 
 
 Never paste raw tokens, certificates, claim values, or keys back to anyone. Decode, describe, and redact.
 
+## Response contracts
+
+Adapt the amount of detail to the audience, but keep the same spine: finding, evidence, basis, risk, fix, caveat, next action.
+
+For a developer:
+
+- Start with the exact failing surface: registration body, DCQL query, JAR, presentation, status list, or live wallet step.
+- Name the command you ran only after the result is clear.
+- Give a patchable fix: claim paths to remove, x509_hash to use, x5c shape to change, nonce/audience to bind, or the safer target to choose.
+- Include the CI or hook command when the mistake can recur.
+
+For an auditor or privacy reviewer:
+
+- Start with the purpose and the personal data requested.
+- Explain the over-ask in plain language before showing claim paths.
+- Cite eIDAS Art. 5b(3), GDPR Art. 5(1)(c), or EUDI ARF RPRC_07 only where the finding turns on it.
+- Separate "protocol invalid" from "proportionality concern" so a soft finding is not overstated.
+
+For a non-technical reviewer:
+
+- Avoid raw JSON, JWTs, claim values, and command transcripts unless asked.
+- Say what the relying party is trying to do, what extra information it asks for, why that is unnecessary, and the safer replacement.
+- Use one or two examples, then offer to produce the fixed body or a short review note.
+
+For a live-wallet debugging report:
+
+- Treat the trace as sensitive even when redacted.
+- Summarize the timeline: request built, wallet fetched JAR, response received, response decrypted, verification/trust/status result, over-ask result.
+- Say clearly when raw artifacts were not captured. If `--unsafe-debug-artifacts` was used, remind the user it is local sensitive material and should not be pasted or committed.
+
 ## Command map (intents to commands)
 
 | Intent (natural language) | Command |
 | --- | --- |
-| "What is this token / file?" | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass inspect <input>` |
-| Decode a generic JWT/JWS | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass decode jwt <input>` |
-| Decode an SD-JWT VC presentation | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass decode sd-jwt <input>` |
-| Decode a WRPRC registration certificate | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass decode regcert <input>` |
-| Decode an OpenID4VP request / JAR | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass decode request <input>` |
-| Decode an OpenID4VCI credential offer | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass decode offer <input>` |
-| Decode a token status list | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass decode status-list <input>` |
-| Decode an ISO 18013-5 mdoc (mso_mdoc; CBOR, hex, or base64) | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass decode mdoc <input>` |
-| Validate a DCQL query (ids, credential_sets refs, per-format claim paths) | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass validate dcql <input>` |
-| Gate a registration body before a write | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass check <body>` |
-| Audit a request for over-ask | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass audit --request {minimal\|overask\|FILE} --purpose <id> [--cert FILE]` |
-| List or show purpose baselines and legal basis | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass baselines [<id>]` |
-| Verify a presentation cryptographically | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass verify presentation <p> --nonce <n> --aud <a> [--vct --now --max-age --trust-anchor --status-token --status-key]` |
-| Check issuer chains to a trust anchor | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass verify trust <p> --anchor <pem>` |
-| Check a presentation's revocation status | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass verify status <p> --token <t> --key <k>` |
-| Verify a status-list token and read an index | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass verify status-list --token <t> --key <k> --index <i>` |
-| Compute or check the x509_hash binding | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass x509-hash <input> [--client-id <id>]` |
-| Generate a proportionate registration body | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass generate regbody [--use-case age-check --over-broad --rp --support-uri --privacy-policy --purpose]` |
-| Generate a DCQL query from claim paths | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass generate dcql --claim <path> [--claim <path> ...]` |
-| Diagnose a signed request / JAR | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass doctor <request>` |
-| Debug a live wallet interaction (verifier-in-a-box) | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass serve [--port --host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet --unsafe-debug-artifacts]` |
-| Export a local evidence bundle | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass evidence export <session-dir> --out <bundle.json> [--signing-key <pem>]` |
-| Verify a local evidence bundle | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass evidence verify <bundle.json> [--verify-key <pem>]` |
-| Replay a projector-safe timeline | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass evidence replay <bundle.json> [--verify-key <pem>]` |
-| Write a registration (dry-run by default) | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass register <body> --target {clone\|cached-sandbox\|sandbox} [--yes --force]` |
-| Read registrations back for one relying party | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass list --target {clone\|cached-sandbox\|sandbox} [--rp <id>]` |
-| Run the local registrar-compatible clone store | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass clone serve [--db --port]` |
-| Run the read-through cached-sandbox mirror | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass cache serve [--db --host --port --upstream --ttl-secs --timeout-secs --admin-token]` |
-| Prewarm the cached-sandbox mirror before a demo | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass cache warm [--api-base --admin-token --rp --timeout-secs]` |
+| "What is this token / file?" | `$AUGENMASS inspect <input>` |
+| Decode a generic JWT/JWS | `$AUGENMASS decode jwt <input>` |
+| Decode an SD-JWT VC presentation | `$AUGENMASS decode sd-jwt <input>` |
+| Decode a WRPRC registration certificate | `$AUGENMASS decode regcert <input>` |
+| Decode an OpenID4VP request / JAR | `$AUGENMASS decode request <input>` |
+| Decode an OpenID4VCI credential offer | `$AUGENMASS decode offer <input>` |
+| Decode a token status list | `$AUGENMASS decode status-list <input>` |
+| Decode an ISO 18013-5 mdoc (mso_mdoc; CBOR, hex, or base64) | `$AUGENMASS decode mdoc <input>` |
+| Validate a DCQL query (ids, credential_sets refs, per-format claim paths) | `$AUGENMASS validate dcql <input>` |
+| Gate a registration body before a write | `$AUGENMASS check <body>` |
+| Audit a request for over-ask | `$AUGENMASS audit --request {minimal\|overask\|FILE} --purpose <id> [--cert FILE]` |
+| List or show purpose baselines and legal basis | `$AUGENMASS baselines [<id>]` |
+| Verify a presentation cryptographically | `$AUGENMASS verify presentation <p> --nonce <n> --aud <a> [--vct --now --max-age --trust-anchor --status-token --status-key]` |
+| Check issuer chains to a trust anchor | `$AUGENMASS verify trust <p> --anchor <pem>` |
+| Check a presentation's revocation status | `$AUGENMASS verify status <p> --token <t> --key <k>` |
+| Verify a status-list token and read an index | `$AUGENMASS verify status-list --token <t> --key <k> --index <i>` |
+| Compute or check the x509_hash binding | `$AUGENMASS x509-hash <input> [--client-id <id>]` |
+| Generate a proportionate registration body | `$AUGENMASS generate regbody [--use-case age-check --over-broad --rp --support-uri --privacy-policy --purpose]` |
+| Generate a DCQL query from claim paths | `$AUGENMASS generate dcql --claim <path> [--claim <path> ...]` |
+| Diagnose a signed request / JAR | `$AUGENMASS doctor <request>` |
+| Debug a live wallet interaction (verifier-in-a-box) | `$AUGENMASS serve [--port --host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet --unsafe-debug-artifacts]` |
+| Export a local evidence bundle | `$AUGENMASS evidence export <session-dir> --out <bundle.json> [--signing-key <pem>]` |
+| Verify a local evidence bundle | `$AUGENMASS evidence verify <bundle.json> [--verify-key <pem>]` |
+| Replay a projector-safe timeline | `$AUGENMASS evidence replay <bundle.json> [--verify-key <pem>]` |
+| Write a registration (dry-run by default) | `$AUGENMASS register <body> --target {clone\|cached-sandbox\|sandbox} [--yes --force]` |
+| Read registrations back for one relying party | `$AUGENMASS list --target {clone\|cached-sandbox\|sandbox} [--rp <id>]` |
+| Run the local registrar-compatible clone store | `$AUGENMASS clone serve [--db --port]` |
+| Run the read-through cached-sandbox mirror | `$AUGENMASS cache serve [--db --host --port --upstream --ttl-secs --timeout-secs --admin-token]` |
+| Prewarm the cached-sandbox mirror before a demo | `$AUGENMASS cache warm [--api-base --admin-token --rp --timeout-secs]` |
 
 Artifact inputs accept file paths, inline values, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Commands that render structured output accept `--json`.
 
