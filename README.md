@@ -2,7 +2,7 @@
 
 A swiss-army CLI and Claude Code skill for the EUDI Wallet ecosystem.
 
-Augenmaß Workbench gives developers and auditors one tool to inspect, decode, audit over-ask, verify, generate, repair, live-debug, and replay EUDI artifacts and flows: SD-JWT VC presentations, ISO 18013-5 mdoc credentials, registration certificates, OpenID4VP requests and JARs, credential offers, status lists, DCQL queries, the wallet-to-verifier presentation exchange itself, and local evidence bundles captured from that exchange. It is built on a single engine (`augenmass-core`, reused as-is from the verifier project). Everything runs fully offline except two paths that are network by nature: the registrar write path, and the live wallet-interaction debugger (`serve`), where a real wallet connects to the tool. Every read-only command takes `--json` so it drops cleanly into agents and CI.
+Augenmaß Workbench gives developers and auditors one tool to inspect, decode, audit over-ask, verify, generate, repair, live-debug, and replay EUDI artifacts and flows: SD-JWT VC presentations, ISO 18013-5 mdoc credentials, registration certificates, OpenID4VP requests and JARs, credential offers, status lists, DCQL queries, the wallet-to-verifier presentation exchange itself, and local evidence bundles captured from that exchange. It is built on a single engine (`augenmass-core`, reused as-is from the verifier project). Static artifact commands run fully offline; live surfaces are explicit: registrar targets (`clone`, `cached-sandbox`, `sandbox`), the cache server, and the wallet-interaction debugger (`serve`). Every read-only command takes `--json` so it drops cleanly into agents and CI.
 
 It supersedes the v1 workbench (which had six commands: `generate`, `check`, `doctor`, `register`, `list`, `clone`) by surfacing the entire engine (verification, status, trust, disclosure, crypto) and adding net-new offline decoders behind one cohesive CLI.
 
@@ -147,10 +147,11 @@ EVIDENCE (local audit bundles)
 - `evidence verify <bundle.json> [--verify-key <pem>]`: verify bundle hashes, replay determinism, and the optional ES256 signature.
 - `evidence replay <bundle.json> [--verify-key <pem>]`: render the projector-safe replay timeline. It is redacted like the live trace.
 
-WRITE (guard-railed)
-- `register <body> --target {clone | sandbox} [--yes --force]`: write a registration under guardrails.
-- `list --target --rp`: read registrations back for one relying party, decoded.
+WRITE AND TARGETS (guard-railed)
+- `register <body> --target {clone | cached-sandbox | sandbox} [--yes --force]`: gate a registration body under guardrails. Confirmed writes are allowed only for `clone` and `sandbox`; `cached-sandbox` is read-only and useful for dry-run output symmetry.
+- `list --target {clone | cached-sandbox | sandbox} --rp`: read registrations back for one relying party, decoded.
 - `clone serve [--db --port]`: run the registrar-compatible local clone store.
+- `cache serve [--db --port --upstream --ttl-secs]`: run a read-through cached-sandbox mirror for public sandbox GET routes.
 
 ## Over-ask and the legal basis
 
@@ -188,13 +189,13 @@ Evidence replay turns that local capture into an audit artifact. Run `augenmass 
 
 Writes are dry-run by default. `register` makes no network call until you pass `--yes`; if the body over-asks, it refuses (exit 1) unless you also pass `--force`. Blocking format errors are never written past.
 
-There are two write targets. `clone` (the default) is a local registrar-compatible store (axum plus SQLite) with no signing, no auth, and no x5c: it holds payload-only JWTs and exists so you can rehearse the read and write paths entirely offline. `sandbox` is the real registrar behind Keycloak; it is rehearsal-only and off-stage. Configure both through environment variables (see `docs/SANDBOX.md` and `.env.example`).
+There are three target modes. `clone` (the default) is a local registrar-compatible store (axum plus SQLite) with no signing, no auth, and no x5c: it holds payload-only JWTs and exists so you can rehearse the read and write paths entirely offline. `cached-sandbox` is a read-only, server-side mirror for public sandbox reads, with provenance headers and stale fallback for demos. `sandbox` is the real registrar behind Keycloak; it is rehearsal-only and off-stage. Configure them through environment variables (see `docs/SANDBOX.md` and `.env.example`).
 
 Secrets hygiene is enforced: the tool never logs, echoes, or commits tokens, certificates, or keys, and `.env*`, `secrets*.md`, `*.sqlite`, and `*signing-key*` are gitignored.
 
 ## How it works
 
-One engine is the spine. `augenmass-core` is a vendored, HTTP-free, pure-Rust crate carried over as-is from the verifier project: inspector (over-ask analysis, baselines, legal basis), regcert, pid, disclosure, verify (clock-injectable), status (fail-closed, offline), trust, and crypto. v1 used only inspector, regcert, and pid; v2 surfaces all of it behind one CLI. Because the engine is HTTP-free and the verification clock is injectable, every command except the registrar write path is offline and deterministic, which is what makes the committed fixtures reproducible in CI.
+One engine is the spine. `augenmass-core` is a vendored, HTTP-free, pure-Rust crate carried over as-is from the verifier project: inspector (over-ask analysis, baselines, legal basis), regcert, pid, disclosure, verify (clock-injectable), status (fail-closed, offline), trust, and crypto. v1 used only inspector, regcert, and pid; v2 surfaces all of it behind one CLI. Because the engine is HTTP-free and the verification clock is injectable, artifact decoding, proportionality, generation, and offline verification are deterministic, which is what makes the committed fixtures reproducible in CI. Network behavior stays in the shell (`clone`, `cache`, `sandbox`, and `serve`).
 
 ## Documentation
 

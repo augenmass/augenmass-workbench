@@ -317,7 +317,7 @@ Format findings:
 
 This exits `1`. A blocking format error stops `register` outright; only the over-ask warning is bypassable, and only with `--force`.
 
-For a real off-stage rehearsal, swap `--target clone` for `--target sandbox`, which talks to the actual registrar over OAuth. That path needs environment configuration (`AUGENMASS_API_BASE`, `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`) and a working `client_id` of `swagger`. Always write under the one relying party; never mint extra relying parties.
+For a real off-stage rehearsal, swap `--target clone` for `--target sandbox`, which talks to the actual registrar over OAuth. That path needs environment configuration (`AUGENMASS_API_BASE`, `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`) and a working `client_id` of `swagger`. Use `--target cached-sandbox` only for read-only cached sandbox reads; confirmed writes to cached-sandbox are refused before any network call. Always write under the one relying party; never mint extra relying parties.
 
 ## 4. Verify a wallet presentation end to end
 
@@ -574,7 +574,7 @@ Open the printed URL in a browser. The landing page (`GET /`) mints a fresh sess
 
 `POST /response/:id` returns JSON `{ status: "verified" | "rejected", reason?, inspect, trace }`: HTTP 200 with `status` "verified", or HTTP 422 with `status` "rejected" and a `reason`. The `inspect` and `trace` fields are absolute URLs to this session's over-ask inspector and timeline.
 
-The same trace is available three ways: live on this console (color-coded; suppress it with `--quiet`), as a browser timeline at `/trace/<session>` (it auto-refreshes while the exchange is in flight and stays still once the session reaches a terminal outcome), and as JSON at `/api/trace/<session>` for programmatic debugging. `/api/sessions` lists every session this run. Every event carries the raw artifact at that step (the JAR header and payload, the raw response body, the decrypted `vp_token`, the reject reason), so you can see exactly what the wallet sent and where the exchange broke. The over-ask inspector is at `/inspect/<session>`, with a `?demo=overask` variant that inspects an over-asking request shape.
+The same trace is available three ways: live on this console (color-coded; suppress it with `--quiet`), as a browser timeline at `/trace/<session>` (it auto-refreshes while the exchange is in flight and stays still once the session reaches a terminal outcome), and as JSON at `/api/trace/<session>` for programmatic debugging. `/api/sessions` lists every session this run. The default trace is redacted: it shows the decoded request shape, response field names, lengths, SHA-256 digests, disclosed claim keys, and reject reasons, but never raw POST bodies, decrypted payloads, or claim values. Use `--unsafe-debug-artifacts <DIR>` only when you explicitly need full-fidelity local capture; those raw artifacts are written to disk and never served over HTTP. The over-ask inspector is at `/inspect/<session>`, with a `?demo=overask` variant that inspects an over-asking request shape.
 
 To make the `client_id` the registered identity, sign with the real registrar leaf by passing `--key` and `--leaf` together (or set `RP_KEY_PATH` and `RP_LEAF_PATH`). To enforce issuer trust and reject revoked credentials, add `--trust-anchor` and `--live-status`:
 
@@ -598,7 +598,7 @@ A note on replay: you cannot post a static or fixture wallet response to a runni
 | Goal | Command | Non-zero exit when |
 | --- | --- | --- |
 | Identify any artifact | `inspect <input>` | (read-only) |
-| Decode a known type | `decode {jwt\|sd-jwt\|regcert\|request\|offer\|status-list} <input>` | (read-only) |
+| Decode a known type | `decode {jwt\|sd-jwt\|regcert\|request\|offer\|status-list\|mdoc} <input>` | (read-only) |
 | List or show baselines | `baselines [<id>]` | (read-only) |
 | Gate a registration body | `check <body>` | over-ask or blocking format error |
 | Lint a request for over-ask | `audit --request <minimal\|overask\|FILE> --purpose <id> [--cert FILE]` | over-ask |
@@ -610,8 +610,9 @@ A note on replay: you cannot post a static or fixture wallet response to a runni
 | Produce a body or query | `generate {regbody\|dcql} ...` | (producer) |
 | Diagnose a JAR | `doctor <request>` | findings |
 | Debug a live wallet interaction | `serve [--port --host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet]` | (server; runs until Ctrl-C) |
-| Write a registration | `register <body> --target <clone\|sandbox> [--yes --force]` | over-ask without `--force`, or blocking format error |
-| Read registrations back | `list --target <clone\|sandbox> [--rp <id>]` | (read-only) |
+| Write a registration | `register <body> --target <clone\|cached-sandbox\|sandbox> [--yes --force]` | over-ask without `--force`, blocking format error, or confirmed cached-sandbox write |
+| Read registrations back | `list --target <clone\|cached-sandbox\|sandbox> [--rp <id>]` | (read-only) |
 | Run the local clone store | `clone serve [--db <path> --port <n>]` | (server) |
+| Run the cached-sandbox mirror | `cache serve [--db <path> --port <n> --upstream <url> --ttl-secs <n>]` | (server) |
 
 Add `--json` to any read-only command for machine output. Compose freely with `-` for stdin, as in `generate regbody | check -` and `generate regbody --over-broad | register - --target clone --yes`.

@@ -2,7 +2,7 @@
 
 A cookbook for developers and auditors working in the EUDI (European Digital Identity) Wallet ecosystem. The premise is simple: you are holding some EUDI artifact, a blob of base64 or a JSON body or a deep link, and you need to know what it is, what is inside it, and whether it is correct. This guide is organized by artifact. For each one you get a one-line "what it is", the command to decode it, the command to verify or audit it where that applies, and the gotchas that actually bite people.
 
-Every command below works as written against the `augenmass` binary. All decoding runs fully offline; only `verify` does cryptography, and only `register`/`list --target sandbox`, `clone serve`, and `serve` (the live wallet-interaction debugger, where a real wallet connects) touch a network or store. Throughout, every artifact argument accepts a file path, an inline value, or `-` for stdin.
+Every command below works as written against the `augenmass` binary. All decoding runs fully offline; only explicit live surfaces touch a network or store: `register`/`list` targets, `clone serve`, `cache serve`, and `serve` (the live wallet-interaction debugger, where a real wallet connects). Throughout, every artifact argument accepts a file path, an inline value, or `-` for stdin.
 
 If you only remember one command, remember this one:
 
@@ -24,6 +24,7 @@ Add `--json` to any read-only command for machine-readable output suited to CI a
 | `openid-credential-offer://` | OpenID4VCI credential offer | `inspect` / `decode offer` | (none; offline decode) |
 | `openid4vp://` | OpenID4VP request URI | `inspect` / `decode offer` | (resolve `request_uri` then `doctor`) |
 | `statuslist+jwt` | Token status list | `inspect` / `decode status-list` | `verify status-list` |
+| ISO 18013-5 CBOR, hex, or base64 | mdoc / mso_mdoc credential | `inspect` / `decode mdoc` | decode only |
 | DCQL JSON | DCQL query | `inspect` | `audit --request FILE ...` |
 | `{ "rpId": ... }` | Registrar registration body | `inspect` | `check`, then `register` |
 | PEM cert | X.509 certificate | `inspect` / `decode jwt` (for JWTs) | `x509-hash` |
@@ -390,7 +391,7 @@ augenmass serve
 
 Open the printed URL, scan the QR with a wallet, and watch the trace. The trace is available three ways: live on the console (color-coded; suppress it with `--quiet`), as a browser timeline at `/trace/<session>` (it auto-refreshes while the exchange is in flight), and as JSON at `/api/trace/<session>` for programmatic debugging. `/api/sessions` lists every session this run. The session endpoints are `GET /` (landing page and QR), `GET /request/:id` (the signed JAR the wallet fetches, content-type `application/oauth-authz-req+jwt`), `POST /response/:id` (the wallet's `direct_post.jwt`, returning JSON `{ status: "verified" | "rejected", reason?, inspect, trace }`), `GET /inspect/:id` (the over-ask inspector, with a `?demo=overask` variant), and `GET /health`.
 
-The trace event codes, in typical order, are `SESSION_CREATED`, `REQUEST_BUILT`, `REQUEST_OBJECT_FETCHED`, `RESPONSE_RECEIVED`, `RESPONSE_DECRYPTED`, `VERIFIED` or `REJECTED`, `STATUS_CHECKED` (only with `--live-status` and a trust anchor), and `OVER_ASK_ANALYZED`, plus `NOTE` and `ERROR`. Every event carries the raw artifact at that step, so you see exactly what the wallet sent and where the exchange succeeded or broke.
+The trace event codes, in typical order, are `SESSION_CREATED`, `REQUEST_BUILT`, `REQUEST_OBJECT_FETCHED`, `RESPONSE_RECEIVED`, `RESPONSE_DECRYPTED`, `VERIFIED` or `REJECTED`, `STATUS_CHECKED` (only with `--live-status` and a trust anchor), and `OVER_ASK_ANALYZED`, plus `NOTE` and `ERROR`. The default trace is redacted: it carries decoded request shape, response field names, lengths, SHA-256 digests, claim keys, and reject reasons, but not raw POST bodies, decrypted payloads, or disclosed claim values. Use `--unsafe-debug-artifacts <DIR>` only when you explicitly need full-fidelity local capture; those raw artifacts are written to disk and are never served over HTTP.
 
 Common gotchas:
 

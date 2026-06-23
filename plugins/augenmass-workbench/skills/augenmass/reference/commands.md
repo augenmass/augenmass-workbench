@@ -166,7 +166,7 @@ Flags (all optional, each with an env var where noted): `--port` (`PORT`, defaul
 
 HTTP endpoints: `GET /` (landing page and QR/deep-link), `GET /request/:id` (the signed JAR, content-type `application/oauth-authz-req+jwt`), `POST /response/:id` (the wallet's `direct_post.jwt`, returning JSON `{ status: "verified" | "rejected", reason?, inspect, trace }`), `GET /inspect/:id` (the over-ask inspector, with a `?demo=overask` variant), `GET /trace/:id` (the HTML timeline, auto-refreshing while in flight), `GET /api/trace/:id` (the trace as JSON), `GET /api/sessions` (the sessions seen this run), and `GET /health`.
 
-Trace event codes, in typical order: `SESSION_CREATED`, `REQUEST_BUILT`, `REQUEST_OBJECT_FETCHED`, `RESPONSE_RECEIVED`, `RESPONSE_DECRYPTED`, `VERIFIED` or `REJECTED`, `STATUS_CHECKED` (only with `--live-status` plus a trust anchor), `OVER_ASK_ANALYZED`, plus `NOTE` and `ERROR`. Each event carries (camelCase JSON keys) `seq`, `at`, `atUnixMs`, `kind`, `code`, `level` (`info`/`good`/`warn`/`bad`), a one-line `summary`, and an optional `detail` with the raw artifact at that step. The trace is available three ways: live on the console (ANSI color only when stderr is a TTY), the browser timeline, and JSON.
+Trace event codes, in typical order: `SESSION_CREATED`, `REQUEST_BUILT`, `REQUEST_OBJECT_FETCHED`, `RESPONSE_RECEIVED`, `RESPONSE_DECRYPTED`, `VERIFIED` or `REJECTED`, `STATUS_CHECKED` (only with `--live-status` plus a trust anchor), `OVER_ASK_ANALYZED`, plus `NOTE` and `ERROR`. Each event carries (camelCase JSON keys) `seq`, `at`, `atUnixMs`, `kind`, `code`, `level` (`info`/`good`/`warn`/`bad`), a one-line `summary`, and an optional redacted `detail` with shape, field names, lengths, hashes, claim keys, and reject reasons, but not raw POST bodies, decrypted payloads, or disclosed claim values. Raw material is available only through `--unsafe-debug-artifacts <DIR>`, written locally and never served over HTTP. The trace is available three ways: live on the console (ANSI color only when stderr is a TTY), the browser timeline, and JSON.
 
 Example:
 
@@ -203,9 +203,9 @@ Example:
 "${CLAUDE_PLUGIN_ROOT}/bin/augenmass" evidence replay evidence.json
 ```
 
-## WRITE: register under guardrails, read back, run the local clone
+## WRITE AND TARGETS: register under guardrails, read back, run local target servers
 
-These are the only commands that can leave the machine (the `sandbox` target). Writes are dry-run by default.
+These are the explicit live target commands. Writes are dry-run by default.
 
 | Intent (plain English) | Command | Notes |
 | --- | --- | --- |
@@ -214,15 +214,16 @@ These are the only commands that can leave the machine (the `sandbox` target). W
 | Write past an over-ask warning (deliberate). | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" register <body> --yes --force` | `--force` requires `--yes` |
 | Rehearse a write against the real registrar sandbox. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" register <body> --target sandbox --yes` | Off-stage; uses the sandbox env (see below) |
 | List registrations for the default relying party (clone). | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" list` | Defaults `--target clone`, `--rp 2af138a8-...` |
-| List for a specific RP, or from the sandbox. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" list --target sandbox --rp <RP>` | Decoded payloads |
+| List for a specific RP, from cached-sandbox, or from sandbox. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" list --target cached-sandbox --rp <RP>` | Decoded payloads |
 | Run the local registrar-compatible store. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" clone serve` | Defaults `--db ./augenmass-clone.sqlite`, `--port 8080` |
 | Run the clone on another port / db file. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" clone serve --port <PORT> --db <FILE>` | |
+| Run the read-through cached-sandbox mirror. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" cache serve` | Defaults `--db ./augenmass-cache.sqlite`, `--port 8081`, `--upstream https://sandbox.eudi-wallet.org/api` |
 
-`register` defaults: `--target clone`, dry-run unless `--yes`. The guardrails: it refuses with exit 1 on over-ask unless you add `--force`, and it bails on blocking format errors regardless. `--target` accepts `clone` or `sandbox`.
+`register` defaults: `--target clone`, dry-run unless `--yes`. The guardrails: it refuses with exit 1 on over-ask unless you add `--force`, and it bails on blocking format errors regardless. `--target` accepts `clone`, `cached-sandbox`, or `sandbox`; `cached-sandbox` is read-only and refuses confirmed writes before any network call.
 
 `list` defaults: `--target clone`, `--rp 2af138a8-59ea-4a84-aea3-666cafdb1369`. One relying party per entity, many certificates: write only under that RP and never mint extra relying parties.
 
-Clone vs sandbox: `clone` is a local store (no signing, no auth, no x5c) that stores payload-only JWTs and serves the registrar-compatible endpoints; its base is `AUGENMASS_CLONE_API_BASE` (default `http://127.0.0.1:8080/api`). `sandbox` is the real registrar reached over OAuth; it reads `AUGENMASS_API_BASE` (default `https://sandbox.eudi-wallet.org/api`), `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`, and the optional `AUGENMASS_OIDC_CLIENT_SECRET`. Never log, echo, or commit tokens, certs, or keys.
+Clone vs cached-sandbox vs sandbox: `clone` is a local store (no signing, no auth, no x5c) that stores payload-only JWTs and serves the registrar-compatible endpoints; its base is `AUGENMASS_CLONE_API_BASE` (default `http://127.0.0.1:8080/api`). `cached-sandbox` is a read-only loopback mirror served by `cache serve`; its base is `AUGENMASS_CACHE_API_BASE` (default `http://127.0.0.1:8081/api`) and responses carry cache provenance headers. `sandbox` is the real registrar reached over OAuth; it reads `AUGENMASS_API_BASE` (default `https://sandbox.eudi-wallet.org/api`), `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`, and the optional `AUGENMASS_OIDC_CLIENT_SECRET`. Never log, echo, or commit tokens, certs, or keys.
 
 Example:
 
@@ -252,6 +253,6 @@ Example:
 | `evidence verify`, `evidence replay` | bundle valid | hash, replay, or signature mismatch |
 | `serve` | runs until Ctrl-C | (server; no gating) |
 | `register` | dry-run or write succeeds | over-ask without `--force`, or a blocking format error |
-| `list`, `generate`, `clone serve` | success | (no gating) |
+| `list`, `generate`, `clone serve`, `cache serve` | success | (no gating) |
 
 All read-only commands accept `--json` for machine-readable output. Verified against `augenmass 0.2.0` at `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench/target/debug/augenmass`.

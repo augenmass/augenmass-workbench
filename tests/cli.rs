@@ -244,6 +244,7 @@ fn register_cached_sandbox_confirmed_write_is_refused() {
         ])
         .assert()
         .failure()
+        .stdout(contains("Writing to").not())
         .stderr(contains("cached-sandbox is read-only"));
 }
 

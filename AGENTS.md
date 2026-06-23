@@ -4,7 +4,7 @@ Guidance for AI agents and human contributors working in the Augenmaß Workbench
 
 ## What this repository is
 
-Augenmaß Workbench is a developer and auditor toolkit for the EUDI (European Digital Identity) Wallet ecosystem, shipped as a single Rust binary named `augenmass` plus a Claude Code skill. It decodes and inspects every common artifact (SD-JWT VC presentations, registration certificates, OpenID4VP authorization requests and signed JARs, credential offers, token status lists, DCQL queries, X.509 certificates), audits requests for over-asking against curated purpose baselines and the legal basis, verifies presentations cryptographically, and writes registrations under guardrails. Everything except the registrar write path runs fully offline.
+Augenmaß Workbench is a developer and auditor toolkit for the EUDI (European Digital Identity) Wallet ecosystem, shipped as a single Rust binary named `augenmass` plus a Claude Code skill. It decodes and inspects every common artifact (SD-JWT VC presentations, ISO 18013-5 mdoc credentials, registration certificates, OpenID4VP authorization requests and signed JARs, credential offers, token status lists, DCQL queries, X.509 certificates), audits requests for over-asking against curated purpose baselines and the legal basis, verifies presentations cryptographically, and writes registrations under guardrails. Static artifact commands run fully offline. Network behavior is explicit and lives in the shell: registrar targets, the cache server, and `serve`.
 
 The product name "Augenmaß" (sense of proportion) is the whole point: the tool helps relying parties ask for exactly the personal data they need, no more.
 
@@ -35,7 +35,7 @@ cargo build
 cargo test
 ```
 
-`cargo test` runs the integration suite in `tests/cli.rs` (30 tests) that drives the real binary against the committed fixtures. There is a `just verify` convenience target that wraps the build, the test run, and a help-consistency check; `cargo build` and `cargo test` are the canonical path and always work.
+`cargo test` runs unit tests plus integration suites that drive the real binary against the committed fixtures. At this writing, that includes 40 unit tests under `src/` and `crates/`, 41 CLI integration tests, 3 cache integration tests, and 1 serve integration test. There is a `just verify` convenience target that wraps the build, the test run, and smoke checks; `cargo build` and `cargo test` are the canonical path and always work.
 
 When in doubt about command behavior, do not guess. Run the binary:
 
@@ -50,9 +50,9 @@ When in doubt about command behavior, do not guess. Run the binary:
 - `Cargo.toml`: declares the binary `augenmass` and the library `augenmass_workbench`.
 - `crates/augenmass-core/`: the vendored engine. See the rules below before editing.
 - `src/main.rs`, `src/lib.rs`, `src/cli.rs`: entry point, library surface, and clap command tree.
-- `src/commands/`: one module per command (`inspect`, `decode`, `check`, `audit`, `baselines`, `verify`, `x509hash`, `generate`, `doctor`, `register`, `clone`, plus `mod.rs`). Add or change command behavior here.
-- `src/` supporting modules: `output.rs` (text and `--json` rendering), `config.rs` (env and targets), `jose.rs`, `dcql.rs`, `checkbody.rs`, `render.rs`, `artifact.rs` (the `inspect` sniffer and dispatch), `x509util.rs`, `http_target.rs`, `clone_server.rs` (the local registrar clone), `generator.rs`.
-- `tests/cli.rs`: integration tests.
+- `src/commands/`: one module per command (`inspect`, `decode`, `check`, `audit`, `baselines`, `verify`, `x509hash`, `generate`, `doctor`, `register`, `clone`, `cache`, plus `mod.rs`). Add or change command behavior here.
+- `src/` supporting modules: `output.rs` (text and `--json` rendering), `config.rs` (env and targets), `jose.rs`, `dcql.rs`, `checkbody.rs`, `render.rs`, `artifact.rs` (the `inspect` sniffer and dispatch), `x509util.rs`, `http_target.rs`, `clone_server.rs` (the local registrar clone), `cache_server.rs` (the read-through cached-sandbox mirror), `generator.rs`.
+- `tests/`: integration tests for the CLI, cache server, and serve debugger.
 - `fixtures/`: committed offline test artifacts (see below).
 - `examples/`: sample registration bodies and requests (`min.json`, `over.json`, `bad-path.json`, `bad-request.json`).
 - `docs/`: documentation.
@@ -61,12 +61,14 @@ When in doubt about command behavior, do not guess. Run the binary:
 
 ### Command surface (for orientation)
 
-UNDERSTAND: `inspect <input>`, `decode {jwt|sd-jwt|regcert|request|offer|status-list} <input>`.
+UNDERSTAND: `inspect <input>`, `decode {jwt|sd-jwt|regcert|request|offer|status-list|mdoc} <input>`.
 PROPORTIONALITY: `check <body>`, `audit --request {minimal|overask|FILE} --purpose <id> [--cert FILE]`, `baselines [<id>]`.
 CRYPTO: `verify {presentation|trust|status|status-list}`, `x509-hash <input> [--client-id]`.
 PRODUCE: `generate {regbody|dcql}`.
-DIAGNOSE: `doctor <request>`.
-WRITE (guard-railed): `register <body> --target {clone|sandbox} [--yes --force]`, `list --target --rp`, `clone serve`.
+DIAGNOSE: `doctor <request>`, `validate dcql <input>`.
+DEBUG: `serve`.
+EVIDENCE: `evidence {export|verify|replay}`.
+WRITE AND TARGETS (guard-railed): `register <body> --target {clone|cached-sandbox|sandbox} [--yes --force]`, `list --target --rp`, `clone serve`, `cache serve`.
 
 Input ergonomics: every artifact argument accepts a file path, an inline value, or `-` for stdin. Keep this contract when you add commands.
 
@@ -74,20 +76,20 @@ Exit codes: commands exit non-zero on the bad outcome so they work in CI. `check
 
 ## Safety rules for the write path
 
-`register` is the only command that mutates anything, and it is guard-railed by design:
+`register` is the only command that mutates registrar data, and it is guard-railed by design:
 
 - Writes are dry-run by default. `--yes` is required to actually write. `--force` is required to write past an over-ask warning, and `--force` requires `--yes`.
-- Two targets: `clone` (default) is a local registrar-compatible store (axum plus SQLite) with no signing, no auth, and no x5c; it stores payload-only JWTs. `sandbox` is the real registrar behind Keycloak OAuth, for off-stage rehearsal only.
+- Three target modes: `clone` (default) is a local registrar-compatible store (axum plus SQLite) with no signing, no auth, and no x5c; it stores payload-only JWTs. `cached-sandbox` is a read-only loopback mirror for public sandbox GET routes. `sandbox` is the real registrar behind Keycloak OAuth, for off-stage rehearsal only.
 - One relying party per entity, many certificates. Our relying party is "Hackathon - Reza", id `2af138a8-59ea-4a84-aea3-666cafdb1369`. Write only under it; never mint extra relying parties.
 - The clone is sound because every read path decodes payload-only and there is no client-side crypto on either path. Do not add signing or token handling to the clone.
 
-When you change `register`, `clone_server.rs`, or `http_target.rs`, keep the dry-run default and the over-ask gate intact. Loosening either is a defect.
+When you change `register`, `clone_server.rs`, `cache_server.rs`, or `http_target.rs`, keep the dry-run default and the over-ask gate intact. Loosening either is a defect.
 
 ## Secrets
 
 - Never log, echo, print, or commit tokens, certificates, or private keys.
 - The following are gitignored and must stay that way: `.env` and `.env.*` (except `.env.example`), `secrets*.md`, `*.sqlite`, and `*signing-key*`. Only the public verify key is a committed fixture; private signing keys never enter the repo.
-- Sandbox credentials come from the environment (`AUGENMASS_API_BASE`, `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`, optional `AUGENMASS_OIDC_CLIENT_SECRET`); the clone uses `AUGENMASS_CLONE_API_BASE`. Read `.env.example` for the shape. Never bake real values into code, tests, or docs.
+- Sandbox credentials come from the environment (`AUGENMASS_API_BASE`, `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`, optional `AUGENMASS_OIDC_CLIENT_SECRET`); the clone uses `AUGENMASS_CLONE_API_BASE`; cached-sandbox uses `AUGENMASS_CACHE_API_BASE`. Read `.env.example` for the shape. Never bake real values into code, tests, or docs.
 
 ## Documentation and the skill must match the shipped binary
 

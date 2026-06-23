@@ -17,9 +17,9 @@ for developers and auditors alike. The v1 workbench shipped six commands
 of the engine. Version 2 surfaces the entire `augenmass-core` engine behind one
 CLI and adds net-new offline decoders. It also adds `serve`, a live
 wallet-interaction debugger so a real EUDI wallet can present to the tool over
-OpenID4VP and the whole exchange is traced. Everything runs fully offline except
-two paths that are network by nature: the registrar write path, and the live
-wallet-interaction debugger.
+OpenID4VP and the whole exchange is traced. Static artifact commands run fully
+offline. Explicit live surfaces are network by nature: registrar targets, the
+cached-sandbox mirror, and the live wallet-interaction debugger.
 
 ### Added
 
@@ -131,6 +131,13 @@ wallet-interaction debugger.
   `session-enc-key.jwk`, `verification-context.json`, and an encrypted response,
   replay decrypts and verifies the SD-JWT VC offline against the captured nonce,
   audience, vct, clock, and freshness window.
+- `cache serve`: a server-side read-through cached-sandbox mirror for public
+  sandbox GET routes. It stores successful upstream responses in SQLite, exposes
+  provenance headers (`x-augenmass-cache`, cache key, fetched-at, SHA-256, and
+  upstream URL), serves fresh hits locally, and falls back to stale cached data
+  when a refresh fails. `list --target cached-sandbox` reads through it, while
+  confirmed writes to `--target cached-sandbox` are refused before any network
+  call.
 
 ### Changed
 
@@ -158,16 +165,18 @@ wallet-interaction debugger.
   is a dry-run by default, requires `--yes` to write, and requires `--force` to
   write past an over-ask warning; it refuses (non-zero) on over-ask without
   `--force` and bails on blocking format errors. Both `register` and `list` take a
-  `--target` of `clone` (the local registrar-compatible store, the default) or
-  `sandbox` (the real registrar, rehearsal only). Writes are scoped to one relying
-  party; the tool never mints extra relying parties.
+  `--target` of `clone` (the local registrar-compatible store, the default),
+  `cached-sandbox` (read-only cached sandbox reads), or `sandbox` (the real
+  registrar, rehearsal only). Writes are scoped to one relying party; the tool
+  never mints extra relying parties.
 
 ### Notes
 
-- Offline and deterministic: every command except the registrar write path and
-  the `serve` wallet-interaction debugger runs fully offline, with no network
+- Offline and deterministic where it matters: artifact decoding,
+  proportionality, generation, and offline verification run without network
   calls. Verification accepts an injectable clock (`--now`) so results are
-  reproducible against the committed fixtures. `serve` is network by nature (a
+  reproducible against the committed fixtures. Live surfaces are explicit:
+  registrar targets, `cache serve`, and `serve`. `serve` is network by nature (a
   real wallet connects to it); its verification logic is the same offline engine,
   exercised by an integration test on an ephemeral port and a unit test against
   the committed oracle fixtures.

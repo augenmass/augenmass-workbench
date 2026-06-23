@@ -5,7 +5,7 @@ This is a field guide to the mistakes that quietly break an EUDI Wallet relying-
 Two facts to keep straight throughout:
 
 - A registration body (the JSON you POST to the registrar, keyed by `rpId`) and a signed request / JAR (the OpenID4VP `oauth-authz-req+jwt` the verifier sends the wallet) are different documents with different rules. `check` is the gate for registration bodies; `doctor` is the gate for signed requests. Do not run one on the other.
-- Everything below runs fully offline except the registrar write path. Commands exit non-zero on the bad outcome, so they drop straight into CI.
+- Static artifact checks below run fully offline. Explicit live surfaces are registrar targets, the cache server, and `serve`. Commands exit non-zero on the bad outcome, so they drop straight into CI.
 
 All commands are shown relative to the repo root.
 

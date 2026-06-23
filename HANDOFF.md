@@ -66,7 +66,7 @@ Every artifact arg accepts a file path, an inline value, or `-` for stdin. Comma
 - DIAGNOSE: `doctor <request>` (JAR x5c/client_id gotchas), `validate dcql <input>` (DCQL semantic validation: unique ids, credential_sets refs, per-format claim paths; CI-gateable, src/commands/validate.rs)
 - DEBUG (live): `serve` (verifier-in-a-box; a real wallet presents and the whole OpenID4VP exchange is traced)
 - EVIDENCE (offline audit): `evidence {export|verify|replay}` (turn a `serve --unsafe-debug-artifacts` capture into a sensitive, hash-verified, optionally ES256-signed bundle, then render a redacted projector-safe replay timeline)
-- WRITE (guard-railed): `register <body> --target {clone|sandbox} [--yes --force]`, `list`, `clone serve`
+- WRITE (guard-railed): `register <body> --target {clone|cached-sandbox|sandbox} [--yes --force]`, `list`, `clone serve`, `cache serve`
 
 The `serve` command (src/serve/{mod,state,handlers,view,trace}.rs) is the headline
 wallet-interaction debugger, ported and extended from `verifier/verifier-service`.

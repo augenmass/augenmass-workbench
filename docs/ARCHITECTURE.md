@@ -22,8 +22,8 @@ The Workbench is two crates with a hard boundary between them.
 
 2. The `augenmass` binary (everything under `src/`, plus the `augenmass_workbench`
    library target) is the I/O shell: it parses arguments, reads files and stdin,
-   talks to the network when (and only when) a write or serve command needs to,
-   and renders results as either human text or JSON.
+   talks to the network when an explicit target or serve command needs to, and
+   renders results as either human text or JSON.
 
 The reason for the split is testability and trust. The hard parts (does this
 KB-JWT echo the right nonce? is index 42 revoked? does this leaf chain to that
@@ -104,14 +104,15 @@ augenmass-workbench/
     render.rs                 human-readable renderers
     artifact.rs               artifact type sniffing (inspect)
     x509util.rs               PEM/DER and certificate helpers
-    http_target.rs            clone + sandbox write/read clients
+    http_target.rs            clone + cached-sandbox + sandbox target clients
     clone_server.rs           the local registrar-compatible store
+    cache_server.rs           read-through cached-sandbox mirror
     generator.rs              regbody + DCQL generation
     commands/
       mod.rs
       inspect.rs   decode.rs   check.rs    audit.rs
       baselines.rs verify.rs   x509hash.rs generate.rs
-      doctor.rs    register.rs clone.rs
+      doctor.rs    register.rs clone.rs    cache.rs
   fixtures/                   committed offline test artifacts
   examples/                   min/over/bad-path/bad-request bodies
   tests/cli.rs                integration tests
@@ -136,12 +137,13 @@ Detection lives in `src/artifact.rs::sniff`, which tries, in order:
    request URI).
 2. The `~` separator for an SD-JWT VC: if the input contains `~` and the part
    before the first `~` is a JWT, it is treated as an SD-JWT VC presentation.
-3. A single compact JWT/JWS, branched first on the header `typ`
+3. ISO 18013-5 mdoc CBOR given as hex or base64/base64url.
+4. A single compact JWT/JWS, branched first on the header `typ`
    (`rc-wrp+jwt`, `statuslist+jwt`, `kb+jwt`, `oauth-authz-req+jwt`), then on
    payload shape (for example, a payload carrying `response_type` is an
    authorization request).
-4. A PEM block (an X.509 certificate).
-5. JSON shape last: a parsed JSON document is classified by its fields (a
+5. A PEM block (an X.509 certificate).
+6. JSON shape last: a parsed JSON document is classified by its fields (a
    `dcql_query` wrapper, a registrar body with `rpId`, a bare DCQL query, a
    URI-bearing object, or a generic JSON document).
 
@@ -172,7 +174,7 @@ proportionality (`check`, `audit`, `baselines`), all of `verify`, `x509-hash`,
 them and on the engine. The committed fixtures under `fixtures/` make every one
 of those paths reproducible without any external service.
 
-Only three things touch the network, and only on purpose:
+Only explicit live surfaces touch sockets or external services:
 
 - `register --target sandbox` and `list --target sandbox`: the real registrar,
   reached over HTTP with a Keycloak token grant.
@@ -180,9 +182,14 @@ Only three things touch the network, and only on purpose:
   registrar-compatible store (the default target), reached over a loopback HTTP
   socket.
 - `clone serve`: runs that local store (axum plus SQLite).
+- `list --target cached-sandbox`: reads a loopback cached-sandbox server.
+- `cache serve`: runs the read-through cached-sandbox mirror and fetches public
+  sandbox GET routes from its configured upstream.
+- `serve`: runs the wallet-interaction debugger; with `--live-status`, it may
+  fetch a credential status-list token under the SSRF guard.
 
 The engine itself never opens a socket. All networking lives in the shell's
-`http_target.rs` and `clone_server.rs`.
+`http_target.rs`, `clone_server.rs`, `cache_server.rs`, and `serve/`.
 
 ## The `--json` contract (agents and CI)
 
@@ -252,11 +259,11 @@ written fresh for v2.
   chains to a supplied anchor inside its validity window. They do not perform
   complete X.509 path validation (no revocation of intermediates, no policy or
   name-constraint processing, no full chain-building against a store).
-- mdoc/CBOR is not yet decoded. The artifact decoders cover the JSON and JOSE
-  family (SD-JWT VC, WRPRC, OpenID4VP request/JAR, credential offer, status
-  list, DCQL, registrar bodies, X.509 PEM). ISO mdoc / CBOR artifacts are out of
-  scope for now, which is also why mdoc claim-path shape (a 2-element
-  [namespace, element]) is described in guidance but not parsed.
+- mdoc support is decode-only. `decode mdoc` reads ISO 18013-5 / `mso_mdoc`
+  CBOR structures (DeviceResponse, Document, IssuerSigned, or MSO) and surfaces
+  namespaces, data elements, issuerAuth metadata, X.509 chain information, and
+  MSO shape. It does not verify the COSE_Sign1 signature or recompute value
+  digests.
 - The model is PID-centric. The defaults, the curated baselines, and the DCQL
   builders assume the German PID (`urn:eudi:pid:de:1`, format `dc+sd-jwt`). Other
   credential types can be inspected and decoded, but the proportionality

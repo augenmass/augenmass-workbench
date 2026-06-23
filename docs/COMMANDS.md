@@ -2,7 +2,7 @@
 
 This is the complete reference for the `augenmass` CLI. Every command, subcommand, flag, exit code, and example here is verified against the built binary (`augenmass 0.2.0`) and the committed fixtures under `fixtures/`. Every example runs as written from the repository root.
 
-Augenmaß Workbench is a developer and auditor toolkit for the EUDI Wallet ecosystem. It decodes and inspects every common artifact (SD-JWT VC, registration certificate, authorization request/JAR, credential offer, status list), audits requests for over-asking against curated purpose baselines and a cited legal basis, verifies presentations cryptographically, writes registrations under guardrails, and live-debugs the wallet-to-verifier exchange. Everything runs fully offline except two paths that are network by nature: the registrar write path, and the live wallet-interaction debugger (`serve`), where a real wallet connects to the tool.
+Augenmaß Workbench is a developer and auditor toolkit for the EUDI Wallet ecosystem. It decodes and inspects every common artifact (SD-JWT VC, ISO 18013-5 mdoc, registration certificate, authorization request/JAR, credential offer, status list, DCQL), audits requests for over-asking against curated purpose baselines and a cited legal basis, verifies presentations cryptographically, writes registrations under guardrails, and live-debugs the wallet-to-verifier exchange. Static artifact commands run fully offline; live surfaces are explicit: registrar targets (`clone`, `cached-sandbox`, `sandbox`), the cache server, and the live wallet-interaction debugger (`serve`).
 
 ## How to read this reference
 
@@ -15,7 +15,7 @@ Commands are grouped by intent:
 - **DIAGNOSE**: find verifier signed-request gotchas (`doctor`).
 - **DEBUG**: a live wallet-interaction debugger, a verifier-in-a-box a real wallet presents to (`serve`).
 - **EVIDENCE**: export, verify, and replay local audit bundles from unsafe debug artifacts (`evidence`).
-- **WRITE**: guard-railed registrar writes and reads, plus the local clone store (`register`, `list`, `clone`).
+- **WRITE AND TARGETS**: guard-railed registrar writes and reads, plus the local clone store and cached-sandbox mirror (`register`, `list`, `clone`, `cache`).
 
 ## Global flag: `--json`
 
@@ -26,7 +26,7 @@ augenmass --json check examples/min.json
 augenmass check examples/min.json --json
 ```
 
-The text rendering goes to stdout. With `--json`, the structured object goes to stdout instead. The write commands (`register`, `clone serve`) also accept `--json` where it is meaningful.
+The text rendering goes to stdout. With `--json`, the structured object goes to stdout instead. Server commands document their own output and do not use JSON-oriented rendering.
 
 ## Input ergonomics: file path, inline value, or stdin
 
@@ -78,7 +78,7 @@ Options:
 - `--json`: emit JSON instead of the text rendering.
 - `-h, --help`: print help.
 
-It recognises SD-JWT VC presentations, WRPRC registration certificates, OpenID4VP authorization requests / JARs, OpenID4VP request URIs (`openid4vp://`), OpenID4VCI credential offers, token status lists, DCQL queries, registrar registration bodies, X.509 PEM certificates, and generic JWT/JWS.
+It recognises SD-JWT VC presentations, ISO 18013-5 mdoc artifacts (hex or base64), WRPRC registration certificates, OpenID4VP authorization requests / JARs, OpenID4VP request URIs (`openid4vp://`), OpenID4VCI credential offers, token status lists, DCQL queries, registrar registration bodies, X.509 PEM certificates, and generic JWT/JWS.
 
 Exit code: 0 on success.
 
@@ -122,7 +122,7 @@ Decode a specific artifact type when you already know what it is. No signature v
 Usage: augenmass decode [OPTIONS] <COMMAND>
 ```
 
-Subcommands: `jwt`, `sd-jwt`, `regcert`, `request`, `offer`, `status-list`.
+Subcommands: `jwt`, `sd-jwt`, `regcert`, `request`, `offer`, `status-list`, `mdoc`.
 
 Options on the `decode` group: `--json`, `-h, --help`.
 
@@ -1245,13 +1245,13 @@ augenmass evidence replay evidence.json
 
 ---
 
-# WRITE
+# WRITE AND TARGETS
 
-The write surface is guard-railed. There are two targets: `clone` (a local registrar-compatible store, the default) and `sandbox` (the real registrar, rehearsal only). Writes are dry-run by default; `--yes` performs the write; `--force` writes past an over-ask warning and requires `--yes`. Always write under our single relying party (`2af138a8-59ea-4a84-aea3-666cafdb1369`); never mint extra relying parties. Never log, echo, or commit tokens, certificates, or keys.
+The write surface is guard-railed. There are three target modes: `clone` (a local registrar-compatible store, the default), `cached-sandbox` (a read-only loopback mirror for public sandbox reads), and `sandbox` (the real registrar, rehearsal only). Writes are dry-run by default; `--yes` performs the write; `--force` writes past an over-ask warning and requires `--yes`. Confirmed writes are allowed only for `clone` and `sandbox`; `cached-sandbox` is read-only and refuses `--yes` before any network call. Always write under our single relying party (`2af138a8-59ea-4a84-aea3-666cafdb1369`); never mint extra relying parties. Never log, echo, or commit tokens, certificates, or keys.
 
-The `clone` target is a local axum + SQLite store with no signing, no auth, and no x5c. It stores payload-only JWTs and is sound because every read path decodes payload-only. Its API base is `AUGENMASS_CLONE_API_BASE` (default `http://127.0.0.1:8080/api`). The `sandbox` target talks to the real registrar over Keycloak OAuth (resource-owner password grant), configured via `AUGENMASS_API_BASE` (default `https://sandbox.eudi-wallet.org/api`), `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`, and the optional `AUGENMASS_OIDC_CLIENT_SECRET`.
+The `clone` target is a local axum + SQLite store with no signing, no auth, and no x5c. It stores payload-only JWTs and is sound because every read path decodes payload-only. Its API base is `AUGENMASS_CLONE_API_BASE` (default `http://127.0.0.1:8080/api`). The `cached-sandbox` target reads from `AUGENMASS_CACHE_API_BASE` (default `http://127.0.0.1:8081/api`) and is served by `augenmass cache serve`. The `sandbox` target talks to the real registrar over Keycloak OAuth (resource-owner password grant), configured via `AUGENMASS_API_BASE` (default `https://sandbox.eudi-wallet.org/api`), `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`, and the optional `AUGENMASS_OIDC_CLIENT_SECRET`.
 
-The `register` and `list` commands talk to a target over HTTP, so for `--target clone` the clone server must be running (`augenmass clone serve`).
+The `register` and `list` commands talk to a target over HTTP, so for `--target clone` the clone server must be running (`augenmass clone serve`), and for `--target cached-sandbox` the cache server must be running (`augenmass cache serve`).
 
 ## `register`
 
@@ -1267,7 +1267,7 @@ Arguments:
 
 Options:
 
-- `--target <TARGET>`: `clone` or `sandbox`. Default `clone`.
+- `--target <TARGET>`: `clone`, `cached-sandbox`, or `sandbox`. Default `clone`.
 - `--yes`: confirm a write. Without this flag the command is a dry-run.
 - `--force`: write past an over-ask warning. Requires `--yes`.
 - `--json`, `-h, --help`.
@@ -1303,6 +1303,13 @@ Actually write a clean body to the running clone (requires `augenmass clone serv
 augenmass register examples/min.json --target clone --yes
 ```
 
+Dry-run against cached-sandbox is allowed, but a confirmed write is refused:
+
+```
+augenmass register examples/min.json --target cached-sandbox
+augenmass register examples/min.json --target cached-sandbox --yes
+```
+
 ## `list`
 
 Read registrations back for one relying party, decoded. It fetches from the target and renders each stored certificate payload-only.
@@ -1313,7 +1320,7 @@ Usage: augenmass list [OPTIONS]
 
 Options:
 
-- `--target <TARGET>`: `clone` or `sandbox`. Default `clone`.
+- `--target <TARGET>`: `clone`, `cached-sandbox`, or `sandbox`. Default `clone`.
 - `--rp <RP>`: the relying-party id. Default `2af138a8-59ea-4a84-aea3-666cafdb1369`.
 - `--json`, `-h, --help`.
 
@@ -1358,6 +1365,44 @@ augenmass clone serve --port 9090 --db ./scratch-clone.sqlite
 ```
 
 With a non-default port, point the read/write commands at it via `AUGENMASS_CLONE_API_BASE`, for example `http://127.0.0.1:9090/api`.
+
+## `cache serve`
+
+Run a loopback read-through cached-sandbox target for public sandbox GET routes.
+It mirrors successful upstream responses into SQLite, returns fresh hits from
+disk, and falls back to stale cached data if a forced refresh or expired entry
+cannot reach the upstream. It never caches writes.
+
+```
+Usage: augenmass cache serve [OPTIONS]
+```
+
+Options:
+
+- `--db <DB>`: the SQLite database path. Default `./augenmass-cache.sqlite`.
+- `--port <PORT>`: the listen port. Default `8081`.
+- `--upstream <UPSTREAM>`: the upstream API base. Default `https://sandbox.eudi-wallet.org/api`.
+- `--ttl-secs <TTL_SECS>`: freshness window in seconds. Default `3600`.
+- `-h, --help`.
+
+The cache serves these registrar-shaped read routes:
+
+- `GET /api/schema-metadata`
+- `GET /api/schema-metadata/vocabularies`
+- `GET /api/registration-certificates?rp=<id>`
+
+It also exposes `GET /api/cache/status` and forced refresh via
+`POST /api/cache/refresh?route=<route>[&rp=<id>]`. Responses carry provenance
+headers: `x-augenmass-cache`, `x-augenmass-cache-key`,
+`x-augenmass-cache-fetched-at`, `x-augenmass-cache-sha256`, and
+`x-augenmass-cache-upstream`.
+
+Example:
+
+```
+augenmass cache serve
+AUGENMASS_CACHE_API_BASE=http://127.0.0.1:8081/api augenmass list --target cached-sandbox
+```
 
 ---
 

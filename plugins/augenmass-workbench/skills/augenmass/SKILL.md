@@ -4,7 +4,8 @@ description: >-
   Inspect, decode, audit, verify, generate, and repair EUDI Wallet artifacts
   without over-asking for personal data. Use this skill whenever a user is
   working in the EUDI / EUDI Wallet ecosystem: an unknown token to identify, an
-  SD-JWT VC or mdoc presentation to decode or cryptographically verify, a
+  SD-JWT VC presentation to decode or cryptographically verify, an mdoc
+  credential to decode, a
   registration certificate (WRPRC) or relying party registration to read,
   write, or repair against the registrar schema, a DCQL query or OpenID4VP
   authorization request (JAR) to lint for over-ask or diagnose (x5c, client_id
@@ -23,7 +24,7 @@ description: >-
 
 # Augenmaß Workbench
 
-This skill drives the bundled `augenmass` binary at `${CLAUDE_PLUGIN_ROOT}/bin/augenmass`, a developer and auditor toolkit for the EUDI Wallet ecosystem. It decodes and inspects every common artifact, audits requests for over-asking against curated purpose baselines and the legal basis, verifies presentations cryptographically, writes registrations under guardrails, live-debugs the wallet-to-verifier exchange, and replays local evidence bundles. Everything runs fully offline except two paths that are network by nature: the registrar write path, and the live wallet-interaction debugger (`serve`), where a real wallet connects to the tool.
+This skill drives the bundled `augenmass` binary at `${CLAUDE_PLUGIN_ROOT}/bin/augenmass`, a developer and auditor toolkit for the EUDI Wallet ecosystem. It decodes and inspects every common artifact, audits requests for over-asking against curated purpose baselines and the legal basis, verifies presentations cryptographically, writes registrations under guardrails, live-debugs the wallet-to-verifier exchange, and replays local evidence bundles. Static artifact commands run fully offline; live surfaces are explicit: registrar targets (`clone`, `cached-sandbox`, `sandbox`), the cache server, and `serve`.
 
 Claude Code adds the plugin `bin/` directory to PATH, so a bare `augenmass` works too. The `${CLAUDE_PLUGIN_ROOT}/bin/augenmass` form is the safe explicit path; use whichever is convenient.
 
@@ -47,7 +48,7 @@ Writes are guarded. Reason before you write.
 
 - Always run `check` on a registration body, or a `register` dry-run (omit `--yes`), before any real write. The dry-run shows exactly what would be sent.
 - Never pass `--yes` or `--force` on the user's behalf. Only add them when the user explicitly asks to write, and `--force` only when they explicitly accept an over-ask warning. `--force` requires `--yes`.
-- Default to the clone target (`--target clone`). Only touch `--target sandbox` when the user asks to rehearse against the real registrar.
+- Default to the clone target (`--target clone`) for writes. Use `--target cached-sandbox` only for read-only cached sandbox reads, and only touch `--target sandbox` when the user asks to rehearse against the real registrar.
 - Never echo, log, or commit tokens, certificates, or keys. Decode and describe; do not paste raw secrets back.
 - Use `--json` whenever you feed output back into your own reasoning or into CI; it is available on the read-only commands.
 - Write only under the one relying party (see id below); never mint extra relying parties.
@@ -80,9 +81,10 @@ Writes are guarded. Reason before you write.
 | Export a local evidence bundle | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass evidence export <session-dir> --out <bundle.json> [--signing-key <pem>]` |
 | Verify a local evidence bundle | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass evidence verify <bundle.json> [--verify-key <pem>]` |
 | Replay a projector-safe timeline | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass evidence replay <bundle.json> [--verify-key <pem>]` |
-| Write a registration (dry-run by default) | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass register <body> --target {clone\|sandbox} [--yes --force]` |
-| Read registrations back for one relying party | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass list --target {clone\|sandbox} [--rp <id>]` |
+| Write a registration (dry-run by default) | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass register <body> --target {clone\|cached-sandbox\|sandbox} [--yes --force]` |
+| Read registrations back for one relying party | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass list --target {clone\|cached-sandbox\|sandbox} [--rp <id>]` |
 | Run the local registrar-compatible clone store | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass clone serve [--db --port]` |
+| Run the read-through cached-sandbox mirror | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass cache serve [--db --port --upstream --ttl-secs]` |
 
 Every artifact argument accepts a file path, an inline value, or `-` for stdin. Read-only commands accept `--json`.
 

@@ -39,6 +39,12 @@ pub async fn register(label: &str, content: &str, args: RegisterArgs) -> Result<
         return Ok(());
     }
 
+    if matches!(args.target, Target::CachedSandbox) {
+        anyhow::bail!(
+            "cached-sandbox is read-only; use --target sandbox for real writes or --target clone for offline demo writes"
+        );
+    }
+
     if outcome.has_over_ask() && args.force {
         println!("Warning: writing an over-asking registration because --force was given.");
     } else {

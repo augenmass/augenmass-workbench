@@ -1,6 +1,17 @@
-# Targets and sandbox
+# Targets, cache, and sandbox
 
-Augenmaß has exactly two write targets for `register` and `list`: the local `clone` (the default, fully offline) and the real `sandbox` registrar (a rehearsal path that needs credentials). Everything else in the toolkit runs offline with no target at all. This guide covers what each target is, how to drive the clone end to end, the safety rules that apply to both, and one ecosystem caveat to confirm at sandbox time.
+Augenmaß has three explicit target modes for registrar-shaped reads and writes:
+`clone`, `cached-sandbox`, and `sandbox`. Static artifact commands do not need a
+target and run offline.
+
+- `clone` is the default mutable local store for safe write rehearsals.
+- `cached-sandbox` is a read-only loopback mirror for public sandbox GET routes,
+  with provenance headers and stale fallback.
+- `sandbox` is the real registrar behind Keycloak, for off-stage rehearsal.
+
+This guide covers what each mode is, how to drive the clone and cache end to end,
+the safety rules that apply to writes, and one ecosystem caveat to confirm at
+sandbox time.
 
 ## The clone target
 
@@ -43,7 +54,7 @@ The variable is documented in `.env.example` at the repo root; copy that to `.en
 
 ## The sandbox target
 
-The `sandbox` target talks to the real registrar over HTTP. It is the only path in the toolkit that is not offline, and it is a rehearsal path: you use it to confirm a body the clone already accepted will be taken by the live registrar, off-stage, before any demo. It is not a production deployment path.
+The `sandbox` target talks to the real registrar over HTTP. It is a rehearsal path: you use it to confirm a body the clone already accepted will be taken by the live registrar, off-stage, before any demo. It is not a production deployment path.
 
 ### Authentication: Keycloak resource-owner password grant
 
@@ -65,9 +76,71 @@ If `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, or `AUGENMASS_PASSWORD` is 
 
 Because the sandbox is live and credential-bound, treat it as a dress rehearsal: prove the body locally against the clone first, then run sandbox once to confirm acceptance. Keep the credentials in `.env`, never on the command line or in shell history.
 
-## Safety rules (both targets)
+## The cached-sandbox target
 
-These guardrails apply to every `register` invocation, clone or sandbox:
+The cached-sandbox target is a server-side read-through mirror for public sandbox
+GET routes. It is deliberately separate from the clone. The clone is mutable and
+offline; cached-sandbox is read-only and exists so a demo or audit can keep a
+stable view of the sandbox even when the upstream is slow, drifting, or briefly
+unreachable.
+
+Run it with:
+
+```
+augenmass cache serve
+```
+
+Flags (verified):
+
+- `--db <DB>`: SQLite file path. Default `./augenmass-cache.sqlite`.
+- `--port <PORT>`: listen port. Default `8081`.
+- `--upstream <URL>`: sandbox API base. Default `https://sandbox.eudi-wallet.org/api`.
+- `--ttl-secs <SECS>`: freshness window for cached responses. Default `3600`.
+
+The default server listens on `http://127.0.0.1:8081/api`. Point the CLI at it
+with `AUGENMASS_CACHE_API_BASE`, or use the default:
+
+```
+AUGENMASS_CACHE_API_BASE=http://127.0.0.1:8081/api augenmass list --target cached-sandbox
+```
+
+### Cached routes
+
+The cache mirrors successful upstream responses for these public GET routes:
+
+- `GET /api/schema-metadata`
+- `GET /api/schema-metadata/vocabularies`
+- `GET /api/registration-certificates?rp=<id>`
+
+It also exposes cache metadata:
+
+- `GET /api/cache/status`: list cached entries, upstream URL, fetch time, size,
+  and SHA-256.
+- `POST /api/cache/refresh?route=schema-metadata`
+- `POST /api/cache/refresh?route=schema-metadata/vocabularies`
+- `POST /api/cache/refresh?route=registration-certificates&rp=<id>`
+
+Every cached response carries provenance headers:
+
+- `x-augenmass-cache`: `MISS`, `HIT`, `REFRESHED`, or `STALE`.
+- `x-augenmass-cache-key`: the canonical cache key.
+- `x-augenmass-cache-fetched-at`: the upstream fetch time.
+- `x-augenmass-cache-sha256`: SHA-256 of the response body.
+- `x-augenmass-cache-upstream`: the exact upstream URL.
+
+The cache stores only successful upstream responses. If an entry is stale and
+the upstream refresh fails, it returns the stale entry with
+`x-augenmass-cache: STALE`; if there is no cached entry, it returns a gateway
+error instead of fabricating data.
+
+`cached-sandbox` is read-only. `list --target cached-sandbox` reads through the
+cache. `register --target cached-sandbox` is useful as a dry-run, but a confirmed
+write with `--yes` is refused before any network call. Use `--target sandbox` for
+real writes and `--target clone` for offline demo writes.
+
+## Safety rules (targets)
+
+These guardrails apply to every `register` invocation:
 
 - Dry-run by default. `register` without `--yes` decodes, runs the over-ask and format gate, and prints the verdict, but writes nothing. The output ends with `DRY RUN: nothing written. Re-run with --yes to write to <target>.`
 - `--yes` is required to write. It confirms the write after the gate passes.
@@ -170,7 +243,7 @@ augenmass register examples/over.json --target clone --yes --force
 
 That reprints the same verdict, then writes with an explicit warning (`Warning: writing an over-asking registration because --force was given.`) and exits 0. Use `--force` only when over-asking is intentional and justified; the default refusal is the point of the gate.
 
-The same gate runs before a write to either target, so a body that the clone refuses will be refused against the sandbox too. Prove proportionality locally, then rehearse against the sandbox.
+The same gate runs before a confirmed write to any target, so a body that the clone refuses will be refused against the sandbox too. Prove proportionality locally, then rehearse against the sandbox.
 
 ## Caveat to verify at sandbox time: VCT URN vs @IsUrl
 
