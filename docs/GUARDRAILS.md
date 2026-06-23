@@ -1,6 +1,6 @@
 # Guardrails: catch over-ask before it ships
 
-Finding an over-ask once is good. Never shipping one is better. Every read-only Augenmaß command exits non-zero on a bad outcome, so the same engine that explains a problem can also fail a commit or a build before the problem reaches the registrar.
+Finding an over-ask once is good. Never shipping one is better. The judgment commands exit non-zero on a bad outcome, so the same engine that explains a problem can also fail a commit or a build before the problem reaches the registrar.
 
 This page shows two placements: a pre-commit hook (stops it on your machine) and a CI gate (stops it for the whole team). Both rely only on documented exit codes; see the exit-code contract in `COMMANDS.md` and `AGENTS.md`.
 
@@ -12,11 +12,11 @@ This page shows two placements: a pre-commit hook (stops it on your machine) and
 - `verify presentation`, `verify trust`, `verify status` exit 1 when not verified, untrusted, or revoked.
 - `x509-hash <input> --client-id <id>` exits 1 when the claimed client_id does not match the leaf certificate.
 
-Read-only commands that only describe (`inspect`, `decode`, `baselines`, `list`, `generate`) exit 0; they are for inspection, not gating.
+Read-only commands that only describe local inputs (`inspect`, `decode`, `baselines`, `generate`) exit 0 when inputs are valid; network reads such as `list` can fail if the target is unavailable.
 
 ## Prerequisite: the binary on PATH
 
-The hook and CI examples call a bare `augenmass`. Make it available first, either by installing the Claude Code plugin (which puts the bundled binary on PATH inside a session) or by building the CLI and putting it on PATH:
+The hook and CI examples call a bare `augenmass`. Make it available first by building the CLI and putting it on PATH, or call the binary by its explicit path:
 
 ```sh
 cargo build --release
@@ -71,4 +71,4 @@ Any non-zero exit fails the step, and the job fails. Pin the build step to a rel
 
 A failing gate tells you something is wrong; the skill tells you what to do about it. When the hook or the CI job reports an over-ask, ask the skill to read the same body and propose the proportionate version: "this registration failed the over-ask check; explain why and generate a body that asks only for what the purpose needs." Because the gate and the skill run the same engine, the fix that passes the agent passes the build.
 
-That is the point of giving the agent the tool plus the context: not only to repair an over-ask after the fact, but to make the proportionate version the easy path, so the next one does not happen.
+That is the point of giving the agent the tool plus the context: not only to fix an over-ask after the fact, but to make the proportionate version the easy path, so the next one does not happen.

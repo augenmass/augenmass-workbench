@@ -1,19 +1,19 @@
 # Augenmaß Workbench: command reference
 
-Natural-language intents mapped to exact `augenmass` commands. Every command below was verified against the real binary (`augenmass 0.2.0`). Examples use `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass"` so they run from inside the skill; substitute the repo binary `./target/debug/augenmass` when working in the repo directly.
+Natural-language intents mapped to exact `augenmass` commands. Every command below was verified against the real binary (`augenmass 0.2.0`). Examples use `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass"` so they run from inside the skill; substitute a local build such as `./target/debug/augenmass` when working in the repo directly.
 
 ## Conventions that apply everywhere
 
-Input ergonomics: every artifact argument (`<INPUT>`, `<BODY>`, `<REQUEST>`, and the file-valued flags) accepts a file path, an inline value, or `-` for stdin. So `... check examples/min.json`, `... check '{"rpId":...}'`, and `cat body.json | ... check -` are all equivalent.
+Input ergonomics: artifact arguments such as `<INPUT>`, `<BODY>`, and `<REQUEST>` accept a file path, an inline value, or `-` for stdin. So `... check examples/min.json`, `... check '{"rpId":...}'`, and `cat body.json | ... check -` are all equivalent. `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`; `--cert` is a file path.
 
-The `--json` flag: available on every read-only command. It emits machine-readable JSON instead of the text rendering, for agents and CI. Add it to any `inspect`, `decode`, `check`, `audit`, `baselines`, `verify`, `x509-hash`, `generate`, `doctor`, `evidence`, or `list` invocation.
+The `--json` flag: available on read-only commands that render machine output. It emits JSON instead of the text rendering, for agents and CI. Add it to `inspect`, `decode`, `check`, `audit`, `baselines`, `verify`, `x509-hash`, `generate`, `doctor`, `evidence verify`, `evidence replay`, or `list` invocations.
 
 Exit codes: commands exit non-zero on the "bad" outcome so they gate cleanly in CI. The clean outcome is exit 0. See the exit-code column on each command and the summary table at the end.
 
 Defaults worth knowing before you type a command:
 - `register` and `list` default to `--target clone` (the local store), not the sandbox.
 - `register` is a dry-run by default; it writes only with `--yes`, and writes past an over-ask only with `--yes --force`.
-- `list` and `generate regbody` default `--rp`/`--rp` to `2af138a8-59ea-4a84-aea3-666cafdb1369` (the "Hackathon - Reza" relying party). Write only under it.
+- Demo fixtures and defaults use relying party id `2af138a8-59ea-4a84-aea3-666cafdb1369` ("Hackathon - Reza"). Do not reuse that id for a user's production relying party.
 - `verify presentation` and `verify trust` use the system clock unless you pass `--now <unix-seconds>` for deterministic verification (the fixtures verify at `--now 1780435200`).
 - `audit` defaults to `--request minimal --purpose event_checkin`.
 - `verify presentation`, `audit`, and `generate dcql`/`generate regbody` default the expected vct to the German PID (`urn:eudi:pid:de:1`); override with `--vct` where the flag exists.
@@ -52,7 +52,7 @@ This is the spine: `check` gates a registration body before you write it, `audit
 | --- | --- | --- |
 | Is this registration body safe to write? (over-ask + format gate) | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" check <body>` | 1 on over-ask or a blocking format error |
 | Same, machine-readable for CI. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" check --json <body>` | 1 (as above) |
-| Does this request over-ask for a purpose? (defaults: minimal request, event_checkin) | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" audit --request <minimal\|overask\|FILE> --purpose <id>` | 1 on over-ask |
+| Does this request over-ask for a purpose? (defaults: minimal request, event_checkin) | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" audit --request <minimal\|overask\|FILE\|-> --purpose <id>` | 1 on over-ask |
 | Audit a request against a purpose AND the cert's allowed attributes. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" audit --request <FILE> --purpose <id> --cert <CERT>` | 1 on over-ask |
 | Audit against a non-default credential type. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" audit --request <FILE> --purpose <id> --vct <VCT>` | 1 on over-ask |
 | List all curated purpose baselines and the legal basis. | `"${CLAUDE_PLUGIN_ROOT}/bin/augenmass" baselines` | 0 |
@@ -255,4 +255,4 @@ Example:
 | `register` | dry-run or write succeeds | over-ask without `--force`, or a blocking format error |
 | `list`, `generate`, `clone serve`, `cache serve` | success | (no gating) |
 
-All read-only commands accept `--json` for machine-readable output. Verified against `augenmass 0.2.0` at `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench/target/debug/augenmass`.
+Read-only commands that render machine output accept `--json`. Verified against `augenmass 0.2.0`.

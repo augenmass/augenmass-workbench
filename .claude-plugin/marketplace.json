@@ -1,6 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "augenmass",
+  "description": "Claude Code plugins for the Augenmaß EUDI Wallet workbench.",
   "owner": {
     "name": "Augenmaß"
   },
@@ -8,7 +9,7 @@
     {
       "name": "augenmass-workbench",
       "source": "./plugins/augenmass-workbench",
-      "description": "A Claude Code skill for the EUDI Wallet ecosystem: ask in plain language to audit registrations for over-ask, decode and verify wallet artifacts, debug live wallet flows, and repair them, all backed by a Rust CLI you can also run in a hook or CI."
+      "description": "A Claude Code skill for the EUDI Wallet ecosystem: ask in plain language to audit registrations for over-ask, decode and verify wallet artifacts, debug live wallet flows, and get concrete fixes, all backed by a Rust CLI you can also run in a hook or CI."
     }
   ]
 }

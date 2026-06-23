@@ -1,10 +1,10 @@
 # Augenmaß Workbench: end-to-end use cases
 
-Five complete walkthroughs. Every command here runs against the real binary as written, using committed fixtures under `fixtures/` and `examples/`. Paths are relative to the repo root. The binary is `augenmass`; in this repo it is built at `target/debug/augenmass`.
+Five complete walkthroughs. Every command here runs against the real binary as written, using committed fixtures under `fixtures/` and `examples/`. Paths are relative to the repo root. The binary is `augenmass`; in this repo a local debug build is `./target/debug/augenmass`.
 
 Conventions used throughout:
 
-- Every artifact argument accepts a file path, an inline value, or `-` for stdin.
+- Artifact inputs accept a file path, an inline value, or `-` for stdin.
 - Read-only commands take `--json` for machine output (CI and agents).
 - Exit codes are CI-friendly: a command exits non-zero on its "bad" outcome (over-ask, rejection, mismatch, findings) and `0` when clean. Each walkthrough notes the relevant codes.
 - Verification is offline. The clock is injectable with `--now` (Unix seconds), so fixture-based runs are reproducible. The fixtures use `--now 1780435200`.
@@ -82,7 +82,7 @@ WRPRC registration certificate (payload-only, no signature verified)
       claim age_equal_or_over.18
 ```
 
-The full decoder set is `decode {jwt|sd-jwt|regcert|request|offer|status-list}`. When in doubt, use `inspect` first, then reach for the specific decoder once you know the type. None of these verify a signature; they decode payloads only. Verification is walkthrough 4.
+The full decoder set is `decode {jwt|sd-jwt|regcert|request|offer|status-list|mdoc}`. When in doubt, use `inspect` first, then reach for the specific decoder once you know the type. None of these verify a signature; they decode payloads only. Verification is walkthrough 4.
 
 A note on offer fixtures: `fixtures/offers/eudiplo-offer.json` wraps an `openid4vp://` request URI, so `decode offer` renders it as an OpenID4VP request URI (scheme, client_id, request_uri, request_uri_method). The same holds for `fixtures/offers/eudiplo-offer-uri.txt`.
 

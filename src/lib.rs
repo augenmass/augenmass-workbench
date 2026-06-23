@@ -1,4 +1,4 @@
-//! Augenmass Workbench: a swiss-army toolkit for the EUDI Wallet ecosystem.
+//! Augenmass Workbench: agent-ready Rust tooling for the EUDI Wallet ecosystem.
 //!
 //! This crate is the binary `augenmass` plus a small library surface so the
 //! commands can be unit-tested in isolation. The cryptographic and over-ask

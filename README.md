@@ -21,6 +21,8 @@ Install the Claude Code plugin; the skill then auto-triggers on EUDI registratio
 
 This repository is currently a private preview, so the marketplace commands resolve only for accounts with access. Once it is published, they work for everyone.
 
+The bundled plugin binary currently supports macOS Apple Silicon only. On other platforms, build from source with `cargo build --release` and use `./target/release/augenmass` until platform bundles are published.
+
 The skill is a thin layer over a plain CLI you can also build and run on its own, with or without an agent. This source build always works:
 
 ```sh
@@ -28,7 +30,7 @@ cargo build --release
 ./target/release/augenmass --help
 ```
 
-The binary that ships inside the plugin is the same one. Claude Code puts it on PATH, so inside an agent session a bare `augenmass` works too.
+The binary that ships inside the plugin is the same one. Inside the skill, the explicit path is `${CLAUDE_PLUGIN_ROOT}/bin/augenmass`; use a bare `augenmass` only when your session or shell has that plugin binary on PATH.
 
 ## Ask it like this
 
@@ -46,7 +48,7 @@ See `docs/ASK-IT-LIKE-THIS.md` for more, and `docs/EXPLAINER.md` for the plain-l
 
 ## Use it as a guardrail
 
-Finding an over-ask once is good; never shipping one is better. Because every read-only command exits non-zero on a bad outcome, the same engine works as a pre-commit hook or a CI gate, so an over-ask fails the build instead of reaching the registrar.
+Finding an over-ask once is good; never shipping one is better. Because the judgment commands exit non-zero on a bad outcome, the same engine works as a pre-commit hook or a CI gate, so an over-ask fails the build instead of reaching the registrar.
 
 ```sh
 # pre-commit: refuse to commit a registration body that over-asks
@@ -63,7 +65,7 @@ See `docs/GUARDRAILS.md` for hook and pipeline recipes. The point of the skill i
 
 ## The CLI underneath
 
-Everything the skill does, it does by running these commands, so you can run them yourself. Every artifact argument accepts a file path, an inline value, or `-` for stdin. Read-only commands accept `--json`. The examples below use committed fixtures under `fixtures/` and run against the debug binary; swap in `./target/release/augenmass` for a release build.
+Everything the skill does, it does by running these commands, so you can run them yourself. Artifact inputs accept file paths, inline values, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Read-only commands accept `--json` where they render machine output. The examples below use committed fixtures under `fixtures/`; run them with the plugin binary or a local build such as `./target/release/augenmass`.
 
 Auto-detect any artifact and decode it:
 
@@ -184,7 +186,7 @@ EVIDENCE (local audit bundles)
 
 WRITE AND TARGETS (guard-railed)
 - `register <body> --target {clone | cached-sandbox | sandbox} [--yes --force]`: gate a registration body under guardrails. Confirmed writes are allowed only for `clone` and `sandbox`; `cached-sandbox` is read-only and useful for dry-run output symmetry.
-- `list --target {clone | cached-sandbox | sandbox} --rp`: read registrations back for one relying party, decoded.
+- `list --target {clone | cached-sandbox | sandbox} [--rp <id>]`: read registrations back for one relying party, decoded.
 - `clone serve [--db --port]`: run the registrar-compatible local clone store.
 - `cache serve [--db --port --upstream --ttl-secs]`: run a read-through cached-sandbox mirror for public sandbox GET routes.
 

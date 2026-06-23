@@ -1,4 +1,4 @@
-# Augenmaß Workbench v2: Command Reference
+# Augenmaß Workbench: Command Reference
 
 This is the complete reference for the `augenmass` CLI. Every command, subcommand, flag, exit code, and example here is verified against the built binary (`augenmass 0.2.0`) and the committed fixtures under `fixtures/`. Every example runs as written from the repository root.
 
@@ -19,7 +19,7 @@ Commands are grouped by intent:
 
 ## Global flag: `--json`
 
-Read-only commands accept `--json` to emit machine-readable JSON instead of the text rendering. This is the contract for agents and CI. The flag is accepted both before the command and as a trailing flag on the command itself; both forms are equivalent:
+Read-only commands that render structured output accept `--json` to emit machine-readable JSON instead of the text rendering. This is the contract for agents and CI. The flag is accepted both before the command and as a trailing flag on the command itself; both forms are equivalent:
 
 ```
 augenmass --json check examples/min.json
@@ -30,13 +30,13 @@ The text rendering goes to stdout. With `--json`, the structured object goes to 
 
 ## Input ergonomics: file path, inline value, or stdin
 
-Every artifact argument accepts three input forms, used identically across `inspect`, `decode`, `check`, `verify`, `x509-hash`, `doctor`, and `register`:
+The core artifact parameter on the judgment commands accepts three input forms:
 
 - a **file path**: `augenmass inspect fixtures/presentations/erica-vp-VALID.sdjwt`
 - an **inline value**: the artifact passed directly as the argument (a compact JWT string, an `openid4vp://` URI, inline JSON, a PEM block)
 - **stdin** via `-`: `cat fixtures/presentations/erica-vp-VALID.sdjwt | augenmass inspect -`
 
-Where a command takes a key or anchor (`--key`, `--anchor`, `--token`, `--status-key`, `--cert`), that input is read the same way: a file path or an inline value.
+Where a command takes a key or anchor (`--key`, `--anchor`, `--token`, `--status-key`), that input is read the same way: a file path or an inline value. `audit --cert` is a certificate file path.
 
 ## Exit codes
 
@@ -446,7 +446,7 @@ Usage: augenmass audit [OPTIONS]
 
 Options:
 
-- `--request <REQUEST>`: `"minimal"`, `"overask"`, or a path to a DCQL JSON file. Default `minimal`. The two keywords are built-in synthetic requests; the minimal one asks for `given_name`, `family_name`, `age_equal_or_over.18`, and the overask one asks for a broad PID set.
+- `--request <REQUEST>`: `"minimal"`, `"overask"`, a DCQL JSON file, inline DCQL JSON, or `-` for stdin. Bare DCQL and wrappers under `dcql_query` are accepted. Default `minimal`. The two keywords are built-in synthetic requests; the minimal one asks for `given_name`, `family_name`, `age_equal_or_over.18`, and the overask one asks for a broad PID set.
 - `--purpose <PURPOSE>`: purpose baseline id (`age_gate_18`, `event_checkin`, `car_rental`, `bank_kyc`). Default `event_checkin`.
 - `--cert <CERT>`: path to a registration certificate (compact JWT, entity JSON, or array) to cross-check the request against.
 - `--vct <VCT>`: override the expected `vct` (defaults to the German PID, `urn:eudi:pid:de:1`).
@@ -1046,7 +1046,7 @@ Run a live wallet-interaction debugger: a local OpenID4VP verifier (a verifier-i
 
 This command runs until interrupted (Ctrl-C). It is zero-config: with no flags it mints a throwaway development certificate, so the verifier runs without a registrar-issued leaf. The `client_id` is then not the registered identity; pass `--key` and `--leaf` together to sign with the real registrar leaf so the `client_id` matches the registered identity.
 
-`serve` is one of the two network paths in the tool (the other is the registrar write path): a real wallet connects to it, and `--live-status` resolves a status list over the network.
+`serve` is one of the explicit live surfaces in the tool: a real wallet connects to it, and `--live-status` resolves a status list over the network.
 
 ```
 Usage: augenmass serve [OPTIONS]

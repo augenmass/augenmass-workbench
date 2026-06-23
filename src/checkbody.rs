@@ -1,4 +1,4 @@
-//! The registration-body pre-write gate: the over-ask guardrail (the repair
+//! The registration-body pre-write gate: the over-ask guardrail (the fix
 //! pillar) plus the registration-body format validator (the debug pillar). One
 //! body in, two kinds of finding out, each with a plain-language fix.
 

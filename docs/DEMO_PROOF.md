@@ -10,7 +10,7 @@ It covers three surfaces:
 1. `tests/demo_proof.rs`: the agent-first command story.
    - Identify EUDI artifacts with `inspect`: SD-JWT VC, OpenID4VP JAR, and mdoc.
    - Show the over-ask guard with `check` and `audit`, including the legal basis.
-   - Show repair guidance with `doctor`, `x509-hash`, and the registration body
+   - Show fix guidance with `doctor`, `x509-hash`, and the registration body
      format gate.
    - Verify offline crypto fixtures: a valid presentation succeeds, a wrong
      nonce fails, and a revoked status-list index fails.
@@ -37,7 +37,7 @@ just verify
 
 ## Stable rehearsal sequence
 
-`just demo-run` prints the offline presentation sequence from the bundled plugin
+`just demo-run` runs the offline presentation sequence from the bundled plugin
 binary. It uses only committed fixtures and treats the intentional findings as
 successful proof points, so no sandbox credentials or phone wallet are needed.
 
@@ -46,13 +46,13 @@ The sequence is:
 ```sh
 ./plugins/augenmass-workbench/bin/augenmass --version
 ./plugins/augenmass-workbench/bin/augenmass inspect fixtures/requests/eudiplo-request.jwt
-./plugins/augenmass-workbench/bin/augenmass doctor examples/bad-request.json
+sh -c './plugins/augenmass-workbench/bin/augenmass doctor examples/bad-request.json; code=$?; test "$code" -eq 1'
 ./plugins/augenmass-workbench/bin/augenmass decode regcert fixtures/regcert/rc-by-id.json
-./plugins/augenmass-workbench/bin/augenmass audit --request minimal --purpose age_gate_18 --cert fixtures/regcert/rc-by-id.json
+sh -c './plugins/augenmass-workbench/bin/augenmass audit --request minimal --purpose age_gate_18 --cert fixtures/regcert/rc-by-id.json; code=$?; test "$code" -eq 1'
 ./plugins/augenmass-workbench/bin/augenmass check examples/min.json
-./plugins/augenmass-workbench/bin/augenmass check examples/over.json
+sh -c './plugins/augenmass-workbench/bin/augenmass check examples/over.json; code=$?; test "$code" -eq 1'
 ./plugins/augenmass-workbench/bin/augenmass verify presentation fixtures/presentations/erica-vp-VALID.sdjwt --nonce b4ba2623-76a2-486b-a1f6-f1656025d07b --aud https://self-issued.me/v2 --now 1780435200 --trust-anchor fixtures/certs/erica-trust-anchor.pem
-./plugins/augenmass-workbench/bin/augenmass verify presentation fixtures/presentations/synthetic-pid-with-status.sdjwt --nonce b4ba2623-76a2-486b-a1f6-f1656025d07b --aud https://self-issued.me/v2 --now 1780435200 --trust-anchor fixtures/certs/synthetic-pid-anchor.pem --status-token fixtures/status/status-list-REVOKED.jwt --status-key fixtures/status/status-list-verify-key.pub.pem
+sh -c './plugins/augenmass-workbench/bin/augenmass verify presentation fixtures/presentations/synthetic-pid-with-status.sdjwt --nonce b4ba2623-76a2-486b-a1f6-f1656025d07b --aud https://self-issued.me/v2 --now 1780435200 --trust-anchor fixtures/certs/synthetic-pid-anchor.pem --status-token fixtures/status/status-list-REVOKED.jwt --status-key fixtures/status/status-list-verify-key.pub.pem; code=$?; test "$code" -eq 1'
 ```
 
 Good narration anchors:

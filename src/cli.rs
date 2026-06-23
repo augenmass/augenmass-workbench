@@ -28,14 +28,15 @@ use crate::{DEFAULT_PRIVACY_POLICY, DEFAULT_PURPOSE, DEFAULT_RP_ID, DEFAULT_SUPP
 #[command(
     name = "augenmass",
     version,
-    about = "A swiss-army CLI for the EUDI Wallet ecosystem: inspect, decode, audit over-ask, verify, generate, repair.",
+    about = "Agent-ready Rust tooling for EUDI Wallet artifacts, over-ask guardrails, verifier debugging, and evidence replay.",
     long_about = "Augenmass Workbench is a developer and auditor toolkit for the EUDI \
 Wallet ecosystem. It decodes and inspects every common artifact (SD-JWT VC, \
-registration certificate, authorization request/JAR, credential offer, status \
-list), audits requests for over-asking against curated purpose baselines and the \
-legal basis, verifies presentations cryptographically, and writes registrations \
-under guardrails. Offline commands stay deterministic; live features are explicit \
-targets such as sandbox, cached-sandbox, clone, and serve."
+mdoc, registration certificate, authorization request/JAR, credential offer, \
+status list, and DCQL), audits requests for over-asking against curated purpose \
+baselines and the legal basis, verifies presentations cryptographically, writes \
+registrations under guardrails, live-debugs wallet interactions, and replays \
+local evidence bundles. Offline commands stay deterministic; live features are \
+explicit targets such as sandbox, cached-sandbox, clone, cache, and serve."
 )]
 struct Cli {
     /// Emit machine-readable JSON instead of a text rendering (read-only commands).

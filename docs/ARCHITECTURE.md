@@ -1,12 +1,12 @@
-# Augenmaß Workbench v2: Architecture
+# Augenmaß Workbench: Architecture
 
 This document describes how the Augenmaß Workbench is put together: the
 engine/shell split, the engine module set, the CLI source map, the universal
 `inspect` dispatch, the offline-vs-networked boundary, the agent/CI contracts
 (`--json` and exit codes), what is reused versus net-new, and an honest scope
-note. Every command shown here works as written against the built binary at
-`target/debug/augenmass` (version 0.2.0). Identifiers use the slug `augenmass`;
-the display name "Augenmaß" appears only in prose.
+note. Every command shown here works as written against the built binary
+(`augenmass` version 0.2.0). Identifiers use the slug `augenmass`; the display
+name "Augenmaß" appears only in prose.
 
 ## The design: pure engine, thin shell
 
@@ -162,9 +162,11 @@ so JSON on stdout stays clean) and then the same rendering as the matching
 `decode`. None of this verifies a signature: `inspect` and `decode` are pure
 reads. Signature, trust, and revocation checks are the job of `verify`.
 
-Every artifact argument across the tool accepts a file path, an inline value, or
-`-` for stdin, so `inspect`, `decode`, `check`, `audit`, `verify`, `x509-hash`,
-`doctor`, and `register` all compose with pipes.
+Artifact inputs accept file paths, inline values, or `-` for stdin where the
+command consumes an artifact directly, so `inspect`, `decode`, `check`,
+`verify`, `x509-hash`, `doctor`, and `register` all compose with pipes.
+`audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or
+`-`; `--cert` is a file path.
 
 ## Offline versus networked
 
@@ -236,7 +238,7 @@ will not write past an over-ask warning without `--force`.
 ## Reuse versus net-new
 
 Being honest about provenance: the engine and the fixtures are reused, not
-written fresh for v2.
+written fresh for this Workbench.
 
 - Reused: `augenmass-core` was lifted as-is from the EUDI verifier project. The
   fixtures under `fixtures/` (the ERICA presentations and trust anchors, the
@@ -245,7 +247,7 @@ written fresh for v2.
   binding values intact (nonce `b4ba2623-76a2-486b-a1f6-f1656025d07b`, audience
   `https://self-issued.me/v2`, verification clock `1780435200`, vct
   `urn:eudi:pid:de:1`).
-- Net-new in v2: the entire CLI shell under `src/`, the universal `inspect`
+- Net-new in this Workbench: the entire CLI shell under `src/`, the universal `inspect`
   sniffer, the offline `decode` subcommands for artifact types the engine had
   not previously exposed at a command line, the `--json` rendering layer, the
   exit-code contract, the local clone store, and the guard-railed write path.

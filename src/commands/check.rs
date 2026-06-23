@@ -1,5 +1,5 @@
 //! `check`: the pre-write gate for a registrar registration body. Runs the
-//! over-ask guardrail (repair) and the format validator (debug) on one body.
+//! over-ask guardrail (fix) and the format validator (debug) on one body.
 
 use anyhow::Result;
 

@@ -1,13 +1,12 @@
 ---
 name: augenmass
 description: >-
-  Inspect, decode, audit, verify, generate, and repair EUDI Wallet artifacts
+  Inspect, decode, audit, verify, generate, and fix EUDI Wallet artifacts
   without over-asking for personal data. Use this skill whenever a user is
   working in the EUDI / EUDI Wallet ecosystem: an unknown token to identify, an
-  SD-JWT VC presentation to decode or cryptographically verify, an mdoc
-  credential to decode, a
-  registration certificate (WRPRC) or relying party registration to read,
-  write, or repair against the registrar schema, a DCQL query or OpenID4VP
+  SD-JWT VC presentation to decode or cryptographically verify, an mdoc credential
+  to decode, a registration certificate (WRPRC) or relying party registration to
+  read, write, or fix against the registrar schema, a DCQL query or OpenID4VP
   authorization request (JAR) to lint for over-ask or diagnose (x5c, client_id
   x509_hash), an OpenID4VCI credential offer or status list to decode, a
   proportionate registration to generate, a live wallet-to-verifier exchange
@@ -28,7 +27,7 @@ You are the EUDI Wallet expert in the room. Someone is working in the European D
 
 That tool is the bundled `augenmass` binary at `${CLAUDE_PLUGIN_ROOT}/bin/augenmass`. It decodes and inspects every common EUDI artifact, audits requests for over-asking against curated purpose baselines and the legal basis, verifies presentations cryptographically, writes registrations under guardrails, live-debugs the wallet-to-verifier exchange, and replays local evidence bundles. Static artifact commands run fully offline; live surfaces are explicit: registrar targets (`clone`, `cached-sandbox`, `sandbox`), the cache server, and `serve`.
 
-Claude Code adds the plugin `bin/` directory to PATH, so a bare `augenmass` works too. The `${CLAUDE_PLUGIN_ROOT}/bin/augenmass` form is the safe explicit path; use whichever is convenient.
+The safe explicit path is `${CLAUDE_PLUGIN_ROOT}/bin/augenmass`. Use a bare `augenmass` only when Claude Code or your shell has the plugin `bin/` directory on PATH.
 
 ## How to think about it
 
@@ -43,7 +42,7 @@ The central idea is Augenmaß: a sense of proportion. A relying party should ask
 ## When to use this skill
 
 - Understand an unknown token or file: "what is this?" Run `inspect`; it sniffs the type and dispatches.
-- Decode a specific artifact offline: an SD-JWT VC presentation, a WRPRC registration certificate, an OpenID4VP request / JAR, an OpenID4VCI credential offer, a token status list, a DCQL query, or a generic JWT.
+- Decode a specific artifact offline: an SD-JWT VC presentation, a WRPRC registration certificate, an OpenID4VP request / JAR, an OpenID4VCI credential offer, a token status list, a DCQL query via `inspect`, or a generic JWT. Validate DCQL with `validate dcql`.
 - Audit a request for over-ask: lint a DCQL request against a purpose baseline and the legal basis (eIDAS, GDPR, ARF) before anyone is asked for data.
 - Gate a registration body before a write: catch over-ask plus registrar schema mistakes (claims[].path shape, credentials vs provided_attestations, purpose shape, privacy_policy URL, support_uri).
 - Verify a presentation cryptographically: issuer signature, KB-JWT, nonce and aud, vct, freshness, trust anchoring, and revocation status.
@@ -63,7 +62,7 @@ Writes are guarded. Reason before you write.
 - Default to the clone target (`--target clone`) for writes. Use `--target cached-sandbox` only for read-only cached sandbox reads, and only touch `--target sandbox` when the user asks to rehearse against the real registrar.
 - Never echo, log, or commit tokens, certificates, or keys. Decode and describe; do not paste raw secrets back.
 - Use `--json` whenever you feed output back into your own reasoning or into CI; it is available on the read-only commands.
-- Write only under the one relying party (see id below); never mint extra relying parties.
+- Write only to the relying party and target the user explicitly names; never invent or reuse a demo relying party id.
 
 ## Explaining findings in plain language
 
@@ -109,13 +108,13 @@ Never paste raw tokens, certificates, claim values, or keys back to anyone. Deco
 | Run the local registrar-compatible clone store | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass clone serve [--db --port]` |
 | Run the read-through cached-sandbox mirror | `${CLAUDE_PLUGIN_ROOT}/bin/augenmass cache serve [--db --port --upstream --ttl-secs]` |
 
-Every artifact argument accepts a file path, an inline value, or `-` for stdin. Read-only commands accept `--json`.
+Artifact inputs accept file paths, inline values, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Read-only commands accept `--json` where they render machine output.
 
 The read-only commands exit non-zero on the bad outcome so they slot into CI: `check` and `audit` exit 1 on over-ask (and `check` also on a blocking format error), `verify` exits 1 when not verified, untrusted, revoked, or erroring, `x509-hash --client-id` exits 1 on mismatch, `doctor` exits 1 when it has findings, and `evidence verify` / `evidence replay` exit non-zero when hashes, replay determinism, or signatures fail.
 
 ## Relying party, examples, and fixtures
 
-- The relying party is "Hackathon - Reza", id `2af138a8-59ea-4a84-aea3-666cafdb1369`. It is the default for `generate regbody --rp` and `list --rp`. Write only under it; one relying party per entity, many certificates.
+- Demo fixtures use relying party "Hackathon - Reza", id `2af138a8-59ea-4a84-aea3-666cafdb1369`. Do not treat it as the user's production relying party; one relying party per entity, many certificates.
 - Sample registration bodies live under `examples/` in the repo root: `min.json` (proportionate), `over.json` (over-ask), `bad-path.json` (claims[].path as a string), `bad-request.json` (JAR with x5c and client_id mistakes).
 - Offline test artifacts live under `fixtures/`: `presentations/` (ERICA SD-JWT VC variants and a synthetic PID with status), `certs/` (trust anchors and leaves), `status/` (CLEAR and REVOKED status lists plus the verify key), `requests/` (an eudiplo JAR), `offers/` (credential offer JSON and URI), `dcql/`, and `regcert/`.
 - Shared binding values for the ERICA fixtures: nonce `b4ba2623-76a2-486b-a1f6-f1656025d07b`, aud `https://self-issued.me/v2`, verification clock `--now 1780435200`, vct `urn:eudi:pid:de:1`.
@@ -124,4 +123,4 @@ The read-only commands exit non-zero on the bad outcome so they slot into CI: `c
 
 - `reference/commands.md`: full command reference, flags, and worked examples.
 - `reference/gotchas.md`: the registrar and JAR traps this tool catches, and ecosystem pitfalls.
-- `reference/use-cases.md`: end-to-end workflows (audit over-ask, repair a registration, verify a presentation, diagnose a JAR).
+- `reference/use-cases.md`: end-to-end workflows (audit over-ask, fix a registration, verify a presentation, diagnose a JAR).

@@ -141,7 +141,7 @@ cached-sandbox mirror, and the live wallet-interaction debugger.
 - `just demo-proof`, `just demo-run`, and `docs/DEMO_PROOF.md`: a focused,
   offline proof gate and rehearsal sequence for the agent-first presentation
   story. It pins the stable commands for artifact identification, over-ask
-  guardrails, JAR repair guidance, offline crypto verification, safe demo
+  guardrails, JAR fix guidance, offline crypto verification, safe demo
   targets, the request-side wallet debugger, and the cached-sandbox mirror.
 
 ### Changed
