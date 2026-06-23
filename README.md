@@ -21,7 +21,7 @@ Install the Claude Code plugin; the skill then auto-triggers on EUDI registratio
 
 This repository is currently a private preview, so the marketplace commands resolve only for accounts with access. Once it is published, they work for everyone.
 
-The bundled plugin binary currently supports macOS Apple Silicon only. On other platforms, build from source with `cargo build --release` and use `./target/release/augenmass` until platform bundles are published.
+The bundled plugin binary currently supports macOS Apple Silicon only. On other platforms, build from source with `cargo build --release` and use `./target/release/augenmass`, or use the native CLI archives published by the release workflow once a version tag is cut.
 
 The skill is a thin layer over a plain CLI you can also build and run on its own, with or without an agent. This source build always works:
 
@@ -243,6 +243,8 @@ One engine is the spine. `augenmass-core` is a vendored, HTTP-free, pure-Rust cr
 - `docs/TOOLS.md`: an artifact field guide, organized by artifact type.
 - `docs/ARCHITECTURE.md`: the one-engine spine and how the CLI wraps `augenmass-core`.
 - `docs/SANDBOX.md`: the clone store, the sandbox registrar, and their environment variables.
+- `docs/DEPLOYMENT.md`: deploying the cached-sandbox backend on Railway, Docker, or a VPS, with notes for Cloudflare and Vercel.
+- `docs/RELEASE.md`: CI, release archives, and platform support.
 - The skill: `plugins/augenmass-workbench/skills/augenmass`.
 
 ## License

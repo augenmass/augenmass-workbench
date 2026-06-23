@@ -1,0 +1,87 @@
+name: Release Binaries
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary: augenmass
+            package_ext: tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            binary: augenmass
+            package_ext: tar.gz
+          - os: macos-14
+            target: aarch64-apple-darwin
+            binary: augenmass
+            package_ext: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary: augenmass.exe
+            package_ext: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.92.0 --profile minimal
+          rustup default 1.92.0
+          rustup target add ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(cargo pkgid | sed 's/.*#//')"
+          name="augenmass-v${version}-${{ matrix.target }}"
+          mkdir -p "dist/${name}"
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/${name}/"
+          cp README.md LICENSE NOTICE "dist/${name}/"
+          if [ "${{ matrix.package_ext }}" = "zip" ]; then
+            (cd dist && 7z a "${name}.zip" "${name}")
+          else
+            tar -C dist -czf "dist/${name}.tar.gz" "${name}"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: augenmass-${{ matrix.target }}
+          path: dist/*${{ matrix.package_ext }}
+
+  publish:
+    name: publish GitHub release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*

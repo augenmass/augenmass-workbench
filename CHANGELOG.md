@@ -138,6 +138,14 @@ cached-sandbox mirror, and the live wallet-interaction debugger.
   when a refresh fails. `list --target cached-sandbox` reads through it, while
   confirmed writes to `--target cached-sandbox` are refused before any network
   call.
+- Deployable cache backend hardening: `cache serve` now supports explicit bind
+  host, `PORT`, persistent database path, upstream timeout, TTL, public health
+  check, and optional admin-token protection for cache status and refresh
+  endpoints. The repository includes a Dockerfile and Railway configuration for
+  the current Axum plus SQLite backend.
+- Native CI and release automation: GitHub Actions now runs fmt, clippy, tests,
+  and release builds on Linux, Windows, and macOS runners, with release archives
+  for Linux x86_64, Windows x86_64, macOS Intel, and macOS Apple Silicon.
 - `just demo-proof`, `just demo-run`, and `docs/DEMO_PROOF.md`: a focused,
   offline proof gate and rehearsal sequence for the agent-first presentation
   story. It pins the stable commands for artifact identification, over-ask

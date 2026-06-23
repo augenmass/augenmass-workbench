@@ -1,0 +1,11 @@
+/target
+**/target
+/.git
+/.github
+*.sqlite
+*.sqlite-journal
+.env
+.env.*
+secrets*.md
+*signing-key*
+.DS_Store

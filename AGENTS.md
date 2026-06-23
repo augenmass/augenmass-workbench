@@ -64,6 +64,8 @@ When in doubt about command behavior, do not guess. Run the binary:
 - `fixtures/`: committed offline test artifacts (see below).
 - `examples/`: sample registration bodies and requests (`min.json`, `over.json`, `bad-path.json`, `bad-request.json`).
 - `docs/`: documentation.
+  - `docs/DEPLOYMENT.md`: cache backend deployment notes for Railway, Docker, VPS, Cloudflare, and Vercel.
+  - `docs/RELEASE.md`: CI, release archives, and platform support.
 - `plugins/augenmass-workbench/skills/`: the Claude Code skill plus its bundled binary.
 - `LICENSE` (Apache-2.0), `README.md`, `CHANGELOG.md`, `.env.example`, `.gitignore`.
 
