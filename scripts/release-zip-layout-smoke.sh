@@ -24,8 +24,13 @@ mkdir -p "${ROOT}" "${OUT}"
 cp "${binary}" "${ROOT}/augenmass.exe"
 chmod +x "${ROOT}/augenmass.exe" 2>/dev/null || true
 
+layout_only=1
+if [ "${host}" = "${TARGET}" ]; then
+  layout_only=0
+fi
+
 archive="$(
-  AUGENMASS_RELEASE_LAYOUT_ONLY=1 \
+  AUGENMASS_RELEASE_LAYOUT_ONLY="${layout_only}" \
   AUGENMASS_RELEASE_BINARY_ACTUAL_HOST="${host}" \
     ./scripts/package-release-archive.sh "${TARGET}" "${ROOT}/augenmass.exe" zip "${OUT}"
 )"

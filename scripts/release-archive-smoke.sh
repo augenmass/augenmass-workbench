@@ -26,6 +26,30 @@ manifest_has() {
   grep -Fq "\"${key}\": \"${value}\"" "${MANIFEST}"
 }
 
+manifest_value() {
+  local key="$1"
+  awk -v key="\"${key}\"" '
+    index($0, key) {
+      sub(/^.*: *"/, "", $0);
+      sub(/".*$/, "", $0);
+      print;
+      exit;
+    }
+  ' "${MANIFEST}"
+}
+
+manifest_bool() {
+  local key="$1"
+  awk -v key="\"${key}\"" '
+    index($0, key) {
+      sub(/^.*: */, "", $0);
+      sub(/[,[:space:]].*$/, "", $0);
+      print;
+      exit;
+    }
+  ' "${MANIFEST}"
+}
+
 cleanup() {
   rm -rf "${ROOT}"
 }
@@ -127,6 +151,32 @@ if [ -f "${MANIFEST}" ]; then
     echo "release manifest binarySha256 does not match ${BIN}" >&2
     exit 1
   }
+  layout_only="$(manifest_bool layoutOnly)"
+  native_execution="$(manifest_bool nativeExecution)"
+  target="$(manifest_value target)"
+  actual_host="$(manifest_value binaryActualHost)"
+  if [ "${layout_only}" != "true" ] && [ "${layout_only}" != "false" ]; then
+    echo "release manifest layoutOnly must be a boolean" >&2
+    exit 1
+  fi
+  if [ "${native_execution}" != "true" ] && [ "${native_execution}" != "false" ]; then
+    echo "release manifest nativeExecution must be a boolean" >&2
+    exit 1
+  fi
+  if [ "${layout_only}" = "true" ] && [ "${native_execution}" != "false" ]; then
+    echo "release manifest layoutOnly=true must set nativeExecution=false" >&2
+    exit 1
+  fi
+  if [ "${layout_only}" = "false" ] && [ "${native_execution}" != "true" ]; then
+    echo "release manifest layoutOnly=false must set nativeExecution=true" >&2
+    exit 1
+  fi
+  if [ "${target}" != "${actual_host}" ] && [ "$(basename "${BIN}")" = "augenmass.exe" ]; then
+    if [ "${layout_only}" != "true" ] || [ "${native_execution}" != "false" ]; then
+      echo "non-native Windows-style zip smoke must be marked layoutOnly=true and nativeExecution=false" >&2
+      exit 1
+    fi
+  fi
 fi
 
 (

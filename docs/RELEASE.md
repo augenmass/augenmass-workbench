@@ -158,13 +158,15 @@ release gate; it fetches public sandbox reads and prints aggregate counts/ETags
 without credentialed writes.
 `release-archive-smoke` builds the host release archive, extracts it, then runs
 the packaged binary against packaged docs, examples, and fixtures. It also
-requires and checks `<archive>.sha256` and `<archive>.manifest.json`.
+requires and checks `<archive>.sha256` and `<archive>.manifest.json`, including
+the archive/binary hashes and the `layoutOnly` / `nativeExecution` claim.
 `release-zip-layout-smoke` builds a Windows-style `.zip` package layout from the
 host release binary renamed to `augenmass.exe`, extracts it, and runs the same
 archive smoke. On non-Windows hosts it proves zip packaging and self-contained
 layout only; it is not native Windows execution proof. Its manifest is marked
 `layoutOnly: true`, `nativeExecution: false`, and records the actual host that
-produced the renamed binary.
+produced the renamed binary. On a native Windows host, the same script marks the
+archive as native execution proof.
 `docker-release-archive-smoke-linux` builds Linux arm64 and amd64 archives
 inside Docker, runs the archive smoke inside the matching Linux container, and
 exports the resulting archives to:
