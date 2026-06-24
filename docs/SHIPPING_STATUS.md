@@ -33,13 +33,9 @@ just verify
 ```
 
 That covers formatting, clippy, all Rust tests, and the deterministic demo proof
-commands. At the time of this status note, the suite includes:
-
-- 46 unit tests.
-- 43 CLI integration tests.
-- 14 cache integration tests.
-- 5 demo-proof integration tests.
-- 1 serve integration test.
+commands. Keep the exact test count in the Cargo output rather than this status
+page; this note should describe what the gate proves, not become stale whenever
+one focused test is added.
 
 The local shipping gate passed:
 
@@ -140,35 +136,36 @@ just plugin-bundle-freshness
 just local-release-proof
 ```
 
-This gate passed locally on 2026-06-24. Both local release proofs now run
-fail-fast preflights before the long build/test work. `local-cli-release-proof`
-is plugin-free and uses the native release binary for demo, serve, live cache,
-install, archive, zip-layout, platform, and Docker checks. It resolves the Unix
-binary and the Windows `.exe` fallback. `presenter-plugin-proof` checks the
-committed macOS Apple Silicon plugin bundle, its byte-for-byte freshness, and
-local Claude Code/Codex marketplace installs. `local-release-proof` composes both.
-Together they cover
-the deterministic Rust gates, the GitHub Actions runner-credit guard,
-source-install smoke, release-archive smoke, Windows-style zip layout smoke,
-plugin smoke, live cached-sandbox smoke, platform smoke, and explicit Docker
-cache-backend builds/runs for `linux/arm64` and `linux/amd64`, plus Docker-built
-Linux release archives smoke-tested inside matching Linux containers. They still
-do not replace native Windows testing or a native Linux host check outside
-Docker.
+These release proofs run fail-fast preflights before the long build/test work.
+`local-cli-release-proof` is plugin-free and uses the native release binary for
+demo, serve, live cache, install, archive, zip-layout, platform, and Docker
+checks. It resolves the Unix binary and the Windows `.exe` fallback.
+`presenter-plugin-proof` checks the committed macOS Apple Silicon plugin bundle,
+its byte-for-byte freshness, and local Claude Code/Codex marketplace installs.
+`local-release-proof` composes both.
 
-The most recent local Linux archive proof also passed separately on 2026-06-24:
+Current 2026-06-24 status: the shorter `shipping-smoke`, native archive smoke,
+Windows zip-layout smoke, platform smoke, and Docker Linux arm64 release archive
+smoke passed from a clean pushed tree at commit `3c9938e`. Earlier local Docker
+runtime proof also covered `linux/amd64`. The Docker Linux amd64 release-archive
+provenance rerun was cancelled under local emulation after a long compile, so do
+not count the clean-provenance amd64 release archive as proven until
+`just docker-release-archive-smoke-amd64` completes.
+
+The most recent clean-provenance local Linux archive proof passed separately for
+arm64 on 2026-06-24:
 
 ```sh
-just docker-release-archive-smoke-linux
+just docker-release-archive-smoke-arm64
 ```
 
 It exported and smoke-tested:
 
 - `dist/docker-release-archive-smoke/linux-arm64/augenmass-v0.2.0-aarch64-unknown-linux-gnu.tar.gz`
-- `dist/docker-release-archive-smoke/linux-amd64/augenmass-v0.2.0-x86_64-unknown-linux-gnu.tar.gz`
 
-Those exported archive directories now include matching `.sha256` and
-`.manifest.json` sidecars, and the Docker export script now publishes them
+The exported archive directory includes matching `.sha256` and `.manifest.json`
+sidecars. The manifest records commit `3c9938e812bf9b8142812bbb0098e5892217fbdb`
+with `gitDirty: false`. The Docker export script publishes archive directories
 atomically only after archive smoke has passed.
 
 ## Presentation-safe surfaces
@@ -282,15 +279,17 @@ Proven:
   full `cargo build --release --locked` inside the amd64 Docker build and the
   same health, uid, writable `/data`, and admin-token checks.
 - Linux arm64 release archive built inside Docker, extracted inside Linux, and
-  run against packaged docs, examples, and fixtures.
-- Linux amd64 release archive built inside Docker, extracted inside Linux, and
-  run against packaged docs, examples, and fixtures.
+  run against packaged docs, examples, and fixtures, with clean git provenance in
+  the manifest.
 
 Not yet fully proven:
 
 - Native Windows execution on Windows. The zip package layout is locally
   smoke-tested, but the Windows binary itself still needs Windows.
 - Native Linux release archive outside Docker or a native Linux host runner.
+- Clean-provenance Linux amd64 release archive. The Docker runtime path has
+  passed on amd64, but the release-archive export should be rerun when the local
+  machine can spare the emulated build time.
 - Multi-platform plugin bundle; non-macOS-ARM agent users should set
   `AUGENMASS_BIN` to a native CLI binary.
 
@@ -325,7 +324,7 @@ just public-sandbox-snapshot
 
 Last observed snapshot from this checkout:
 
-- Captured at: `2026-06-24T00:28:00Z`
+- Captured at: `2026-06-24T02:24:13Z`
 - Schema metadata: `113804` bytes, ETag
   `W/"1bc8c-WSRXyNo0svH/T001YeId4arFQcA"`
 - Schema vocabularies: `1001` bytes, ETag

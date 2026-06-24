@@ -97,23 +97,24 @@ It runs:
 - `just cache-public-bind-guard-smoke`: no-network local guard proving
   public cache binds refuse missing admin tokens, empty RP allowlists, unsafe
   upstreams, and `--max-entries 0` before listening.
-- `just deployed-cache-smoke-required`: hosted-readiness proof. It fails unless
-  `AUGENMASS_DEPLOYED_CACHE_API_BASE` points at an `https://` non-local hosted
-  cache backend and `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` is set.
-- `just hosted-release-proof`: alias for the required hosted cache proof, used
-  before claiming a deployed cache is presentation-ready.
 - `just cloudflare-containers-typecheck`: proves the optional Cloudflare
   Containers Worker adapter compiles locally without deploying it.
-- `just live-sandbox-smoke-required`: live sandbox readiness proof. It fails
-  unless sandbox credentials are configured, then runs the non-mutating sandbox
-  rehearsal for the selected relying party.
-- `just sandbox-readiness-proof`: alias for the required live sandbox proof,
-  used before claiming the real sandbox path is configured on this machine.
 - `just docker-smoke`: builds the Docker image locally, runs the cache backend
   container, checks `/api/health`, verifies it runs as uid `10001`, and proves
   admin-token protection.
-- `just docker-smoke-no-cache`: the same Docker runtime smoke with Docker layer
-  cache disabled, useful as a final pre-demo burn-in.
+
+The required hosted/live gates are intentionally separate from `shipping-smoke`
+because they need environment-specific secrets or more time:
+
+- `just deployed-cache-smoke-required` / `just hosted-release-proof`: hosted
+  cache readiness. These fail unless `AUGENMASS_DEPLOYED_CACHE_API_BASE` points
+  at an `https://` non-local hosted cache backend and
+  `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` is set.
+- `just live-sandbox-smoke-required` / `just sandbox-readiness-proof`: live
+  sandbox readiness. These fail unless sandbox credentials are configured, then
+  run the non-mutating sandbox rehearsal for the selected relying party.
+- `just docker-smoke-no-cache`: the Docker runtime smoke with Docker layer cache
+  disabled, useful as a final pre-demo burn-in.
 
 Use the smaller gates when you are only touching one surface:
 
