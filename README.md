@@ -52,7 +52,12 @@ When the plugin was installed from a marketplace without the full repository che
 
 The plugin includes a small launcher plus native preview binaries for macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64. The skill resolves `AUGENMASS_BIN` first; otherwise it uses the bundled launcher and picks the matching target binary. Set `AUGENMASS_BIN` when you want to override the bundled binary, use an unsupported target, or point the skill at a source-built binary.
 
-These preview binaries are not signed/notarized yet. If macOS or Windows blocks a first run, verify the release checksum first, then approve the binary manually through the OS security UI, or build from source with `cargo build --release --locked` and set `AUGENMASS_BIN`.
+Some macOS ZIP artifacts may be Developer ID signed and notarized when produced
+with `just macos-notarize`; check the release notes and sidecar proof before
+assuming a macOS binary is notarized. If macOS or Windows blocks a first run,
+verify the release checksum first, then approve the binary manually through the
+OS security UI, or build from source with `cargo build --release --locked` and
+set `AUGENMASS_BIN`.
 
 The skill is a thin layer over a plain CLI you can also build and run on its own, with or without an agent. On Unix-like shells:
 

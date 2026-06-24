@@ -106,6 +106,14 @@ release-archive-smoke: release
 release-zip-layout-smoke: release
     ./scripts/release-zip-layout-smoke.sh
 
+# Build, sign, package, and submit a macOS ZIP archive to Apple notarization.
+macos-notarize:
+    ./scripts/macos-sign-notarize.sh
+
+# Build, sign, package, and notarize a specific macOS target triple.
+macos-notarize-target target:
+    ./scripts/macos-sign-notarize.sh "{{target}}"
+
 # Verify the live cached-sandbox path against the public sandbox API.
 live-cache-smoke:
     ./scripts/live-cache-smoke.sh

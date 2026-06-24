@@ -95,15 +95,18 @@ export AUGENMASS_BIN="$HOME/.local/bin/augenmass"
 
 The skill should use `AUGENMASS_BIN` when that variable is set.
 
-## Unsigned preview binaries
+## Signed and unsigned binaries
 
-The bundled binaries and release archives are preview artifacts. They are
-checksumed and built by the release workflow, but they are not yet
-signed/notarized.
+The release archives and bundled plugin binaries are checksumed and built by
+the release workflow. Some macOS ZIP artifacts may also be Developer ID signed
+and notarized when produced with `just macos-notarize`; check the release notes
+and sidecar proof before assuming a macOS artifact is notarized.
 
-On macOS, the first run may be blocked by Gatekeeper. Verify the release archive
-and checksum first. If you trust the binary, try running it once, then open
-System Settings -> Privacy & Security and choose Open Anyway for Augenmass.
+If a macOS binary is not notarized, or if Gatekeeper still blocks a first run,
+verify the release archive and checksum first. If you trust the binary, try
+running it once, then open System Settings -> Privacy & Security and choose Open
+Anyway for Augenmass. If you do not want to approve an unsigned binary, build
+from source with `cargo build --release --locked` and set `AUGENMASS_BIN`.
 
 On Windows, the first run may be blocked because `augenmass.exe` is unsigned or
 downloaded from the Internet. Verify the source/checksum first. If you trust the
@@ -111,8 +114,7 @@ binary, right-click `augenmass.exe`, choose Properties, and check Unblock; or
 run `Unblock-File .\augenmass.exe` in PowerShell.
 
 On Linux, if the file is present but not executable, run `chmod +x` on the
-binary. If you do not want to approve unsigned binaries, build from source with
-`cargo build --release --locked` and set `AUGENMASS_BIN`.
+binary.
 
 The runtime smoke gates follow the same convention. `serve-smoke`,
 `live-cache-smoke`, `deployed-cache-smoke`, and `live-sandbox-smoke` prefer

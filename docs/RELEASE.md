@@ -107,6 +107,89 @@ release. Tag pushes spend runner minutes and should happen only after explicit
 approval. On manual dispatch, it publishes workflow artifacts only. Tag builds
 fail unless the tag name matches `v$(Cargo.toml version)`.
 
+## macOS signing and notarization
+
+macOS notarization is local and manual-only for now; it does not run from normal
+CI and does not spend remote runner minutes. The machine running it needs:
+
+- a Developer ID Application identity in Keychain
+- a validated `notarytool` Keychain profile, defaulting to `augenmass-notary`
+- Xcode command-line tools with `codesign`, `notarytool`, `spctl`, and `zip`
+
+Create the notary profile once with the Apple ID that belongs to the Developer
+Program team:
+
+```sh
+xcrun notarytool store-credentials augenmass-notary \
+  --apple-id "<apple-id-email>" \
+  --team-id "<team-id>"
+```
+
+Check that the profile is reachable before a release run:
+
+```sh
+xcrun notarytool history --keychain-profile augenmass-notary
+```
+
+Then produce a signed and notarized macOS ZIP for the host target:
+
+```sh
+just macos-notarize
+```
+
+For an explicit target:
+
+```sh
+just macos-notarize-target aarch64-apple-darwin
+just macos-notarize-target x86_64-apple-darwin
+```
+
+`scripts/macos-sign-notarize.sh` builds the target, copies the binary into a
+staging directory, signs it with Developer ID plus hardened runtime and
+timestamp, packages a ZIP with the normal release layout and sidecars, runs
+`release-archive-smoke`, submits the ZIP with `xcrun notarytool --wait`, stores
+the notary log, and writes `notarization-proof.json` under
+`dist/macos-notarization/<target>/`.
+
+The default signing identity is auto-detected when exactly one
+`Developer ID Application` identity exists. Override it with:
+
+```sh
+export AUGENMASS_MACOS_CODESIGN_IDENTITY="Developer ID Application: Name (TEAMID)"
+export AUGENMASS_NOTARY_PROFILE=augenmass-notary
+```
+
+On the first command-line signing run, macOS may ask whether `codesign` can use
+the Developer ID private key. Approve that prompt locally. For headless runs,
+grant Apple command-line tools access to signing keys in the login keychain:
+
+```sh
+security set-key-partition-list -S apple-tool:,apple: -s \
+  ~/Library/Keychains/login.keychain-db
+```
+
+To narrow the grant, first find the private-key label:
+
+```sh
+security find-key -s -t private ~/Library/Keychains/login.keychain-db
+```
+
+Then add `-l "<private-key-label>"` to the partition-list command. The
+private-key label can differ from the certificate identity; for example, the
+certificate can be `Developer ID Application: Name (TEAMID)` while the key label
+is just `Name`.
+
+That command prompts for the Mac login/keychain password; never put that
+password in chat, CI logs, or repo files. If `codesign` hangs, the notarization
+script times it out after `AUGENMASS_CODESIGN_TIMEOUT` seconds, default `60`,
+and prints the recovery command.
+
+ZIP submissions are accepted by Apple's notary service, but this standalone CLI
+archive is not stapled. `xcrun stapler` staples app bundles, disk images, and
+signed flat installer packages, not the current loose CLI ZIP layout. If we need
+offline stapling later, add a signed `.pkg` or `.dmg` lane, which will also need
+a Developer ID Installer certificate for `.pkg`.
+
 Published release `v0.2.0` is available at:
 
 ```text

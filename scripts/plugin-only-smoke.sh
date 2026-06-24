@@ -99,7 +99,7 @@ grep -q -- '--admin-token' "${OUT}"
 grep -q -- '--unsafe-debug-artifacts' "${OUT}"
 
 grep -q 'Do not assume those files exist' "${SKILL}"
-grep -q 'unsigned preview binaries' "${SKILL}"
+grep -q 'Developer ID signed and notarized' "${SKILL}"
 grep -q 'Use \$augenmass to show the purpose baselines' "${OPENAI_AGENT}"
 grep -q 'Non-Technical Answer Example' "${ASK_REF}"
 grep -q 'Plain-Language Rule' "${EXPLAINER_REF}"
