@@ -69,6 +69,9 @@ fi
 PID="$!"
 wait_for_health
 
+kill -0 "${PID}" 2>/dev/null
+grep -q '"service":"augenmass cache"' "${BODY}"
+grep -q '"allowedRpCount":1' "${BODY}"
 echo "health: $(cat "${BODY}")"
 
 code="$(curl --max-time 5 -s -o "${BODY}" -w '%{http_code}' "${BASE}/cache/status")"

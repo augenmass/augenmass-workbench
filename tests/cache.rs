@@ -19,6 +19,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 #[derive(Clone)]
 struct UpstreamState {
     schema_hits: Arc<AtomicUsize>,
+    schema_delay_ms: Arc<AtomicUsize>,
     registration_hits: Arc<AtomicUsize>,
     fail_registrations: Arc<AtomicBool>,
 }
@@ -38,6 +39,7 @@ fn test_db(prefix: &str) -> String {
 fn upstream_state() -> UpstreamState {
     UpstreamState {
         schema_hits: Arc::new(AtomicUsize::new(0)),
+        schema_delay_ms: Arc::new(AtomicUsize::new(0)),
         registration_hits: Arc::new(AtomicUsize::new(0)),
         fail_registrations: Arc::new(AtomicBool::new(false)),
     }
@@ -101,6 +103,21 @@ async fn spawn_invalid_json_upstream() -> String {
     let app = Router::new().route(
         "/api/schema-metadata",
         get(|| async { ([(CONTENT_TYPE, "text/html")], "<html>not json</html>") }),
+    );
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    format!("http://{addr}/api")
+}
+
+async fn spawn_registration_without_jwt_upstream() -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind invalid registration upstream");
+    let addr = listener.local_addr().unwrap();
+    let app = Router::new().route(
+        "/api/registration-certificates",
+        get(|| async { Json(json!([{ "id": "reg-1" }])) }),
     );
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
@@ -174,6 +191,10 @@ async fn spawn_cache_with_limits_and_allowed_rps(
 
 async fn schema_metadata(State(state): State<UpstreamState>) -> Response {
     state.schema_hits.fetch_add(1, Ordering::SeqCst);
+    let delay_ms = state.schema_delay_ms.load(Ordering::SeqCst);
+    if delay_ms > 0 {
+        tokio::time::sleep(Duration::from_millis(delay_ms as u64)).await;
+    }
     Json(json!([
         {
             "id": "pid",
@@ -329,6 +350,60 @@ async fn schema_metadata_refuses_invalid_json_without_storing() {
         status["entries"].as_array().expect("entries array").len(),
         0
     );
+}
+
+#[tokio::test]
+async fn registration_list_refuses_rows_without_jwt_without_storing() {
+    let upstream = spawn_registration_without_jwt_upstream().await;
+    let cache = spawn_cache(&upstream, 3600).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get(format!("{cache}/registration-certificates?rp=rp-1"))
+        .send()
+        .await
+        .expect("registration cache request");
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let text = response.text().await.expect("invalid registration text");
+    assert!(text.contains("upstream fetch failed for registration-certificates?rp=rp-1"));
+    assert!(!text.contains(&upstream));
+
+    let status: Value = client
+        .get(format!("{cache}/cache/status"))
+        .send()
+        .await
+        .expect("cache status")
+        .json()
+        .await
+        .expect("status json");
+    assert_eq!(
+        status["entries"].as_array().expect("entries array").len(),
+        0
+    );
+}
+
+#[tokio::test]
+async fn concurrent_schema_misses_share_one_upstream_fetch() {
+    let upstream_state = upstream_state();
+    upstream_state.schema_delay_ms.store(200, Ordering::SeqCst);
+    let upstream = spawn_upstream(upstream_state.clone()).await;
+    let cache = spawn_cache(&upstream, 3600).await;
+
+    let mut tasks = Vec::new();
+    for _ in 0..8 {
+        let cache = cache.clone();
+        tasks.push(tokio::spawn(async move {
+            reqwest::get(format!("{cache}/schema-metadata"))
+                .await
+                .expect("cache request")
+                .status()
+        }));
+    }
+
+    for task in tasks {
+        assert_eq!(task.await.expect("request task"), StatusCode::OK);
+    }
+    assert_eq!(upstream_state.schema_hits.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

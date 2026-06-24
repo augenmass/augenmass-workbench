@@ -15,6 +15,7 @@ BIN="$(resolve_bin)"
 BASE="${1:-${AUGENMASS_DEPLOYED_CACHE_API_BASE:-}}"
 ADMIN="${AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN:-}"
 RP="${AUGENMASS_DEPLOYED_CACHE_RP:-2af138a8-59ea-4a84-aea3-666cafdb1369}"
+BLOCKED_RP="${AUGENMASS_DEPLOYED_CACHE_BLOCKED_RP:-blocked-rp-smoke}"
 REQUIRED="${AUGENMASS_DEPLOYED_CACHE_REQUIRED:-0}"
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/augenmass-deployed-cache-smoke.XXXXXX")"
 HEADERS="${WORKDIR}/headers"
@@ -103,8 +104,16 @@ echo "admin status without token: ${code}"
 code="$(curl --max-time 10 -s -o "${BODY}" -w '%{http_code}' -H "Authorization: Bearer ${ADMIN}" "${BASE}/cache/status")"
 test "${code}" = "200"
 grep -q '"kind":"augenmass-cache-status"' "${BODY}"
-jq -e --arg rp "${RP}" '(.allowedRps // []) as $allowed | ($allowed | length) == 0 or ($allowed | index($rp)) != null' "${BODY}" >/dev/null
+jq -e --arg rp "${RP}" '(.allowedRps // []) | index($rp) != null' "${BODY}" >/dev/null
 echo "admin status with token: ${code}"
+
+if [ "${BLOCKED_RP}" = "${RP}" ]; then
+  echo "AUGENMASS_DEPLOYED_CACHE_BLOCKED_RP must differ from AUGENMASS_DEPLOYED_CACHE_RP" >&2
+  exit 1
+fi
+code="$(curl --max-time 10 -s -o "${BODY}" -w '%{http_code}' "${BASE}/registration-certificates?rp=${BLOCKED_RP}")"
+test "${code}" = "403"
+echo "blocked RP read-through: ${code}"
 
 "${BIN}" cache warm --api-base "${BASE}" --admin-token "${ADMIN}" --rp "${RP}" >"${BODY}"
 grep -q "Cache warm complete" "${BODY}"

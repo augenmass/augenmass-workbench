@@ -39,6 +39,29 @@ if [ "${#missing[@]}" -gt 0 ]; then
   exit 0
 fi
 
+if [ "${AUGENMASS_UNSAFE_SANDBOX_URLS:-0}" != "1" ]; then
+  for pair in \
+    "AUGENMASS_API_BASE=${AUGENMASS_API_BASE:-https://sandbox.eudi-wallet.org/api}" \
+    "AUGENMASS_OIDC_TOKEN_URL=${AUGENMASS_OIDC_TOKEN_URL}"
+  do
+    name="${pair%%=*}"
+    value="${pair#*=}"
+    case "${value}" in
+      https://*) ;;
+      *)
+        echo "${name} must use https; loopback http requires AUGENMASS_UNSAFE_SANDBOX_URLS=1" >&2
+        exit 1
+        ;;
+    esac
+    case "${value}" in
+      *://*@* | *\?* | *#*)
+        echo "${name} must not contain URL userinfo, a query string, or a fragment" >&2
+        exit 1
+        ;;
+    esac
+  done
+fi
+
 if [ ! -x "${BIN}" ]; then
   echo "smoke binary is not executable: ${BIN}" >&2
   exit 1

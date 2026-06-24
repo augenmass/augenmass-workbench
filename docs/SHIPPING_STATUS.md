@@ -212,17 +212,24 @@ The Docker image has the right shape for Railway:
 - It should be deployed with a persistent volume and
   `AUGENMASS_CACHE_ADMIN_TOKEN`; non-loopback binds now refuse to start without
   that token.
+- Non-loopback binds also refuse unsafe upstream URLs and empty RP allowlists
+  unless the operator uses the explicit unsafe opt-ins.
 - It bounds stored rows with `AUGENMASS_CACHE_MAX_ENTRIES` / `--max-entries`
   and evicts the oldest entries after the cap is reached.
 - It bounds registration-certificate read-through with
   `AUGENMASS_CACHE_ALLOWED_RPS` / `--allowed-rp`; the CLI default is the demo
   RP, and unlisted RPs get `403`.
+- It coalesces concurrent misses for the same cache key, so public readers do
+  not stampede the sandbox upstream.
 - The local Docker smoke verifies the server process uid and that uid `10001`
   can write to `/data`.
 
-Cloudflare Workers and Vercel are not the best fit for the current Rust binary
-plus SQLite backend. They would need either a rewrite against their storage model
-or a separate adapter. For this release, keep the cache backend as a container.
+Cloudflare Containers now have an optional Worker adapter under
+`deploy/cloudflare-containers/`, proven locally with
+`just cloudflare-containers-typecheck`. The caveat is persistence: Cloudflare
+Container disk is ephemeral, so Railway, Fly.io, Render, or a VPS with a
+persistent `/data` volume remain the best simple hosted cache targets for this
+release. Vercel still needs a function-shaped adapter and storage decision.
 
 No hosted cache URL is committed here. Once a Railway or VPS service exists,
 validate it locally with:

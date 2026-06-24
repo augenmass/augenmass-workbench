@@ -17,6 +17,7 @@ pub struct Config {
     pub password: Option<String>,
     pub oidc_client_secret: Option<String>,
     pub http_timeout_secs: u64,
+    pub unsafe_sandbox_urls: bool,
 }
 
 impl Config {
@@ -41,6 +42,7 @@ impl Config {
                 std::env::var("AUGENMASS_HTTP_TIMEOUT_SECS").ok(),
                 DEFAULT_HTTP_TIMEOUT_SECS,
             ),
+            unsafe_sandbox_urls: parse_bool_env("AUGENMASS_UNSAFE_SANDBOX_URLS"),
         }
     }
 
@@ -72,6 +74,18 @@ fn parse_positive_u64(value: Option<String>, default: u64) -> u64 {
         .and_then(|value| value.parse::<u64>().ok())
         .filter(|value| *value > 0)
         .unwrap_or(default)
+}
+
+fn parse_bool_env(name: &str) -> bool {
+    std::env::var(name)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
 }
 
 #[cfg(test)]

@@ -94,6 +94,8 @@ It runs:
   `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` is set.
 - `just hosted-release-proof`: alias for the required hosted cache proof, used
   before claiming a deployed cache is presentation-ready.
+- `just cloudflare-containers-typecheck`: proves the optional Cloudflare
+  Containers Worker adapter compiles locally without deploying it.
 - `just live-sandbox-smoke-required`: live sandbox readiness proof. It fails
   unless sandbox credentials are configured, then runs the non-mutating sandbox
   rehearsal for the selected relying party.
@@ -116,6 +118,7 @@ just public-sandbox-snapshot
 just deployed-cache-smoke
 just deployed-cache-smoke-required
 just hosted-release-proof
+just cloudflare-containers-typecheck
 just live-sandbox-smoke
 just live-sandbox-smoke-required
 just sandbox-readiness-proof

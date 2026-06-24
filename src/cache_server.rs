@@ -6,7 +6,7 @@
 //! sandbox drifts or is temporarily unreachable.
 
 use std::collections::BTreeSet;
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -48,6 +48,8 @@ pub struct ServeConfig {
     pub max_entries: usize,
     pub admin_token: Option<String>,
     pub allowed_rps: Vec<String>,
+    pub allow_any_rp: bool,
+    pub unsafe_upstream: bool,
 }
 
 #[derive(Clone)]
@@ -59,6 +61,8 @@ pub struct AppState {
     max_entries: usize,
     admin_token: Option<String>,
     allowed_rps: BTreeSet<String>,
+    allow_any_rp: bool,
+    inflight: Arc<Mutex<BTreeSet<String>>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -132,8 +136,10 @@ pub async fn serve(config: ServeConfig) -> Result<()> {
     let addr = resolve_bind_addr(&config.host, config.port)?;
     let admin_token = normalize_token(config.admin_token.clone());
     require_admin_token_for_public_bind(addr, admin_token.as_deref())?;
+    require_safe_upstream_for_public_bind(addr, &config.upstream, config.unsafe_upstream)?;
     validate_max_entries(config.max_entries)?;
     let allowed_rps = normalize_allowed_rps(config.allowed_rps)?;
+    require_rp_allowlist_for_public_bind(addr, &allowed_rps, config.allow_any_rp)?;
 
     let conn = Connection::open(&config.db_path)
         .with_context(|| format!("open SQLite db {}", config.db_path))?;
@@ -150,6 +156,8 @@ pub async fn serve(config: ServeConfig) -> Result<()> {
         max_entries: config.max_entries,
         admin_token: admin_token.clone(),
         allowed_rps: allowed_rps.clone(),
+        allow_any_rp: config.allow_any_rp,
+        inflight: Arc::new(Mutex::new(BTreeSet::new())),
     };
 
     let app = router(state);
@@ -163,8 +171,10 @@ pub async fn serve(config: ServeConfig) -> Result<()> {
     println!("max entries: {}", config.max_entries);
     println!(
         "registration RP read-through: {}",
-        if allowed_rps.is_empty() {
+        if allowed_rps.is_empty() && config.allow_any_rp {
             "any syntactically valid RP".to_string()
+        } else if allowed_rps.is_empty() {
+            "none configured".to_string()
         } else {
             allowed_rps.iter().cloned().collect::<Vec<_>>().join(", ")
         }
@@ -259,6 +269,7 @@ impl AppState {
         max_entries: usize,
         allowed_rps: Vec<String>,
     ) -> Result<Self> {
+        let allow_any_rp = allowed_rps.is_empty();
         validate_max_entries(max_entries)?;
         let allowed_rps = normalize_allowed_rps(allowed_rps)?;
         let conn =
@@ -275,6 +286,8 @@ impl AppState {
             max_entries,
             admin_token: normalize_token(admin_token),
             allowed_rps,
+            allow_any_rp,
+            inflight: Arc::new(Mutex::new(BTreeSet::new())),
         })
     }
 }
@@ -286,6 +299,7 @@ async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
         "ttlSecs": state.ttl.as_secs(),
         "maxEntries": state.max_entries,
         "allowedRpCount": state.allowed_rps.len(),
+        "allowAnyRp": state.allow_any_rp,
     }))
 }
 
@@ -340,6 +354,7 @@ async fn cache_status(
         "ttlSecs": state.ttl.as_secs(),
         "maxEntries": state.max_entries,
         "allowedRps": state.allowed_rps.iter().collect::<Vec<_>>(),
+        "allowAnyRp": state.allow_any_rp,
         "entries": rows,
     })))
 }
@@ -379,6 +394,21 @@ async fn cached_or_fetch(state: &AppState, request: CacheRequest, force: bool) -
         }
     }
 
+    let Some(_guard) = InflightGuard::try_start(state, &request.key) else {
+        if let Some(stale) = cached {
+            return response_from_cache(&stale, CacheDisposition::Stale);
+        }
+        return match wait_for_inflight_cache(state, &request.key).await {
+            Ok(Some(fetched)) => response_from_cache(&fetched, CacheDisposition::Hit),
+            Ok(None) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                format!("cache refresh already in flight for {}", request.key),
+            )
+                .into_response(),
+            Err(error) => server_error(error).into_response(),
+        };
+    };
+
     match fetch_and_store(state, &request).await {
         Ok(fetched) => {
             let disposition = if cached.is_some() {
@@ -404,6 +434,53 @@ async fn cached_or_fetch(state: &AppState, request: CacheRequest, force: bool) -
             }
         }
     }
+}
+
+struct InflightGuard {
+    inflight: Arc<Mutex<BTreeSet<String>>>,
+    key: String,
+}
+
+impl InflightGuard {
+    fn try_start(state: &AppState, key: &str) -> Option<Self> {
+        let mut inflight = state
+            .inflight
+            .lock()
+            .expect("cache inflight mutex poisoned");
+        if inflight.contains(key) {
+            return None;
+        }
+        inflight.insert(key.to_string());
+        Some(Self {
+            inflight: Arc::clone(&state.inflight),
+            key: key.to_string(),
+        })
+    }
+}
+
+impl Drop for InflightGuard {
+    fn drop(&mut self) {
+        let mut inflight = self.inflight.lock().expect("cache inflight mutex poisoned");
+        inflight.remove(&self.key);
+    }
+}
+
+async fn wait_for_inflight_cache(state: &AppState, key: &str) -> Result<Option<CachedResponse>> {
+    for _ in 0..80 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        if !is_inflight(state, key) {
+            return load_cached(state, key);
+        }
+    }
+    Ok(None)
+}
+
+fn is_inflight(state: &AppState, key: &str) -> bool {
+    state
+        .inflight
+        .lock()
+        .expect("cache inflight mutex poisoned")
+        .contains(key)
 }
 
 async fn fetch_and_store(state: &AppState, request: &CacheRequest) -> Result<CachedResponse> {
@@ -473,8 +550,20 @@ async fn read_response_body_with_cap(
 
 fn validate_upstream_body(endpoint: Endpoint, body: &[u8]) -> Result<()> {
     let value: serde_json::Value = serde_json::from_slice(body).context("parse JSON")?;
-    if matches!(endpoint, Endpoint::RegistrationCertificates) && !value.is_array() {
-        anyhow::bail!("registration-certificates response must be a JSON array");
+    if matches!(endpoint, Endpoint::RegistrationCertificates) {
+        let registrations = value
+            .as_array()
+            .context("registration-certificates response must be a JSON array")?;
+        for (index, item) in registrations.iter().enumerate() {
+            let jwt = item
+                .get("jwt")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|jwt| !jwt.is_empty());
+            if jwt.is_none() {
+                anyhow::bail!("registration-certificates response item {index} has no jwt");
+            }
+        }
     }
     Ok(())
 }
@@ -665,9 +754,7 @@ fn normalize_allowed_rps(values: Vec<String>) -> Result<BTreeSet<String>> {
 }
 
 fn enforce_allowed_rp(state: &AppState, request: &CacheRequest) -> Result<()> {
-    if !matches!(request.endpoint, Endpoint::RegistrationCertificates)
-        || state.allowed_rps.is_empty()
-    {
+    if !matches!(request.endpoint, Endpoint::RegistrationCertificates) || state.allow_any_rp {
         return Ok(());
     }
     let rp = request
@@ -783,6 +870,94 @@ fn require_admin_token_for_public_bind(addr: SocketAddr, admin_token: Option<&st
     Ok(())
 }
 
+fn require_rp_allowlist_for_public_bind(
+    addr: SocketAddr,
+    allowed_rps: &BTreeSet<String>,
+    allow_any_rp: bool,
+) -> Result<()> {
+    if !addr.ip().is_loopback() && allowed_rps.is_empty() && !allow_any_rp {
+        anyhow::bail!(
+            "AUGENMASS_CACHE_ALLOWED_RPS must include at least one RP when cache serve binds to non-loopback {addr}; set --allowed-rp or AUGENMASS_CACHE_ALLOWED_RPS, or explicitly set --allow-any-rp"
+        );
+    }
+    Ok(())
+}
+
+fn require_safe_upstream_for_public_bind(
+    addr: SocketAddr,
+    upstream: &str,
+    allow_unsafe: bool,
+) -> Result<()> {
+    if addr.ip().is_loopback() || allow_unsafe {
+        return Ok(());
+    }
+    let url = reqwest::Url::parse(&trim_base(upstream))
+        .with_context(|| format!("invalid cache upstream URL {upstream}"))?;
+    if url.scheme() != "https" {
+        anyhow::bail!(
+            "AUGENMASS_CACHE_UPSTREAM must use https for non-loopback cache binds; set --unsafe-upstream only for isolated development"
+        );
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        anyhow::bail!("AUGENMASS_CACHE_UPSTREAM must not contain URL userinfo");
+    }
+    if url.query().is_some() || url.fragment().is_some() {
+        anyhow::bail!("AUGENMASS_CACHE_UPSTREAM must not contain a query string or fragment");
+    }
+    if let Some(host) = url.host_str() {
+        if host.eq_ignore_ascii_case("localhost") {
+            anyhow::bail!("AUGENMASS_CACHE_UPSTREAM must not point at localhost on public binds");
+        }
+        if let Ok(ip) = host.parse::<IpAddr>() {
+            if is_non_public_ip(ip) {
+                anyhow::bail!(
+                    "AUGENMASS_CACHE_UPSTREAM must not point at loopback, private, link-local, documentation, multicast, or metadata IP ranges on public binds"
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn is_non_public_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => is_non_public_ipv4(ip),
+        IpAddr::V6(ip) => {
+            if let Some(mapped) = ip.to_ipv4_mapped() {
+                return is_non_public_ipv4(mapped);
+            }
+            let segments = ip.segments();
+            ip.is_loopback()
+                || ip.is_unspecified()
+                || (segments[0] & 0xfe00) == 0xfc00
+                || (segments[0] & 0xffc0) == 0xfe80
+                || segments[0] == 0xff00
+                || (segments[0] == 0x2001 && segments[1] == 0x0db8)
+        }
+    }
+}
+
+fn is_non_public_ipv4(ip: Ipv4Addr) -> bool {
+    let octets = ip.octets();
+    match octets {
+        [0, _, _, _]
+        | [10, _, _, _]
+        | [127, _, _, _]
+        | [169, 254, _, _]
+        | [192, 168, _, _]
+        | [192, 0, 0, _]
+        | [192, 0, 2, _]
+        | [198, 18 | 19, _, _]
+        | [198, 51, 100, _]
+        | [203, 0, 113, _]
+        | [255, 255, 255, 255] => true,
+        [100, second, _, _] if (64..=127).contains(&second) => true,
+        [172, second, _, _] if (16..=31).contains(&second) => true,
+        [first, _, _, _] if first >= 224 => true,
+        _ => false,
+    }
+}
+
 fn validate_max_entries(max_entries: usize) -> Result<()> {
     if max_entries == 0 {
         anyhow::bail!("cache max entries must be at least 1");
@@ -855,12 +1030,17 @@ mod tests {
     fn validates_upstream_json_shape_before_cache_store() {
         assert!(validate_upstream_body(Endpoint::SchemaMetadata, br#"{"ok":true}"#).is_ok());
         assert!(validate_upstream_body(Endpoint::SchemaVocabularies, br#"[{"id":"v"}]"#).is_ok());
-        assert!(
-            validate_upstream_body(Endpoint::RegistrationCertificates, br#"[{"id":"r"}]"#).is_ok()
-        );
+        assert!(validate_upstream_body(
+            Endpoint::RegistrationCertificates,
+            br#"[{"jwt":"a.b.c"}]"#
+        )
+        .is_ok());
         assert!(validate_upstream_body(Endpoint::SchemaMetadata, b"<html>").is_err());
         assert!(
             validate_upstream_body(Endpoint::RegistrationCertificates, br#"{"id":"r"}"#).is_err()
+        );
+        assert!(
+            validate_upstream_body(Endpoint::RegistrationCertificates, br#"[{"id":"r"}]"#).is_err()
         );
     }
 
@@ -876,5 +1056,57 @@ mod tests {
         assert!(
             require_admin_token_for_public_bind(unspecified_v4, Some("local-smoke-token")).is_ok()
         );
+    }
+
+    #[test]
+    fn public_bind_requires_safe_upstream_unless_explicitly_unsafe() {
+        let public: SocketAddr = "0.0.0.0:8081".parse().unwrap();
+        let loopback: SocketAddr = "127.0.0.1:8081".parse().unwrap();
+
+        assert!(require_safe_upstream_for_public_bind(
+            public,
+            "https://sandbox.eudi-wallet.org/api",
+            false
+        )
+        .is_ok());
+        assert!(
+            require_safe_upstream_for_public_bind(public, "http://127.0.0.1:8080/api", false)
+                .is_err()
+        );
+        assert!(require_safe_upstream_for_public_bind(
+            public,
+            "https://169.254.169.254/api",
+            false
+        )
+        .is_err());
+        assert!(require_safe_upstream_for_public_bind(
+            public,
+            "https://user@example.test/api",
+            false
+        )
+        .is_err());
+        assert!(
+            require_safe_upstream_for_public_bind(public, "http://127.0.0.1:8080/api", true)
+                .is_ok()
+        );
+        assert!(require_safe_upstream_for_public_bind(
+            loopback,
+            "http://127.0.0.1:8080/api",
+            false
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn public_bind_requires_explicit_rp_allowlist_or_opt_in() {
+        let public: SocketAddr = "0.0.0.0:8081".parse().unwrap();
+        let loopback: SocketAddr = "127.0.0.1:8081".parse().unwrap();
+        let empty = BTreeSet::new();
+        let allowed = BTreeSet::from(["rp-1".to_string()]);
+
+        assert!(require_rp_allowlist_for_public_bind(public, &empty, false).is_err());
+        assert!(require_rp_allowlist_for_public_bind(public, &empty, true).is_ok());
+        assert!(require_rp_allowlist_for_public_bind(public, &allowed, false).is_ok());
+        assert!(require_rp_allowlist_for_public_bind(loopback, &empty, false).is_ok());
     }
 }

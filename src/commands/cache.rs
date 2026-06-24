@@ -20,6 +20,8 @@ pub struct ServeArgs {
     pub max_entries: usize,
     pub admin_token: Option<String>,
     pub allowed_rps: Vec<String>,
+    pub allow_any_rp: bool,
+    pub unsafe_upstream: bool,
 }
 
 pub struct WarmArgs {
@@ -52,6 +54,8 @@ pub async fn serve(args: ServeArgs) -> Result<()> {
         max_entries: args.max_entries,
         admin_token: args.admin_token,
         allowed_rps: args.allowed_rps,
+        allow_any_rp: args.allow_any_rp,
+        unsafe_upstream: args.unsafe_upstream,
     })
     .await
 }

@@ -160,7 +160,8 @@ when `AUGENMASS_DEPLOYED_CACHE_API_BASE` is unset.
 `AUGENMASS_DEPLOYED_CACHE_API_BASE` and
 `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN`. `hosted-release-proof` is the same
 required hosted gate. `sandbox-readiness-proof` is the required live sandbox
-gate. `platform-smoke` checks the host target and any locally available
+gate. `cloudflare-containers-typecheck` typechecks the optional Cloudflare
+Containers Worker adapter without deploying it. `platform-smoke` checks the host target and any locally available
 cross-targets; by default it skips Linux or Windows targets, including Linux
 arm64, when the Rust target or required cross C/MSVC toolchain is missing.
 `platform-smoke-strict` turns those skips into failures for a release machine

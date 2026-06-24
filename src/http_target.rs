@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::Value;
+use std::net::{IpAddr, Ipv6Addr};
 use std::time::Duration;
 
 use crate::config::{trim_base, Config};
@@ -40,6 +41,9 @@ pub async fn post_registration(target: Target, body: &Value, config: &Config) ->
 
     let client = http_client(config)?;
     let base = base_url(target, config);
+    if matches!(target, Target::Sandbox) {
+        validate_sandbox_urls(config)?;
+    }
     let url = format!("{base}/registration-certificates");
     let mut request = client.post(&url).json(body);
     if needs_bearer(target) {
@@ -64,6 +68,9 @@ pub async fn post_registration(target: Target, body: &Value, config: &Config) ->
 pub async fn list_registrations(target: Target, rp_id: &str, config: &Config) -> Result<Value> {
     let client = http_client(config)?;
     let base = base_url(target, config);
+    if matches!(target, Target::Sandbox) {
+        validate_sandbox_urls(config)?;
+    }
     let url = registration_list_url(&base, rp_id)?;
     let mut request = client.get(url.clone());
     if needs_bearer(target) {
@@ -119,6 +126,7 @@ struct TokenResponse {
 
 async fn bearer_token(client: &Client, config: &Config) -> Result<String> {
     let url = config.require_token_url()?;
+    validate_sensitive_url("AUGENMASS_OIDC_TOKEN_URL", url, config.unsafe_sandbox_urls)?;
     let username = config.require_username()?;
     let password = config.require_password()?;
 
@@ -148,9 +156,59 @@ async fn bearer_token(client: &Client, config: &Config) -> Result<String> {
     Ok(token.access_token)
 }
 
+fn validate_sandbox_urls(config: &Config) -> Result<()> {
+    validate_sensitive_url(
+        "AUGENMASS_API_BASE",
+        &config.sandbox_api_base,
+        config.unsafe_sandbox_urls,
+    )?;
+    validate_sensitive_url(
+        "AUGENMASS_OIDC_TOKEN_URL",
+        config.require_token_url()?,
+        config.unsafe_sandbox_urls,
+    )
+}
+
+fn validate_sensitive_url(name: &str, value: &str, allow_unsafe_loopback: bool) -> Result<()> {
+    let url = reqwest::Url::parse(&trim_base(value))
+        .with_context(|| format!("{name} is not a valid URL"))?;
+    if !url.username().is_empty() || url.password().is_some() {
+        anyhow::bail!("{name} must not contain URL userinfo");
+    }
+    if url.query().is_some() || url.fragment().is_some() {
+        anyhow::bail!("{name} must not contain a query string or fragment");
+    }
+    if url.scheme() == "https" {
+        return Ok(());
+    }
+    if url.scheme() == "http" && allow_unsafe_loopback && is_loopback_url(&url) {
+        return Ok(());
+    }
+    anyhow::bail!("{name} must use https; loopback http requires AUGENMASS_UNSAFE_SANDBOX_URLS=1")
+}
+
+fn is_loopback_url(url: &reqwest::Url) -> bool {
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    host.parse::<IpAddr>().map(is_loopback_ip).unwrap_or(false)
+}
+
+fn is_loopback_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => ip.is_loopback(),
+        IpAddr::V6(ip) => {
+            ip == Ipv6Addr::LOCALHOST || ip.to_ipv4_mapped().is_some_and(|ip| ip.is_loopback())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::registration_list_url;
+    use super::{registration_list_url, validate_sensitive_url};
 
     #[test]
     fn registration_list_url_percent_encodes_rp() {
@@ -160,5 +218,30 @@ mod tests {
             url.as_str(),
             "http://127.0.0.1:8081/api/registration-certificates?rp=rp+1%26x%3Dy"
         );
+    }
+
+    #[test]
+    fn sensitive_sandbox_urls_reject_unsafe_shapes() {
+        assert!(
+            validate_sensitive_url("AUGENMASS_API_BASE", "https://example.test/api", false).is_ok()
+        );
+        assert!(
+            validate_sensitive_url("AUGENMASS_API_BASE", "http://example.test/api", false).is_err()
+        );
+        assert!(
+            validate_sensitive_url("AUGENMASS_API_BASE", "http://127.0.0.1:8080/api", true).is_ok()
+        );
+        assert!(validate_sensitive_url(
+            "AUGENMASS_API_BASE",
+            "https://user@example.test/api",
+            false
+        )
+        .is_err());
+        assert!(validate_sensitive_url(
+            "AUGENMASS_API_BASE",
+            "https://example.test/api?x=1",
+            false
+        )
+        .is_err());
     }
 }

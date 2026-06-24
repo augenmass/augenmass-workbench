@@ -69,8 +69,15 @@ The sandbox path reads these (see `.env.example`):
 - `AUGENMASS_USERNAME`: the resource-owner username. Required for `--target sandbox`.
 - `AUGENMASS_PASSWORD`: the resource-owner password. Required for `--target sandbox`.
 - `AUGENMASS_OIDC_CLIENT_SECRET`: optional; sent only when set.
+- `AUGENMASS_UNSAFE_SANDBOX_URLS`: optional unsafe development escape hatch.
+  Leave it unset or `0` for real sandbox work.
 
 If `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, or `AUGENMASS_PASSWORD` is missing, the command fails with a message naming the missing variable, so a misconfigured sandbox run never silently degrades into an anonymous one.
+
+Sandbox API and token URLs must use `https` and must not contain URL userinfo,
+query strings, or fragments. Loopback `http` is accepted only when
+`AUGENMASS_UNSAFE_SANDBOX_URLS=1`, which is for isolated local development, not
+for real credentials.
 
 ### Rehearsal-only posture
 
@@ -107,6 +114,10 @@ Flags (verified):
 - `--max-entries <N>`: maximum stored entries before oldest rows are evicted. Default `512`.
 - `--admin-token <TOKEN>`: protect status and refresh endpoints.
 - `--allowed-rp <RP>`: restrict registration-certificate read-through to named RP ids. Repeat it, or set comma-separated `AUGENMASS_CACHE_ALLOWED_RPS`. Defaults to the demo RP.
+- `--allow-any-rp`: unsafe opt-in that allows any syntactically valid RP. Do
+  not use it for shared or hosted demos.
+- `--unsafe-upstream`: unsafe opt-in that permits non-https or private upstreams
+  on public binds. Use only in isolated development.
 
 The default server listens on `http://127.0.0.1:8081/api`. Point the CLI at it
 with `AUGENMASS_CACHE_API_BASE`, or use the default:
@@ -139,10 +150,16 @@ If `AUGENMASS_CACHE_ADMIN_TOKEN` or `--admin-token` is set, `cache/status` and
 them. Loopback binds may run without a token for local-only work; non-loopback
 binds such as `0.0.0.0` refuse to start without a token.
 
-Set `--allowed-rp` for each RP you intentionally prewarm. Unlisted
+Set `--allowed-rp` for each RP you intentionally prewarm. Non-loopback binds
+refuse an empty allowlist unless `--allow-any-rp` is explicitly set. Unlisted
 `registration-certificates?rp=...` reads and authenticated refreshes return
 `403` before the upstream is contacted, so public readers cannot churn the
 bounded cache away from the demo RP.
+
+On non-loopback binds, the upstream must use `https`, must not contain URL
+userinfo, query strings, or fragments, and must not point directly at loopback,
+private, link-local, documentation, multicast, or metadata IP ranges. The
+`--unsafe-upstream` escape hatch is for isolated development only.
 
 Every cached response carries provenance headers:
 

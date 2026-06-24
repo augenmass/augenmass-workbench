@@ -1389,6 +1389,8 @@ Options:
 - `--max-entries <MAX_ENTRIES>`: maximum stored cache entries before oldest rows are evicted. Default `512`; env `AUGENMASS_CACHE_MAX_ENTRIES`.
 - `--admin-token <ADMIN_TOKEN>`: protect `GET /api/cache/status` and `POST /api/cache/refresh`; env `AUGENMASS_CACHE_ADMIN_TOKEN`.
 - `--allowed-rp <ALLOWED_RPS>`: allow registration-certificate read-through for this RP. Repeatable; env `AUGENMASS_CACHE_ALLOWED_RPS` accepts comma-separated values. Default `2af138a8-59ea-4a84-aea3-666cafdb1369`.
+- `--allow-any-rp`: explicitly allow any syntactically valid RP. Env `AUGENMASS_CACHE_ALLOW_ANY_RP`. Unsafe for shared deployments.
+- `--unsafe-upstream`: permit non-https or private upstreams on public binds. Env `AUGENMASS_CACHE_UNSAFE_UPSTREAM`. Unsafe for shared deployments.
 - `-h, --help`.
 
 The cache serves these registrar-shaped read routes:
@@ -1406,6 +1408,11 @@ headers: `x-augenmass-cache`, `x-augenmass-cache-key`,
 URLs are available only through protected cache status.
 Registration-certificate reads are allowlisted by RP; unlisted RP reads and
 authenticated refreshes return `403` before contacting the upstream.
+Non-loopback binds refuse to start without an admin token, without a non-empty
+RP allowlist unless `--allow-any-rp` is set, or with an unsafe upstream unless
+`--unsafe-upstream` is set. Concurrent public misses for the same cache key are
+coalesced; if stale data exists while a refresh is already running, the stale
+entry is served instead of starting another upstream request.
 
 Example:
 

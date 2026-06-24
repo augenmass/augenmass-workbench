@@ -119,6 +119,10 @@ deployed-cache-smoke-required:
 # Required hosted backend proof before claiming a deployed cache is ready.
 hosted-release-proof: deployed-cache-smoke-required
 
+# Typecheck the optional Cloudflare Containers Worker adapter without deploying it.
+cloudflare-containers-typecheck:
+    cd deploy/cloudflare-containers && bun install --frozen-lockfile && bun run typecheck
+
 # Verify the bundled verifier-in-a-box runtime over loopback HTTP.
 serve-smoke:
     ./scripts/serve-smoke.sh

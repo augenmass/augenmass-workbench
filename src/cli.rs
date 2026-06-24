@@ -375,6 +375,12 @@ enum CacheCmd {
             default_value = DEFAULT_RP_ID
         )]
         allowed_rps: Vec<String>,
+        /// Explicitly allow registration-certificate read-through for any syntactically valid RP. Unsafe for shared deployments.
+        #[arg(long, env = "AUGENMASS_CACHE_ALLOW_ANY_RP", default_value_t = false)]
+        allow_any_rp: bool,
+        /// Permit non-HTTPS or private cache upstreams on public binds. Unsafe; use only in isolated development.
+        #[arg(long, env = "AUGENMASS_CACHE_UNSAFE_UPSTREAM", default_value_t = false)]
+        unsafe_upstream: bool,
     },
     /// Force-refresh the cache server's demo-critical public sandbox routes.
     Warm {
@@ -479,6 +485,8 @@ pub async fn run() -> Result<()> {
                 max_entries,
                 admin_token,
                 allowed_rps,
+                allow_any_rp,
+                unsafe_upstream,
             } => {
                 cache::serve(cache::ServeArgs {
                     db,
@@ -490,6 +498,8 @@ pub async fn run() -> Result<()> {
                     max_entries,
                     admin_token,
                     allowed_rps,
+                    allow_any_rp,
+                    unsafe_upstream,
                 })
                 .await?
             }

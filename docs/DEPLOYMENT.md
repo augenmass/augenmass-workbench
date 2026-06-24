@@ -23,6 +23,9 @@ required before the server starts. When set, `/api/cache/status` and
 `Authorization: Bearer <token>` or `x-augenmass-cache-admin: <token>`.
 The cache is bounded by `AUGENMASS_CACHE_MAX_ENTRIES` / `--max-entries`
 (default `512`); after that, the oldest rows are evicted.
+Concurrent misses for the same cache key are coalesced, so public readers do not
+stampede the sandbox upstream. If a stale entry exists while another request is
+refreshing the same key, the stale entry is served.
 
 The cache stores public sandbox responses only. It still deserves a persistent
 database and an admin token because refresh and status expose operational
@@ -33,10 +36,16 @@ demo RP (`2af138a8-59ea-4a84-aea3-666cafdb1369`); add more with
 `AUGENMASS_CACHE_ALLOWED_RPS` or repeated `--allowed-rp <id>`. Unlisted RP reads
 and refreshes return `403` before the upstream is contacted, which protects
 prewarmed demo entries from public cache churn.
+On non-loopback binds, an empty RP allowlist is refused unless `--allow-any-rp`
+or `AUGENMASS_CACHE_ALLOW_ANY_RP=1` is explicitly set.
 
 Upstream response bodies are capped at 5 MiB while they are being read. If an
 upstream crosses that cap, the refresh is refused before the full body is
 downloaded; existing stale cache entries can still be served.
+On non-loopback binds, the upstream must use `https`, must not contain URL
+userinfo, query strings, or fragments, and must not point directly at loopback,
+private, link-local, documentation, multicast, or metadata IP ranges unless
+`--unsafe-upstream` / `AUGENMASS_CACHE_UNSAFE_UPSTREAM=1` is explicitly set.
 
 ## Runtime configuration
 
@@ -53,6 +62,8 @@ The server can be configured with flags or environment variables.
 | Max cached entries | `AUGENMASS_CACHE_MAX_ENTRIES` | `512` |
 | Admin token | `AUGENMASS_CACHE_ADMIN_TOKEN` | unset for loopback; required for non-loopback binds |
 | Allowed registration RPs | `AUGENMASS_CACHE_ALLOWED_RPS` | `2af138a8-59ea-4a84-aea3-666cafdb1369` |
+| Allow any registration RP | `AUGENMASS_CACHE_ALLOW_ANY_RP` | `false` |
+| Allow unsafe upstream on public bind | `AUGENMASS_CACHE_UNSAFE_UPSTREAM` | `false` |
 
 Local run:
 
@@ -243,17 +254,37 @@ AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN=<token> \
 
 ## Cloudflare
 
-Cloudflare Workers support Rust through `workers-rs`, and Cloudflare D1 provides
-SQLite-like serverless storage. That is a good future fit for an edge-native
-cache, but it is not a drop-in deployment for the current Axum plus rusqlite
-binary. A Cloudflare version should be a separate Worker adapter using D1,
-Durable Objects, or KV and the same cache semantics.
+Cloudflare Containers can run the current Docker image behind a Worker wrapper.
+The repository includes an optional adapter in `deploy/cloudflare-containers/`.
+It routes all requests to one named container instance, passes cache settings
+and the admin token as container environment variables, and typechecks locally
+with:
+
+```sh
+just cloudflare-containers-typecheck
+```
+
+Deploying it still requires a Workers Paid plan, Docker, Wrangler auth, and a
+Worker secret:
+
+```sh
+cd deploy/cloudflare-containers
+bun install --frozen-lockfile
+bunx wrangler secret put AUGENMASS_CACHE_ADMIN_TOKEN
+bun run deploy
+```
+
+Important caveat: Cloudflare Container disk is ephemeral. The adapter is useful
+for a globally reachable cache process, but it is not the strongest persistence
+story for a presentation cache unless you also add a Cloudflare-native storage
+layer or accept rebuilds after container sleep/restart. Railway, Fly.io, Render,
+or a VPS with a persistent `/data` volume remain the simple durable deployment
+targets for this release.
 
 Cloudflare references:
 
-- https://developers.cloudflare.com/workers/languages/rust/
-- https://developers.cloudflare.com/d1/
-- https://developers.cloudflare.com/durable-objects/
+- https://developers.cloudflare.com/containers/
+- https://developers.cloudflare.com/containers/get-started/
 
 ## Vercel
 
@@ -270,7 +301,9 @@ Vercel references:
 
 ## Shipping verdict
 
-Use Railway or a small VPS for the current backend. Use Cloudflare only after a
-Worker adapter exists. Use Vercel only after a function adapter exists. The
-Workbench CLI already knows how to consume any of them through
+Use Railway or a small VPS for the current backend when persistence matters.
+Cloudflare Containers now have a local adapter, but treat it as an optional
+edge/container path with ephemeral disk until a Cloudflare-native storage layer
+is added. Use Vercel only after a function adapter exists. The Workbench CLI
+already knows how to consume any of them through
 `AUGENMASS_CACHE_API_BASE`.
