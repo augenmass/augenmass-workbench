@@ -149,6 +149,8 @@ Pre-deploy checklist:
 Do not set `AUGENMASS_CACHE_PORT` on Railway; let Railway inject `PORT` and let
 the CLI use that value. `.env.example` is for local development and includes a
 fixed cache port, so do not copy it wholesale into Railway variables.
+Do not add a Dockerfile `VOLUME` instruction for `/data`; Railway rejects Docker
+`VOLUME` directives and expects the platform volume to be attached separately.
 
 `AUGENMASS_CACHE_ADMIN_TOKEN` is mandatory for this Railway shape. Without it,
 the server refuses the non-loopback bind and the health check fails. That is
@@ -168,6 +170,35 @@ Railway references:
 - https://docs.railway.com/guides/axum
 - https://docs.railway.com/builds/dockerfiles
 - https://docs.railway.com/deployments/healthchecks
+
+### Current Railway proof
+
+The presentation cache backend is deployed on Railway:
+
+- Project: `augenmass-workbench-cache`
+- Service: `cache`
+- Domain: `https://cache-production-c33f.up.railway.app`
+- API base: `https://cache-production-c33f.up.railway.app/api`
+- Volume: mounted at `/data`
+
+The service uses the demo RP allowlist
+`2af138a8-59ea-4a84-aea3-666cafdb1369`, persistent SQLite at
+`/data/augenmass-cache.sqlite`, and a long presentation TTL. The admin token is
+set in Railway and is not committed to this repository.
+
+On 2026-06-24, the hosted proof passed:
+
+```sh
+AUGENMASS_DEPLOYED_CACHE_API_BASE=https://cache-production-c33f.up.railway.app/api \
+AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN=<token> \
+  just deployed-cache-smoke-required
+```
+
+That proof checked health, public cached reads, the CLI `cached-sandbox` path,
+admin status protection, authenticated status access, RP allowlist blocking, and
+authenticated cache warming. A second run returned `schema fetch: HIT`.
+`cache status` showed three warmed entries: schema metadata, schema
+vocabularies, and the configured demo RP registration list.
 
 ## Docker or VPS
 

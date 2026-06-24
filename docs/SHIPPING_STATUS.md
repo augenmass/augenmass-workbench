@@ -12,7 +12,8 @@ The Workbench is demo-ready as a Rust CLI plus Claude Code/Codex skill on the
 current Apple Silicon macOS development machine. The core flows are not slideware:
 artifact inspection, over-ask checking, cryptographic verification, evidence
 replay, live verifier debugging, cached-sandbox reads, cache prewarming, and the
-Dockerized cache backend all have local proof gates.
+Dockerized cache backend all have local proof gates. The hosted Railway cache is
+also deployed and smoke-tested for the presentation path.
 
 The strongest presentation path is skill first, CLI underneath:
 
@@ -220,9 +221,10 @@ just live-cache-smoke
 
 The same pass ran `just live-sandbox-smoke`, which skipped because
 `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, and `AUGENMASS_PASSWORD` are
-not configured, and ran `just deployed-cache-smoke`, which skipped because
-`AUGENMASS_DEPLOYED_CACHE_API_BASE` is not configured. Treat live sandbox and
-hosted cache readiness as unproven until their required gates pass.
+not configured, and ran `just deployed-cache-smoke`, which skipped at that time
+because `AUGENMASS_DEPLOYED_CACHE_API_BASE` was not configured. The hosted cache
+was proven later on Railway; live sandbox credentials are still required before
+claiming the live sandbox path is configured.
 
 Latest distribution pass on 2026-06-24 added a plugin-local
 `reference/phone-wallet-proof.md` copy so marketplace/plugin-only installs have
@@ -270,6 +272,21 @@ the local Docker environment. The subsequent
 `just docker-release-archive-smoke-amd64` run also built, exported, extracted,
 and smoked the Linux amd64 release archive inside Docker with clean git
 provenance.
+
+Latest hosted-cache deployment proof on 2026-06-24:
+
+```sh
+AUGENMASS_DEPLOYED_CACHE_API_BASE=https://cache-production-c33f.up.railway.app/api \
+AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN=<token> \
+  just deployed-cache-smoke-required
+```
+
+Railway project `augenmass-workbench-cache`, service `cache`, deployed
+successfully with a `/data` volume, non-loopback bind, admin token, demo RP
+allowlist, and the public sandbox upstream. The hosted smoke passed twice: first
+with a schema `MISS`, then with a schema `HIT`. `cache status` showed three
+warmed entries for schema metadata, schema vocabularies, and the configured demo
+RP registration list. The admin token is set in Railway and is not committed.
 
 ## Presentation-safe surfaces
 
@@ -327,7 +344,8 @@ These are good to show on stage or in a recording:
 
 ## Backend deployment verdict
 
-Best simple deployment target: Railway or a small VPS/container host.
+Best simple deployment target: Railway or a small VPS/container host. Railway is
+now proven for the current presentation cache backend.
 
 The Docker image has the right shape for Railway:
 
@@ -352,6 +370,15 @@ The Docker image has the right shape for Railway:
 - The local public-bind guard smoke verifies a shared bind refuses unsafe deploy
   configuration before it listens.
 
+The current hosted cache is:
+
+```sh
+AUGENMASS_CACHE_API_BASE=https://cache-production-c33f.up.railway.app/api
+```
+
+Use the Railway admin token only for `cache warm`, `cache status`, and required
+hosted proof gates. Do not put it in demos, slides, or committed files.
+
 Cloudflare Containers now have an optional Worker adapter under
 `deploy/cloudflare-containers/`, proven locally with
 `just cloudflare-containers-typecheck`. The caveat is persistence: Cloudflare
@@ -359,11 +386,10 @@ Container disk is ephemeral, so Railway, Fly.io, Render, or a VPS with a
 persistent `/data` volume remain the best simple hosted cache targets for this
 release. Vercel still needs a function-shaped adapter and storage decision.
 
-No hosted cache URL is committed here. Once a Railway or VPS service exists,
-validate it locally with:
+To revalidate the hosted cache locally:
 
 ```sh
-AUGENMASS_DEPLOYED_CACHE_API_BASE=https://cache.example/api \
+AUGENMASS_DEPLOYED_CACHE_API_BASE=https://cache-production-c33f.up.railway.app/api \
 AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN=<token> \
   just deployed-cache-smoke-required
 ```
