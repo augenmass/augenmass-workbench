@@ -18,9 +18,11 @@ async fn spawn_server() -> (String, reqwest::Client) {
         .expect("bind ephemeral port");
     let addr = listener.local_addr().unwrap();
     let base = format!("http://{addr}/");
+    let public_url: url::Url = base.parse().unwrap();
     let state = Arc::new(
         AppState::new(
-            base.parse().unwrap(),
+            public_url.clone(),
+            public_url,
             CertSource::Ephemeral,
             "event_checkin",
             None,

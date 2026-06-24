@@ -316,6 +316,7 @@ One engine is the spine. `augenmass-core` is a vendored, HTTP-free, pure-Rust cr
 - `docs/ARCHITECTURE.md`: the one-engine spine and how the CLI wraps `augenmass-core`.
 - `docs/SANDBOX.md`: the clone store, the sandbox registrar, and their environment variables.
 - `docs/DEPLOYMENT.md`: deploying the cached-sandbox backend on Railway, Docker, or a VPS, with notes for Cloudflare and Vercel.
+- `docs/RELAY.md`: the hosted wallet relay for phone demos, including the wallet-only public surface, Railway shape, and proof gates.
 - `docs/INSTALL.md`: source install, plugin install, and platform caveats.
 - `docs/RELEASE.md`: CI, release archives, and platform support.
 - `docs/DEMO_PROOF.md`: offline demo gates plus local plugin, live-cache, deployed-cache, and Docker smoke checks.

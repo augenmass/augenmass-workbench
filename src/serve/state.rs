@@ -65,6 +65,7 @@ pub struct AppState {
     pub verifier: Verifier,
     pub wallet_metadata: WalletMetadata,
     pub public_url: Url,
+    pub operator_url: Url,
     pub client_id: String,
     pub(crate) encryption_keys: Mutex<HashMap<uuid::Uuid, JWK>>,
     pub registered_scope: Option<RegisteredScope>,
@@ -235,6 +236,7 @@ impl AppState {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         public_url: Url,
+        operator_url: Url,
         source: CertSource,
         purpose: &str,
         trust_anchors: Option<TrustAnchors>,
@@ -295,6 +297,7 @@ impl AppState {
             verifier,
             wallet_metadata,
             public_url,
+            operator_url,
             client_id,
             encryption_keys: Mutex::new(HashMap::new()),
             registered_scope,

@@ -68,8 +68,8 @@ fn page(title: &str, head_extra: &str, body: &str) -> String {
 
 pub fn landing_page(state: &AppState, session_id: &Uuid, auth_url: &str) -> String {
     let qr = qr_svg(auth_url);
-    let inspect = format!("{}inspect/{}", state.public_url, session_id);
-    let trace = format!("{}trace/{}", state.public_url, session_id);
+    let inspect = format!("{}inspect/{}", state.operator_url, session_id);
+    let trace = format!("{}trace/{}", state.operator_url, session_id);
     let request_url = format!("{}request/{}", state.public_url, session_id);
     let mode = if state.ephemeral {
         "<p class=\"banner over\">Development mode: a throwaway certificate. The client_id below is not the registered sandbox identity. Set RP_KEY_PATH and RP_LEAF_PATH to sign with the real registrar leaf.</p>"
@@ -233,7 +233,7 @@ pub fn rejection_page(reason: &str, ephemeral: bool) -> String {
 /// developer can watch each step appear as the wallet interacts.
 pub fn trace_page(state: &AppState, session: &Uuid, trace: Option<&SessionTrace>) -> String {
     let short = short_id(*session);
-    let json_url = format!("{}api/trace/{}", state.public_url, session);
+    let json_url = format!("{}api/trace/{}", state.operator_url, session);
 
     let (timeline, count) = match trace {
         None => (

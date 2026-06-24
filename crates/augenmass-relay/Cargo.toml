@@ -1,0 +1,25 @@
+[package]
+name = "augenmass-relay"
+version = "0.2.0"
+edition = "2021"
+rust-version = "1.92"
+license = "Apache-2.0"
+description = "Hosted wallet-only relay for Augenmass Workbench serve."
+
+[[bin]]
+name = "augenmass-relay"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+augenmass-relay-proto = { path = "../augenmass-relay-proto" }
+axum = { version = "0.7", features = ["ws", "macros"] }
+base64 = "0.21"
+futures-util = "0.3"
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+

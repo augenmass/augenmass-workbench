@@ -1,9 +1,16 @@
-# Deploying the cached sandbox backend
+# Deploying hosted Augenmass backends
 
-This guide covers the deployable part of Augenmaß Workbench: `augenmass cache
-serve`. The rest of the workbench is a local CLI and skill. Static artifact
-commands run offline; `cache serve` is the small backend that can keep sandbox
-reads stable for demos, audit sessions, and shared team use.
+This guide covers the deployable parts of Augenmaß Workbench:
+
+- `augenmass cache serve`: a persistent cached-sandbox backend for stable public
+  sandbox reads.
+- `augenmass-relay`: a stateless wallet-only relay so a phone wallet can reach
+  a local `augenmass serve` run over HTTPS.
+
+The rest of the workbench is a local CLI and skill. Static artifact commands run
+offline.
+
+## Cached sandbox backend
 
 ## What the backend does
 
@@ -203,11 +210,61 @@ vocabularies, and the configured demo RP registration list. The custom domain
 had propagated DNS and a valid Railway certificate before the hosted proof was
 run against it.
 
+## Hosted wallet relay
+
+The hosted relay is separate from the cache backend. It does not need SQLite or
+a Railway volume. It forwards only the wallet-facing endpoints for a temporary
+run:
+
+- `GET /r/<run-id>/request/<session>`
+- `POST /r/<run-id>/response/<session>`
+
+Trace, inspect, `/api/trace`, `/api/sessions`, and unsafe debug artifacts are
+not public relay routes. The operator keeps using the local `open` URL printed
+by `augenmass serve`; the phone wallet uses the temporary `public` URL printed
+for that run.
+
+The repository includes relay-specific deploy files:
+
+- `Dockerfile.relay`
+- `railway.relay.json`
+
+Recommended Railway variables:
+
+```sh
+AUGENMASS_RELAY_AUTH_TOKEN=<secret>
+AUGENMASS_RELAY_PUBLIC_BASE=https://wallet.augenmass.tech
+AUGENMASS_RELAY_HOST=0.0.0.0
+RUST_LOG=warn,augenmass_relay=info
+```
+
+Do not set `AUGENMASS_RELAY_PORT` on Railway; let Railway inject `PORT`. The
+relay refuses non-loopback binds unless `AUGENMASS_RELAY_AUTH_TOKEN` and
+`AUGENMASS_RELAY_PUBLIC_BASE` are set.
+
+Local proof before deploying:
+
+```sh
+just relay-smoke
+./scripts/relay-source-guard.sh
+```
+
+Hosted proof after deploying and attaching the custom domain:
+
+```sh
+AUGENMASS_DEPLOYED_RELAY_BASE=https://wallet.augenmass.tech \
+AUGENMASS_DEPLOYED_RELAY_TOKEN=<secret> \
+  just hosted-relay-proof
+```
+
+Do not claim phone-wallet ingress is ready until the hosted proof passes against
+the actual public domain.
+
 ## Docker or VPS
 
-The Docker image builds the release binary with the lockfile, installs only
-runtime CA certificates, writes cache data under `/data`, and runs as a non-root
-user.
+The cache Docker image builds the release binary with the lockfile, installs
+only runtime CA certificates, writes cache data under `/data`, and runs as a
+non-root user.
 
 ```sh
 docker build -t augenmass-cache .

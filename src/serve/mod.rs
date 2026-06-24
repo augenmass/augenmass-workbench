@@ -14,10 +14,12 @@
 
 pub mod artifacts;
 pub mod handlers;
+pub mod relay_client;
 pub mod state;
 pub mod trace;
 pub mod view;
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -66,6 +68,18 @@ pub struct ServeArgs {
     /// disk under <dir>/<session> for private debugging.
     #[arg(long, env = "AUGENMASS_UNSAFE_DEBUG_ARTIFACTS")]
     pub unsafe_debug_artifacts: Option<PathBuf>,
+    /// Publish the wallet request and response endpoints through a hosted relay.
+    #[arg(long, env = "AUGENMASS_RELAY")]
+    pub relay: Option<String>,
+    /// Bearer token for the relay control connection. Prefer the env var.
+    #[arg(long, env = "AUGENMASS_RELAY_TOKEN")]
+    pub relay_token: Option<String>,
+    /// Requested relay run TTL in seconds. The relay clamps this value.
+    #[arg(long, env = "AUGENMASS_RELAY_TTL")]
+    pub relay_ttl: Option<u64>,
+    /// Continue local-only if relay setup fails.
+    #[arg(long, env = "AUGENMASS_RELAY_OPTIONAL", default_value_t = false)]
+    pub relay_optional: bool,
 }
 
 pub async fn run(args: ServeArgs) -> Result<()> {
@@ -83,14 +97,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     // it, so it must end in '/'. Auto-fix and say so rather than silently serving
     // broken endpoints.
     let mut args = args;
-    if !args.public_url.path().ends_with('/') {
-        let fixed = format!("{}/", args.public_url.path());
-        args.public_url.set_path(&fixed);
-        eprintln!(
-            "note: --public-url did not end in '/'; using {}",
-            args.public_url
-        );
-    }
+    normalize_base_url(&mut args.public_url, "--public-url");
 
     let source = match (args.key.as_ref(), args.leaf.as_ref()) {
         (Some(k), Some(l)) => {
@@ -118,16 +125,66 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     let enforce_trust = trust_anchors.is_some();
     let console_trace = !args.quiet;
 
-    // The listener binds to (host, port); everything the wallet sees is built
-    // from public_url. If they disagree, the wallet is told to reach an address
-    // we are not serving, and the exchange breaks silently. Detect and warn.
-    let advertised_host = args.public_url.host_str().unwrap_or_default().to_string();
-    let advertised_port = args.public_url.port_or_known_default();
-    let bind_mismatch = advertised_host != args.host || advertised_port != Some(args.port);
+    let relay_target = args.relay.clone();
+    let bind_host = if relay_target.is_some() {
+        if !is_loopback_host(&args.host) {
+            eprintln!(
+                "note: --relay makes the relay the public ingress; binding local serve to 127.0.0.1 instead of {}",
+                args.host
+            );
+        }
+        "127.0.0.1".to_string()
+    } else {
+        args.host.clone()
+    };
+    let listener = TcpListener::bind((bind_host.as_str(), args.port))
+        .await
+        .with_context(|| format!("bind {}:{}", bind_host, args.port))?;
+    let local_addr = listener
+        .local_addr()
+        .context("read local listener address")?;
+    let operator_url = loopback_operator_url(local_addr)?;
+
+    let (public_url, relay_connection) = if let Some(target) = relay_target.as_deref() {
+        let relay_url = relay_client::resolve_relay_url(target)?;
+        let token = args.relay_token.clone().unwrap_or_default();
+        if target == relay_client::HOSTED_RELAY_ALIAS && token.trim().is_empty() {
+            anyhow::bail!(
+                "AUGENMASS_RELAY_TOKEN is required for --relay augenmass; use --relay-optional only when a local-only fallback is acceptable"
+            );
+        }
+        match relay_client::connect(&relay_url, &token, args.relay_ttl).await {
+            Ok(mut conn) => {
+                normalize_base_url(&mut conn.public_url, "relay public URL");
+                (conn.public_url.clone(), Some(conn))
+            }
+            Err(err) if args.relay_optional => {
+                eprintln!(
+                    "warning: relay setup failed ({err}); continuing local-only because --relay-optional is set"
+                );
+                (operator_url.clone(), None)
+            }
+            Err(err) => {
+                return Err(err).with_context(|| format!("connect relay {relay_url}"));
+            }
+        }
+    } else {
+        (args.public_url.clone(), None)
+    };
+
+    // The listener binds to host and port; everything the wallet sees is built
+    // from public_url. If they disagree outside relay mode, the wallet is told
+    // to reach an address we are not serving. Detect and warn.
+    let advertised_host = public_url.host_str().unwrap_or_default().to_string();
+    let advertised_port = public_url.port_or_known_default();
+    let bind_mismatch = relay_connection.is_none()
+        && relay_target.is_none()
+        && (advertised_host != args.host || advertised_port != Some(args.port));
 
     let state = std::sync::Arc::new(
         AppState::new(
-            args.public_url.clone(),
+            public_url,
+            operator_url,
             source,
             &args.purpose,
             trust_anchors,
@@ -139,9 +196,34 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         .await?,
     );
 
-    eprintln!("augenmass serve: wallet-interaction debugger");
-    eprintln!("  open         : {}", state.public_url);
-    eprintln!("  listening    : http://{}:{}", args.host, args.port);
+    let relay_summary = relay_connection.as_ref().map(|conn| {
+        (
+            conn.run_id.clone(),
+            conn.ttl_secs,
+            state.public_url.to_string(),
+        )
+    });
+
+    if relay_summary.is_some() {
+        eprintln!("augenmass serve: wallet-interaction debugger (relay)");
+    } else {
+        eprintln!("augenmass serve: wallet-interaction debugger");
+    }
+    eprintln!("  open         : {}", state.operator_url);
+    eprintln!("  listening    : http://{}", local_addr);
+    if let Some((run_id, ttl_secs, public_url)) = relay_summary.as_ref() {
+        eprintln!(
+            "  relay        : {}",
+            relay_target.as_deref().unwrap_or("custom")
+        );
+        eprintln!(
+            "  run          : {} (TTL {}s)",
+            short_for_display(run_id),
+            ttl_secs
+        );
+        eprintln!("  public       : {}", public_url);
+        eprintln!("  scope        : relay carries only /request and /response; trace and evidence stay local");
+    }
     eprintln!("  client_id    : {}", state.client_id);
     eprintln!(
         "  cert         : {}",
@@ -170,9 +252,9 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     eprintln!(
         "  trace        : {}",
         if console_trace {
-            "redacted by default; live on this console; also at <base>/trace/<session> and /api/trace/<session>"
+            "redacted by default; live on this console; also at <local>/trace/<session> and /api/trace/<session>"
         } else {
-            "redacted by default; quiet on console; at <base>/trace/<session> and /api/trace/<session>"
+            "redacted by default; quiet on console; at <local>/trace/<session> and /api/trace/<session>"
         }
     );
     eprintln!(
@@ -201,7 +283,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
                 .unwrap_or_else(|| "?".to_string()),
         );
     }
-    if is_loopback_host(&args.host) {
+    if relay_summary.is_none() && is_loopback_host(&args.host) {
         eprintln!(
             "  note: bound to loopback; a phone wallet on your LAN cannot reach this. Use --host 0.0.0.0 with a --public-url that has your LAN IP, or a tunnel."
         );
@@ -211,11 +293,20 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     eprintln!();
 
     let app = handlers::router(state);
-    let listener = TcpListener::bind((args.host.as_str(), args.port))
-        .await
-        .with_context(|| format!("bind {}:{}", args.host, args.port))?;
-    tracing::info!("listening on http://{}:{}", args.host, args.port);
-    axum::serve(listener, app).await?;
+    tracing::info!("listening on http://{}", local_addr);
+    if let Some(conn) = relay_connection {
+        let local_base = loopback_operator_url(local_addr)?;
+        tokio::select! {
+            serve = axum::serve(listener, app) => {
+                serve?;
+            }
+            tunnel = relay_client::run_tunnel(conn, local_base) => {
+                tunnel?;
+            }
+        }
+    } else {
+        axum::serve(listener, app).await?;
+    }
     Ok(())
 }
 
@@ -231,4 +322,25 @@ fn unsafe_artifact_banner_hint() -> &'static str {
 
 fn is_loopback_host(host: &str) -> bool {
     matches!(host, "127.0.0.1" | "::1" | "localhost")
+}
+
+fn normalize_base_url(url: &mut Url, label: &str) {
+    if !url.path().ends_with('/') {
+        let fixed = format!("{}/", url.path());
+        url.set_path(&fixed);
+        eprintln!("note: {label} did not end in '/'; using {url}");
+    }
+}
+
+fn loopback_operator_url(addr: SocketAddr) -> Result<Url> {
+    let host = if addr.is_ipv6() {
+        format!("[{}]", addr.ip())
+    } else {
+        addr.ip().to_string()
+    };
+    Url::parse(&format!("http://{}:{}/", host, addr.port())).context("build operator URL")
+}
+
+fn short_for_display(id: &str) -> &str {
+    id.get(..8).unwrap_or(id)
 }

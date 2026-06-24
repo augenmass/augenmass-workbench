@@ -1,0 +1,24 @@
+FROM rust:1.92-bookworm AS build
+
+WORKDIR /app
+COPY . .
+RUN cargo build --release --locked -p augenmass-relay
+
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 augenmass \
+    && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin augenmass
+
+COPY --from=build /app/target/release/augenmass-relay /usr/local/bin/augenmass-relay
+
+USER augenmass:augenmass
+
+ENV AUGENMASS_RELAY_HOST=0.0.0.0
+ENV RUST_LOG=warn,augenmass_relay=info
+
+EXPOSE 8082
+
+CMD ["augenmass-relay"]

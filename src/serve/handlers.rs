@@ -229,8 +229,8 @@ async fn receive_response(
             .await
             .insert(uuid, SessionResult::Rejected(reason.to_string()));
         state.encryption_keys.lock().await.remove(&uuid);
-        let inspect = format!("{}inspect/{}", state.public_url, uuid);
-        let trace = format!("{}trace/{}", state.public_url, uuid);
+        let inspect = format!("{}inspect/{}", state.operator_url, uuid);
+        let trace = format!("{}trace/{}", state.operator_url, uuid);
         return Ok((
             StatusCode::UNPROCESSABLE_ENTITY,
             Json(json!({
@@ -274,8 +274,8 @@ async fn receive_response(
     state.encryption_keys.lock().await.remove(&uuid);
     verify_result.map_err(|e| AppError::internal(format!("verification error: {e}")))?;
 
-    let inspect = format!("{}inspect/{}", state.public_url, uuid);
-    let trace = format!("{}trace/{}", state.public_url, uuid);
+    let inspect = format!("{}inspect/{}", state.operator_url, uuid);
+    let trace = format!("{}trace/{}", state.operator_url, uuid);
     let results = state.results.lock().await;
     match results.get(&uuid) {
         Some(SessionResult::Verified(_)) => Ok((
@@ -1000,6 +1000,7 @@ mod tests {
             TrustAnchors::from_pem(&anchor_pem).expect("parse PID issuer trust anchor");
         let mut st = AppState::new(
             Url::parse("http://127.0.0.1:0/").unwrap(),
+            Url::parse("http://127.0.0.1:0/").unwrap(),
             CertSource::Ephemeral,
             "event_checkin",
             Some(trust_anchors),
@@ -1019,6 +1020,7 @@ mod tests {
     ) -> Arc<AppState> {
         Arc::new(
             AppState::new(
+                Url::parse("http://127.0.0.1:0/").unwrap(),
                 Url::parse("http://127.0.0.1:0/").unwrap(),
                 CertSource::Ephemeral,
                 "event_checkin",
