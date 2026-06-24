@@ -49,6 +49,51 @@ expect_cache_header() {
   esac
 }
 
+validate_required_hosted_base() {
+  if [ "${REQUIRED}" != "1" ]; then
+    return 0
+  fi
+
+  case "${BASE}" in
+    https://*) ;;
+    *)
+      echo "deployed cache required mode requires an https API base" >&2
+      exit 1
+      ;;
+  esac
+
+  host_port="${BASE#https://}"
+  host_port="${host_port%%/*}"
+  host="${host_port%%:*}"
+
+  case "${host_port}" in
+    \[*\])
+      host="${host_port#[}"
+      host="${host%]}"
+      ;;
+    \[*\]:*)
+      host="${host_port#[}"
+      host="${host%%]*}"
+      ;;
+  esac
+
+  lower_host="$(printf '%s' "${host}" | tr '[:upper:]' '[:lower:]')"
+  case "${lower_host}" in
+    ""|localhost|localhost.*|*.localhost|127.*|0.*|10.*|192.168.*|169.254.*|::1|0:0:0:0:0:0:0:1|::ffff:127.*|fc*:*|fd*:*|fe80:*)
+      echo "deployed cache required mode requires a non-local hosted API base, got ${BASE}" >&2
+      exit 1
+      ;;
+    172.*)
+      second_octet="${lower_host#172.}"
+      second_octet="${second_octet%%.*}"
+      if [ "${second_octet}" -ge 16 ] 2>/dev/null && [ "${second_octet}" -le 31 ] 2>/dev/null; then
+        echo "deployed cache required mode requires a non-local hosted API base, got ${BASE}" >&2
+        exit 1
+      fi
+      ;;
+  esac
+}
+
 require curl
 require awk
 require grep
@@ -64,6 +109,7 @@ if [ -z "${BASE}" ]; then
 fi
 
 BASE="${BASE%/}"
+validate_required_hosted_base
 
 if [ "${REQUIRED}" = "1" ] && [ -z "${ADMIN}" ]; then
   echo "deployed cache smoke required mode requires AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN to prove protected status and refresh" >&2

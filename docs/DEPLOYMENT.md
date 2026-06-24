@@ -228,10 +228,11 @@ local release gates do not depend on a hosted service. With only the API base,
 protected, verifies authenticated status access, checks any configured allowlist
 includes the RP under test, runs `cache warm`, and confirms warmed entries are
 visible. Use `just deployed-cache-smoke-required` for current
-hosted-deployment readiness; required mode fails unless both
-`AUGENMASS_DEPLOYED_CACHE_API_BASE` and `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN`
-are set. To prove persistence across a hosted restart or redeploy, warm the
-cache, restart/redeploy the service on the platform, then rerun
+hosted-deployment readiness; required mode fails unless
+`AUGENMASS_DEPLOYED_CACHE_API_BASE` is an `https://` non-local hosted URL and
+`AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` is set. To prove persistence across a
+hosted restart or redeploy, warm the cache, restart/redeploy the service on the
+platform, then rerun
 `just deployed-cache-smoke-required` and confirm the warmed entries remain
 visible or return as cache hits.
 

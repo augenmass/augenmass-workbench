@@ -127,6 +127,7 @@ test "${code}" = "403"
 echo "container blocked RP read-through: ${code}"
 
 docker stop "${NAME}" >/dev/null
+docker rm -f "${NAME}" >/dev/null 2>&1 || true
 run_container
 if ! wait_healthy; then
   echo "container did not become healthy after restart" >&2

@@ -116,6 +116,10 @@ public-sandbox-snapshot:
 deployed-cache-smoke:
     ./scripts/deployed-cache-smoke.sh
 
+# Verify required hosted-cache proof refuses local or insecure API bases.
+deployed-cache-guard-smoke:
+    ./scripts/deployed-cache-guard-smoke.sh
+
 # Require and verify an already deployed cache backend before claiming hosted readiness.
 deployed-cache-smoke-required:
     AUGENMASS_DEPLOYED_CACHE_REQUIRED=1 ./scripts/deployed-cache-smoke.sh
@@ -189,7 +193,7 @@ local-cli-release-proof: local-cli-release-preflight ci-credit-guard verify rele
 presenter-plugin-proof: presenter-release-preflight plugin-bundle-freshness plugin-smoke plugin-only-smoke claude-plugin-smoke codex-plugin-smoke plugin-demo-run
 
 # Local shipping proof that avoids remote GitHub CI runner credits.
-shipping-smoke: ci-credit-guard plugin-bundle-freshness plugin-smoke plugin-only-smoke claude-plugin-smoke codex-plugin-smoke serve-smoke live-cache-smoke public-sandbox-snapshot deployed-cache-smoke docker-smoke
+shipping-smoke: ci-credit-guard plugin-bundle-freshness plugin-smoke plugin-only-smoke claude-plugin-smoke codex-plugin-smoke serve-smoke live-cache-smoke public-sandbox-snapshot deployed-cache-guard-smoke deployed-cache-smoke cloudflare-containers-typecheck docker-smoke
 
 # Strongest local release proof; no GitHub Actions, but multiple Linux Docker builds.
 local-release-proof: local-cli-release-proof presenter-plugin-proof

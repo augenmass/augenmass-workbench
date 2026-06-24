@@ -208,9 +208,14 @@ These are good to show on stage or in a recording:
   `AUGENMASS_DEPLOYED_CACHE_API_BASE`; with a Railway/VPS URL it checks health,
   public cached reads, CLI `cached-sandbox`, and admin/warm protection when an
   admin token is provided.
+- `deployed-cache-guard-smoke`: a no-network local guard that proves required
+  hosted-cache proof rejects `http://`, loopback, and private-IP API bases.
+- `cloudflare-containers-typecheck`: a local proof that the optional Cloudflare
+  Containers Worker adapter still compiles without deploying it.
 - `deployed-cache-smoke-required`: the hosted-readiness proof. It fails without
-  both a deployed cache URL and `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN`, then
-  proves public reads, protected status, authenticated warm, and warmed entries.
+  both an `https://` non-local hosted cache URL and
+  `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN`, then proves public reads, protected
+  status, authenticated warm, and warmed entries.
 - `hosted-release-proof`: release-checklist alias for
   `deployed-cache-smoke-required`.
 

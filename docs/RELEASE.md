@@ -136,7 +136,8 @@ artifact from the CLI release archives.
 `just plugin-demo-run`, `just plugin-bundle-freshness`,
 `just claude-plugin-smoke`, `just codex-plugin-smoke`, `just serve-smoke`,
 `just release-archive-smoke`, `just release-zip-layout-smoke`,
-`just shipping-smoke`, `just deployed-cache-smoke`,
+`just shipping-smoke`, `just cloudflare-containers-typecheck`,
+`just deployed-cache-guard-smoke`, `just deployed-cache-smoke`,
 `just deployed-cache-smoke-required`, `just hosted-release-proof`,
 `just sandbox-readiness-proof`, `just platform-smoke`, and
 `just platform-smoke-strict` are local. They do not start GitHub Actions.
@@ -182,17 +183,20 @@ no-file commands from outside the checkout, so marketplace-style first-run
 behavior is proved without `fixtures/` or `examples/`.
 `shipping-smoke` covers the plugin bundle, the plugin-only first-run path, the
 `serve` runtime smoke, the live cached-sandbox path, the public sandbox snapshot,
-and the Docker backend.
+the optional Cloudflare Containers adapter typecheck, and the Docker backend.
+`deployed-cache-guard-smoke` is a no-network local guard that proves required
+hosted-cache proof refuses `http://`, loopback, and private-IP API bases.
 `deployed-cache-smoke` is opt-in for a Railway/VPS cache URL and skips cleanly
 when `AUGENMASS_DEPLOYED_CACHE_API_BASE` is unset.
-`deployed-cache-smoke-required` is the hosted-readiness gate; it fails without
-`AUGENMASS_DEPLOYED_CACHE_API_BASE` and
-`AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN`. `hosted-release-proof` is the same
-required hosted gate. `sandbox-readiness-proof` is the required live sandbox
+`deployed-cache-smoke-required` is the hosted-readiness gate; it fails unless
+`AUGENMASS_DEPLOYED_CACHE_API_BASE` is an `https://` non-local hosted URL and
+`AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` is set. `hosted-release-proof` is the
+same required hosted gate. `sandbox-readiness-proof` is the required live sandbox
 gate. `cloudflare-containers-typecheck` typechecks the optional Cloudflare
-Containers Worker adapter without deploying it. `platform-smoke` checks the host target and any locally available
-cross-targets; by default it skips Linux or Windows targets, including Linux
-arm64, when the Rust target or required cross C/MSVC toolchain is missing.
+Containers Worker adapter without deploying it, and is included in
+`shipping-smoke`. `platform-smoke` checks the host target and any locally
+available cross-targets; by default it skips Linux or Windows targets, including
+Linux arm64, when the Rust target or required cross C/MSVC toolchain is missing.
 `platform-smoke-strict` turns those skips into failures for a release machine
 where every configured target must be present.
 

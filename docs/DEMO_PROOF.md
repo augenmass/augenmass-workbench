@@ -92,9 +92,11 @@ It runs:
   deployed cache URL is configured, or checks a Railway/VPS cache URL with
   health, public cached reads, CLI `cached-sandbox`, and protected admin/warm
   checks when `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` is set.
+- `just deployed-cache-guard-smoke`: no-network local guard proving required
+  hosted-cache proof refuses `http://`, loopback, and private-IP API bases.
 - `just deployed-cache-smoke-required`: hosted-readiness proof. It fails unless
-  `AUGENMASS_DEPLOYED_CACHE_API_BASE` points at a deployed cache backend and
-  `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` is set.
+  `AUGENMASS_DEPLOYED_CACHE_API_BASE` points at an `https://` non-local hosted
+  cache backend and `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` is set.
 - `just hosted-release-proof`: alias for the required hosted cache proof, used
   before claiming a deployed cache is presentation-ready.
 - `just cloudflare-containers-typecheck`: proves the optional Cloudflare
@@ -118,6 +120,7 @@ just codex-plugin-smoke
 just serve-smoke
 just live-cache-smoke
 just public-sandbox-snapshot
+just deployed-cache-guard-smoke
 just deployed-cache-smoke
 just deployed-cache-smoke-required
 just hosted-release-proof
