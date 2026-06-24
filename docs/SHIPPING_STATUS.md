@@ -439,6 +439,10 @@ Proven:
   macOS Apple Silicon, macOS Intel, and the publish job, producing 12 release
   assets: four native CLI archives, four SHA-256 sidecars, and four provenance
   manifests.
+- Published-asset install proof on the presenter Mac: the macOS Apple Silicon
+  archive was downloaded back from the GitHub release, its `.sha256` sidecar
+  verified, the archive extracted, the binary printed `augenmass 0.2.0`, and
+  `scripts/release-archive-smoke.sh` passed against that downloaded archive.
 
 Not yet fully proven:
 
