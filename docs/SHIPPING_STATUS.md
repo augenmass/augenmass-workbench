@@ -161,6 +161,25 @@ release-archive provenance rerun was cancelled under local emulation after a
 long compile, so do not count the clean-provenance amd64 release archive as
 proven until `just docker-release-archive-smoke-amd64` completes.
 
+Latest code-bearing checkpoint: commit `435956f` added
+`evidence assert-live`, the post-capture proof gate for completed encrypted
+phone-wallet runs. Before it was committed and pushed, the exact tree passed:
+
+```sh
+cargo test --test cli evidence_assert_live
+cargo test --lib commands::evidence
+just plugin-smoke
+just plugin-only-smoke
+just plugin-bundle-freshness
+just verify
+just shipping-smoke
+```
+
+That run refreshed the committed macOS Apple Silicon plugin binary, proved the
+new evidence command through CLI tests and plugin help, exercised live public
+sandbox reads, and built the local Docker cache image. GitHub Actions remained
+manual/tag-only; no remote CI run was started by the push.
+
 The most recent clean-provenance local Linux archive proof passed for arm64 on
 2026-06-24:
 
