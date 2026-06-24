@@ -290,6 +290,29 @@ schema `HIT`. `cache status` showed three warmed entries for schema metadata,
 schema vocabularies, and the configured demo RP registration list. The admin
 token is set in Railway and is not committed.
 
+Latest hosted-relay deployment state on 2026-06-24:
+
+- Railway project: `augenmass-workbench-cache`
+- Service: `relay`
+- Deployment: `b790a2bb-ee76-4f5d-b860-3629c5b367d3`
+- Status: `SUCCESS`
+- Runtime log: `augenmass relay listening addr=0.0.0.0:8080`
+- Volume: none; the relay is stateless.
+- Custom domain requested: `https://wallet.augenmass.tech`
+
+The relay service is running, but hosted proof is blocked on DNS/certificate
+completion for `wallet.augenmass.tech`. Railway requires:
+
+```text
+CNAME wallet.augenmass.tech -> gu10iony.up.railway.app
+TXT   _railway-verify.wallet.augenmass.tech -> railway-verify=c7f97fe392cf9d37fe28dd3926cdffc7eed70548a0312410e16d72058635fb33
+```
+
+Until that DNS is live and Railway issues the certificate, `curl
+https://wallet.augenmass.tech/healthz` and `just hosted-relay-proof` cannot
+pass. The relay auth token is set in Railway and mirrored locally only in
+`.env.relay.local`, which is gitignored.
+
 ## Presentation-safe surfaces
 
 These are good to show on stage or in a recording:
@@ -302,6 +325,13 @@ These are good to show on stage or in a recording:
 - `verify presentation`, `verify trust`, and `verify status-list`: prove good
   fixtures and reject hostile ones.
 - `serve`: live verifier-in-a-box with redacted traces by default.
+- `serve --relay augenmass`: hosted phone-wallet ingress. The public relay
+  carries only `/request/<session>` and `/response/<session>`; trace, inspect,
+  session APIs, evidence, and unsafe debug artifacts stay on localhost.
+- `relay-smoke`: local proof for the hosted relay path. It compares local and
+  relayed request objects byte-for-byte, proves public trace/inspect return
+  `404`, rejects plaintext `direct_post`, and checks relay logs for forbidden
+  sentinels.
 - `serve-smoke`: a local runtime proof for the verifier-in-a-box without a phone
   wallet; it exercises session minting, JAR fetch, trace endpoints, plaintext
   rejection, and redaction. It honors `AUGENMASS_BIN` for native source or
@@ -332,6 +362,12 @@ These are good to show on stage or in a recording:
   admin token is provided.
 - `deployed-cache-guard-smoke`: a no-network local guard that proves required
   hosted-cache proof rejects `http://`, loopback, and private-IP API bases.
+- `deployed-relay-smoke`: an opt-in hosted-relay proof. It skips without
+  `AUGENMASS_DEPLOYED_RELAY_BASE`; with a hosted relay URL and token it checks
+  health, request-object forwarding, public trace/inspect refusal, plaintext
+  rejection, and local trace redaction.
+- `deployed-relay-guard-smoke`: a no-network local guard that proves required
+  hosted-relay proof rejects `http://`, `ws://`, loopback, and private-IP bases.
 - `cache-public-bind-guard-smoke`: a no-network local guard that proves
   `cache serve --host 0.0.0.0` refuses missing admin tokens, empty RP allowlists,
   unsafe upstreams, and `--max-entries 0` before it starts listening.
@@ -343,6 +379,9 @@ These are good to show on stage or in a recording:
   status, authenticated warm, and warmed entries.
 - `hosted-release-proof`: release-checklist alias for
   `deployed-cache-smoke-required`.
+- `hosted-relay-proof`: release-checklist alias for required hosted relay proof.
+  It is intentionally not green until the `wallet.augenmass.tech` DNS/cert step
+  above is complete.
 
 ## Backend deployment verdict
 
@@ -380,6 +419,18 @@ AUGENMASS_CACHE_API_BASE=https://cache.augenmass.tech/api
 
 Use the Railway admin token only for `cache warm`, `cache status`, and required
 hosted proof gates. Do not put it in demos, slides, or committed files.
+
+The current hosted relay service is deployed and running, but its branded domain
+still needs DNS:
+
+```sh
+AUGENMASS_RELAY=augenmass
+AUGENMASS_RELAY_TOKEN=<token>
+```
+
+Use it only after `https://wallet.augenmass.tech/healthz` returns the relay
+health JSON and `just hosted-relay-proof` passes. Before that, the local
+`just relay-smoke` result proves the relay mechanics, not the public domain.
 
 Cloudflare Containers now have an optional Worker adapter under
 `deploy/cloudflare-containers/`, proven locally with
