@@ -41,7 +41,6 @@ RUN chmod +x /usr/local/bin/augenmass-docker-entrypoint
 ENV AUGENMASS_CACHE_HOST=0.0.0.0
 ENV AUGENMASS_CACHE_DB=/data/augenmass-cache.sqlite
 
-VOLUME ["/data"]
 EXPOSE 8081
 
 ENTRYPOINT ["augenmass-docker-entrypoint"]
