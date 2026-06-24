@@ -9,6 +9,7 @@ ADMIN="${AUGENMASS_DOCKER_SMOKE_ADMIN_TOKEN:-local-smoke-token}"
 RP="${AUGENMASS_DOCKER_SMOKE_RP:-2af138a8-59ea-4a84-aea3-666cafdb1369}"
 BLOCKED_RP="${AUGENMASS_DOCKER_SMOKE_BLOCKED_RP:-blocked-rp-smoke}"
 PLATFORM="${AUGENMASS_DOCKER_PLATFORM:-}"
+NO_CACHE="${AUGENMASS_DOCKER_NO_CACHE:-0}"
 BASE="http://127.0.0.1:${PORT}/api"
 BODY="$(mktemp "${TMPDIR:-/tmp}/augenmass-docker-smoke.XXXXXX")"
 HEADERS="$(mktemp "${TMPDIR:-/tmp}/augenmass-docker-smoke-headers.XXXXXX")"
@@ -55,6 +56,10 @@ if [ -n "${PLATFORM}" ]; then
   echo "docker platform: ${PLATFORM}"
 else
   echo "docker platform: daemon default"
+fi
+if [ "${NO_CACHE}" = "1" ]; then
+  BUILD_ARGS+=(--no-cache)
+  echo "docker build cache: disabled"
 fi
 
 docker build "${BUILD_ARGS[@]}" -t "${IMAGE}" .

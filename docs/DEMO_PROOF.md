@@ -94,6 +94,9 @@ It runs:
   checks when `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` is set.
 - `just deployed-cache-guard-smoke`: no-network local guard proving required
   hosted-cache proof refuses `http://`, loopback, and private-IP API bases.
+- `just cache-public-bind-guard-smoke`: no-network local guard proving
+  public cache binds refuse missing admin tokens, empty RP allowlists, unsafe
+  upstreams, and `--max-entries 0` before listening.
 - `just deployed-cache-smoke-required`: hosted-readiness proof. It fails unless
   `AUGENMASS_DEPLOYED_CACHE_API_BASE` points at an `https://` non-local hosted
   cache backend and `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` is set.
@@ -109,6 +112,8 @@ It runs:
 - `just docker-smoke`: builds the Docker image locally, runs the cache backend
   container, checks `/api/health`, verifies it runs as uid `10001`, and proves
   admin-token protection.
+- `just docker-smoke-no-cache`: the same Docker runtime smoke with Docker layer
+  cache disabled, useful as a final pre-demo burn-in.
 
 Use the smaller gates when you are only touching one surface:
 
@@ -121,6 +126,7 @@ just serve-smoke
 just live-cache-smoke
 just public-sandbox-snapshot
 just deployed-cache-guard-smoke
+just cache-public-bind-guard-smoke
 just deployed-cache-smoke
 just deployed-cache-smoke-required
 just hosted-release-proof
@@ -129,13 +135,14 @@ just live-sandbox-smoke
 just live-sandbox-smoke-required
 just sandbox-readiness-proof
 just docker-smoke
+just docker-smoke-no-cache
 ```
 
 `live-cache-smoke` intentionally touches `https://sandbox.eudi-wallet.org/api`.
 It does not use sandbox credentials. `live-sandbox-smoke` skips without
 credentials, dry-runs sandbox registration when credentials are present, and
-only writes if `AUGENMASS_LIVE_SANDBOX_WRITE=1` is set. `docker-smoke` requires
-a running Docker daemon. None of these gates starts remote GitHub CI.
+only writes if `AUGENMASS_LIVE_SANDBOX_WRITE=1` is set. The Docker smokes
+require a running Docker daemon. None of these gates starts remote GitHub CI.
 
 ## Stable rehearsal sequence
 

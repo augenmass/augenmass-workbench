@@ -154,6 +154,10 @@ sandbox-readiness-proof: live-sandbox-smoke-required
 docker-smoke:
     ./scripts/docker-smoke.sh
 
+# Build and run the cache backend container locally without cached Docker layers.
+docker-smoke-no-cache:
+    AUGENMASS_DOCKER_NO_CACHE=1 ./scripts/docker-smoke.sh
+
 # Build and run the cache backend container as Linux arm64.
 docker-smoke-arm64:
     AUGENMASS_DOCKER_PLATFORM=linux/arm64 AUGENMASS_DOCKER_IMAGE=augenmass-cache-smoke-arm64 AUGENMASS_DOCKER_SMOKE_PORT=18986 ./scripts/docker-smoke.sh

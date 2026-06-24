@@ -137,7 +137,8 @@ artifact from the CLI release archives.
 `just claude-plugin-smoke`, `just codex-plugin-smoke`, `just serve-smoke`,
 `just release-archive-smoke`, `just release-zip-layout-smoke`,
 `just shipping-smoke`, `just cloudflare-containers-typecheck`,
-`just deployed-cache-guard-smoke`, `just deployed-cache-smoke`,
+`just deployed-cache-guard-smoke`, `just cache-public-bind-guard-smoke`,
+`just deployed-cache-smoke`,
 `just deployed-cache-smoke-required`, `just hosted-release-proof`,
 `just sandbox-readiness-proof`, `just platform-smoke`, and
 `just platform-smoke-strict` are local. They do not start GitHub Actions.
@@ -186,6 +187,9 @@ behavior is proved without `fixtures/` or `examples/`.
 the optional Cloudflare Containers adapter typecheck, and the Docker backend.
 `deployed-cache-guard-smoke` is a no-network local guard that proves required
 hosted-cache proof refuses `http://`, loopback, and private-IP API bases.
+`cache-public-bind-guard-smoke` is a no-network local guard that proves public
+cache binds refuse missing admin tokens, empty RP allowlists, unsafe upstreams,
+and `--max-entries 0` before listening.
 `deployed-cache-smoke` is opt-in for a Railway/VPS cache URL and skips cleanly
 when `AUGENMASS_DEPLOYED_CACHE_API_BASE` is unset.
 `deployed-cache-smoke-required` is the hosted-readiness gate; it fails unless
