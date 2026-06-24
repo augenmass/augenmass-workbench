@@ -44,6 +44,7 @@ verify:
     # the wallet-interaction debugger wires up (help exits without binding a port)
     cargo run --quiet -- serve --help > /dev/null
     cargo run --quiet -- evidence --help > /dev/null
+    cargo run --quiet -- evidence assert-live --help > /dev/null
     cargo run --quiet -- cache serve --help > /dev/null
     cargo run --quiet -- cache warm --help > /dev/null
     cargo run --quiet -- cache status --help > /dev/null
@@ -139,6 +140,10 @@ cloudflare-containers-typecheck:
 # Verify the bundled verifier-in-a-box runtime over loopback HTTP.
 serve-smoke:
     ./scripts/serve-smoke.sh
+
+# Require a captured evidence bundle to prove a completed encrypted phone-wallet run.
+wallet-evidence-proof bundle:
+    cargo run --quiet -- evidence assert-live "{{bundle}}"
 
 # Verify live sandbox configuration without mutating it by default.
 live-sandbox-smoke:

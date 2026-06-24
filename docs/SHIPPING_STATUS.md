@@ -196,8 +196,10 @@ These are good to show on stage or in a recording:
   wallet; it exercises session minting, JAR fetch, trace endpoints, plaintext
   rejection, and redaction. It honors `AUGENMASS_BIN` for native source or
   release binaries.
-- `evidence export`, `evidence verify`, and `evidence replay`: signed,
-  projector-safe replay of captured local debug artifacts.
+- `evidence export`, `evidence verify`, `evidence replay`, and
+  `evidence assert-live`: signed, projector-safe replay of captured local debug
+  artifacts, plus a post-capture gate that proves a completed encrypted
+  phone-wallet run before we claim one.
 - `cache serve`, `cache warm`, and `cache status`: a small backend for stable
   cached-sandbox reads plus an operator view of the protected cache inventory.
 - `public-sandbox-snapshot`: a no-credentials live-data report for presentation
@@ -316,7 +318,8 @@ remain Apple Silicon until the plugin bundle grows platform-specific binaries.
 
 ## Remaining polish
 
-- Record a live wallet run with `serve` if network/public URL setup cooperates.
+- Record a live wallet run with `serve --unsafe-debug-artifacts`, export it, and
+  run `evidence assert-live` if network/public URL setup cooperates.
 - Build and manually test native Linux and Windows archives before claiming
   one-command install on those platforms.
 - Keep GitHub CI manual-only unless runner-minute spending is explicitly

@@ -90,6 +90,90 @@ fn evidence_source_session() -> PathBuf {
     dir
 }
 
+fn live_evidence_source_session() -> PathBuf {
+    let dir = test_temp_dir("augenmass-cli-live-evidence-source");
+    fs::create_dir_all(&dir).expect("create live evidence source dir");
+    let request_jwt =
+        fs::read_to_string("fixtures/requests/eudiplo-request.jwt").expect("read request fixture");
+    let presentation = fs::read_to_string("fixtures/presentations/erica-vp-VALID.sdjwt")
+        .expect("read presentation fixture");
+    let auth_response = serde_json::to_string(&json!({
+        "vp_token": presentation.trim(),
+        "state": "abc",
+    }))
+    .expect("auth response json");
+    let request_payload = serde_json::to_string(&json!({
+        "client_id": AUD,
+        "nonce": NONCE,
+        "client_metadata": {
+            "jwks": {
+                "keys": [
+                    {"kid": "enc-1"}
+                ]
+            }
+        },
+        "dcql_query": {
+            "credentials": [
+                {"id": "pid"}
+            ]
+        }
+    }))
+    .expect("request payload json");
+    let verification_context = serde_json::to_string(&json!({
+        "nonce": NONCE,
+        "aud": AUD,
+        "nowUnix": NOW.parse::<i64>().expect("now"),
+        "maxAgeSecs": 300,
+        "vct": "urn:eudi:pid:de:1",
+    }))
+    .expect("verification context json");
+    let entries = vec![
+        write_evidence_source_artifact(
+            &dir,
+            "request.payload.json",
+            "decoded authorization request payload",
+            &request_payload,
+        ),
+        write_evidence_source_artifact(
+            &dir,
+            "request.jwt",
+            "signed authorization request JAR",
+            request_jwt.trim(),
+        ),
+        write_evidence_source_artifact(
+            &dir,
+            "direct-post.body",
+            "raw direct_post form body",
+            "response=not-a-real-jwe&state=abc",
+        ),
+        write_evidence_source_artifact(
+            &dir,
+            "auth-response.json",
+            "decrypted authorization response",
+            &auth_response,
+        ),
+        write_evidence_source_artifact(
+            &dir,
+            "verification-context.json",
+            "verification replay context",
+            &verification_context,
+        ),
+    ];
+    let manifest = json!({
+        "schemaVersion": 1,
+        "kind": "serve-unsafe-debug-artifacts",
+        "session": "22222222-2222-4222-8222-222222222222",
+        "sensitive": true,
+        "entries": entries,
+    });
+    fs::write(
+        dir.join("debug-manifest.json"),
+        serde_json::to_string_pretty(&manifest).expect("manifest json"),
+    )
+    .expect("write live evidence source manifest");
+    dir
+}
+
 // --- inspect / detection ---------------------------------------------------
 
 #[test]
@@ -708,6 +792,81 @@ fn evidence_export_verify_and_replay_stays_redacted() {
         .stdout(contains("EVIDENCE REPLAY"))
         .stdout(contains("bodySha256").not())
         .stdout(contains("secret-claim").not());
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
+}
+
+#[test]
+fn evidence_assert_live_accepts_verified_wallet_bundle() {
+    let source = live_evidence_source_session();
+    let bundle_dir = test_temp_dir("augenmass-cli-live-evidence-bundle");
+    let bundle = bundle_dir.join("bundle.json");
+
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    bin()
+        .args(["evidence", "assert-live", bundle.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(contains("LIVE WALLET EVIDENCE PROVEN"))
+        .stdout(contains("RESPONSE_DECRYPTED"))
+        .stdout(contains("VERIFIED"))
+        .stdout(contains("trust/status/over-ask are not claimed"));
+
+    let out = bin()
+        .args([
+            "--json",
+            "evidence",
+            "assert-live",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("valid JSON");
+    assert_eq!(value["valid"], true);
+    assert_eq!(value["claims"]["presentationVerified"], true);
+    assert_eq!(value["claims"]["trustChecked"], false);
+    assert_eq!(value["claims"]["overAskAnalyzed"], false);
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
+}
+
+#[test]
+fn evidence_assert_live_rejects_plaintext_or_failed_bundle() {
+    let source = evidence_source_session();
+    let bundle_dir = test_temp_dir("augenmass-cli-failed-evidence-bundle");
+    let bundle = bundle_dir.join("bundle.json");
+
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    bin()
+        .args(["evidence", "assert-live", bundle.to_str().unwrap()])
+        .assert()
+        .failure()
+        .stderr(contains("terminal failure event REJECTED"));
 
     let _ = fs::remove_dir_all(source);
     let _ = fs::remove_dir_all(bundle_dir);

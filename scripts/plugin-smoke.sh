@@ -80,6 +80,7 @@ grep -q 'Prewarm the cached-sandbox mirror before a demo' "${SKILL}"
 grep -q 'Debug a live wallet interaction' "${SKILL}"
 grep -q 'Response contracts' "${SKILL}"
 grep -q 'evidence replay' "${SKILL}"
+grep -q 'evidence assert-live' "${SKILL}"
 grep -q 'asks for too much data' "${SKILL}"
 grep -q 'reference/ask-it-like-this.md' "${SKILL}"
 grep -q 'reference/explainer.md' "${SKILL}"
@@ -162,7 +163,7 @@ help_has serve
 grep -q -- '--unsafe-debug-artifacts' "${OUT}"
 grep -q -- '--live-status' "${OUT}"
 
-for evidence in export verify replay; do
+for evidence in export verify replay assert-live; do
   help_has evidence "${evidence}"
 done
 
@@ -268,5 +269,8 @@ if grep -q 'secret-claim' "${OUT}"; then
   echo "evidence replay leaked raw wallet material" >&2
   exit 1
 fi
+
+must_fail "${BIN}" evidence assert-live "${EVIDENCE_BUNDLE}"
+grep -q 'terminal failure event REJECTED' "${OUT}"
 
 echo "plugin smoke passed"

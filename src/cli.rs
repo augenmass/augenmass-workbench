@@ -225,6 +225,15 @@ enum EvidenceCmd {
         #[arg(long)]
         verify_key: Option<PathBuf>,
     },
+    /// Require a bundle to prove a completed encrypted phone-wallet run.
+    #[command(name = "assert-live")]
+    AssertLive {
+        /// Evidence bundle JSON.
+        bundle: PathBuf,
+        /// Optional P-256 public key PEM for signature verification.
+        #[arg(long)]
+        verify_key: Option<PathBuf>,
+    },
 }
 
 #[derive(Args)]
@@ -584,6 +593,9 @@ fn run_evidence(what: EvidenceCmd, fmt: OutputFormat) -> Result<bool> {
         }
         EvidenceCmd::Replay { bundle, verify_key } => {
             evidence::replay(evidence::VerifyArgs { bundle, verify_key }, fmt)
+        }
+        EvidenceCmd::AssertLive { bundle, verify_key } => {
+            evidence::assert_live(evidence::VerifyArgs { bundle, verify_key }, fmt)
         }
     }
 }

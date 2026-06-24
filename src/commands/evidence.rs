@@ -195,6 +195,38 @@ pub fn replay(args: VerifyArgs, format: OutputFormat) -> Result<bool> {
     Ok(true)
 }
 
+pub fn assert_live(args: VerifyArgs, format: OutputFormat) -> Result<bool> {
+    let check = check_bundle(&args.bundle, args.verify_key.as_deref())?;
+    let proof = assert_live_wallet_trace(&check.bundle.payload.replay_trace)?;
+    let text = format!(
+        "LIVE WALLET EVIDENCE PROVEN\nsession: {}\nrequiredEvents: {}\nreplayEvents: {}\npayloadSha256: {}\nsignature: {}\nredacted: true\nnotes: trust/status/over-ask are not claimed by evidence assert-live; use the live trace and explicit gates for those.\n",
+        check.bundle.payload.session,
+        proof.required_events.join(", "),
+        check.bundle.payload.replay_trace.events.len(),
+        check.payload_sha256,
+        check.signature_status,
+    );
+    let value = json!({
+        "valid": true,
+        "session": check.bundle.payload.session,
+        "requiredEvents": proof.required_events,
+        "replayEvents": check.bundle.payload.replay_trace.events.len(),
+        "payloadSha256": check.payload_sha256,
+        "signature": check.signature_status,
+        "redacted": true,
+        "claims": {
+            "encryptedWalletResponseReceived": true,
+            "responseDecrypted": true,
+            "presentationVerified": true,
+            "trustChecked": false,
+            "statusChecked": false,
+            "overAskAnalyzed": false
+        }
+    });
+    emit(format, &value, &text)?;
+    Ok(true)
+}
+
 fn build_bundle(session_dir: &Path, signing_key: Option<&Path>) -> Result<EvidenceBundle> {
     let manifest_path = session_dir.join("debug-manifest.json");
     let manifest_bytes = fs::read(&manifest_path)
@@ -411,6 +443,63 @@ fn check_entry(entry: &EvidenceEntry) -> Result<()> {
         );
     }
     Ok(())
+}
+
+struct LiveEvidenceProof {
+    required_events: Vec<String>,
+}
+
+fn assert_live_wallet_trace(replay: &ReplayTrace) -> Result<LiveEvidenceProof> {
+    if !replay.redacted {
+        bail!("evidence replay trace is not marked redacted");
+    }
+    for event in &replay.events {
+        if matches!(event.code.as_str(), "REJECTED" | "ERROR") {
+            bail!(
+                "evidence replay contains terminal failure event {}: {}",
+                event.code,
+                event.summary
+            );
+        }
+        if let Some(detail) = &event.detail {
+            let redacted = detail
+                .get("redacted")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if !redacted {
+                bail!(
+                    "evidence replay event {} detail is not redacted",
+                    event.code
+                );
+            }
+        }
+    }
+
+    let required = [
+        "SESSION_CREATED",
+        "REQUEST_BUILT",
+        "REQUEST_OBJECT_FETCHED",
+        "RESPONSE_RECEIVED",
+        "RESPONSE_DECRYPTED",
+        "VERIFIED",
+    ];
+    for code in required {
+        if !replay.events.iter().any(|event| event.code == code) {
+            bail!("evidence replay does not contain required event {code}");
+        }
+    }
+    let verified = replay
+        .events
+        .iter()
+        .find(|event| event.code == "VERIFIED")
+        .context("evidence replay does not contain required event VERIFIED")?;
+    if verified.level != "good" {
+        bail!("evidence replay VERIFIED event is not good");
+    }
+
+    Ok(LiveEvidenceProof {
+        required_events: required.iter().map(|code| (*code).to_string()).collect(),
+    })
 }
 
 fn payload_bytes(payload: &EvidencePayload) -> Result<Vec<u8>> {

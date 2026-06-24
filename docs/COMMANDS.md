@@ -53,6 +53,7 @@ Commands exit non-zero on the "bad" outcome so they slot into CI without extra p
 | `x509-hash --client-id` | the claimed `client_id` does not match the computed binding | match (or no `--client-id` given) |
 | `doctor` | any blocking finding | no findings |
 | `evidence verify` / `evidence replay` | bundle hashes, replay determinism, or signature verification fails | bundle is valid |
+| `evidence assert-live` | bundle invalid, terminal failure, or missing live-wallet event spine | bundle proves encrypted response receipt, decryption, and offline presentation verification |
 | `register` | over-ask without `--force`, or a blocking format error | clean (dry-run or written) |
 
 Commands that purely read and render (`inspect`, `decode`, `baselines`, `generate`, `list`) exit 0 on success. `evidence export` exits non-zero when the source manifest or artifacts are invalid.
@@ -1163,6 +1164,7 @@ Subcommands:
 - `export`: export one serve unsafe-debug session directory into a portable bundle.
 - `verify`: verify bundle hashes, replay determinism, and optional signature.
 - `replay`: render the bundle's projector-safe replay timeline.
+- `assert-live`: require a bundle to prove a completed encrypted phone-wallet run.
 
 All subcommands accept `--json`.
 
@@ -1233,6 +1235,39 @@ Arguments and options match `evidence verify`.
 
 Replay first performs the same bundle verification, then prints the redacted timeline. It never writes raw wallet material to stdout. It uses only shape, lengths, SHA-256 digests, field names, artifact labels, and verification outcomes. If the bundle contains `direct-post.body`, `session-enc-key.jwk`, `verification-context.json`, and an encrypted response, replay decrypts the `direct_post.jwt` locally and verifies the SD-JWT VC presentation offline with the captured nonce, audience, vct, clock, and freshness window. Trust anchoring and live status are not claimed by evidence replay unless a later command adds explicit offline inputs for those checks.
 
+## `evidence assert-live`
+
+```
+Usage: augenmass evidence assert-live [OPTIONS] <BUNDLE>
+```
+
+Arguments and options match `evidence verify`.
+
+`assert-live` first performs the same bundle verification, then fails unless the
+redacted replay contains a successful live-wallet spine:
+`SESSION_CREATED`, `REQUEST_BUILT`, `REQUEST_OBJECT_FETCHED`,
+`RESPONSE_RECEIVED`, `RESPONSE_DECRYPTED`, and a good `VERIFIED` event, with no
+`REJECTED` or `ERROR` terminal event. It is the gate to run after a real
+phone-wallet session captured with `serve --unsafe-debug-artifacts`.
+
+This command proves the encrypted wallet response was received, decrypted, and
+the presentation verified offline against the captured nonce/audience/vct. It
+does not claim issuer trust anchoring, live status, or over-ask analysis; use
+the live trace and explicit trust/status/over-ask gates for those.
+
+Text output:
+
+```
+LIVE WALLET EVIDENCE PROVEN
+session: <session>
+requiredEvents: SESSION_CREATED, REQUEST_BUILT, REQUEST_OBJECT_FETCHED, RESPONSE_RECEIVED, RESPONSE_DECRYPTED, VERIFIED
+replayEvents: <n>
+payloadSha256: <sha256>
+signature: absent|valid with embedded key|valid with supplied key
+redacted: true
+notes: trust/status/over-ask are not claimed by evidence assert-live; use the live trace and explicit gates for those.
+```
+
 Example:
 
 ```
@@ -1241,6 +1276,7 @@ augenmass serve --unsafe-debug-artifacts ./debug-out
 augenmass evidence export ./debug-out/<session> --out evidence.json
 augenmass evidence verify evidence.json
 augenmass evidence replay evidence.json
+augenmass evidence assert-live evidence.json
 ```
 
 ---

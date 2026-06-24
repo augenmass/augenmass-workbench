@@ -18,7 +18,7 @@ description: >-
   registrar, over-ask, data minimisation, DCQL, OpenID4VP, OpenID4VCI,
   credential offer, authorization request, JAR, x5c, x509_hash, status list,
   trust anchor, PID, sandbox, wallet debugger, verifier-in-a-box, serve,
-  evidence replay, audit bundle, asks for too much data, proof of age, date of
+  evidence replay, evidence assert-live, audit bundle, asks for too much data, proof of age, date of
   birth, minimum disclosure, privacy review, plain-language explanation, is this
   necessary, explain this for an auditor.
 ---
@@ -77,7 +77,7 @@ The central idea is Augenmaß: a sense of proportion. A relying party should ask
 - Generate a proportionate registration body or a DCQL query from claim paths.
 - Diagnose a verifier signed request / JAR: x5c shape, client_id x509_hash, content type.
 - Debug a live wallet interaction: run a verifier-in-a-box (`serve`) so a real EUDI wallet presents to it, and trace every step of the exchange (request built, JAR fetched, response decrypted, verified, trust, revocation, over-ask) on the console, in a browser timeline, and as JSON. The trace is redacted by default (no raw bodies, no claim values), each session uses a fresh ephemeral encryption key, and a plaintext `direct_post` is rejected; `--unsafe-debug-artifacts <dir>` opts in to full-fidelity local capture, never served over HTTP.
-- Export and replay local evidence: turn one `serve --unsafe-debug-artifacts` session directory into a sensitive bundle, verify its hashes and optional ES256 signature, then render a redacted replay timeline.
+- Export and replay local evidence: turn one `serve --unsafe-debug-artifacts` session directory into a sensitive bundle, verify its hashes and optional ES256 signature, render a redacted replay timeline, and use `evidence assert-live` to prove a completed encrypted phone-wallet run after capture. Do not use `assert-live` to claim trust/status/over-ask; it proves request fetch, encrypted response receipt, decryption, and offline presentation verification.
 - Write a registration to the local clone or the sandbox registrar, read it back, or run the local clone store.
 
 ## The one rule that matters
@@ -166,6 +166,7 @@ For a live-wallet debugging report:
 | Export a local evidence bundle | `$AUGENMASS evidence export <session-dir> --out <bundle.json> [--signing-key <pem>]` |
 | Verify a local evidence bundle | `$AUGENMASS evidence verify <bundle.json> [--verify-key <pem>]` |
 | Replay a projector-safe timeline | `$AUGENMASS evidence replay <bundle.json> [--verify-key <pem>]` |
+| Prove a completed encrypted phone-wallet run | `$AUGENMASS evidence assert-live <bundle.json> [--verify-key <pem>]` |
 | Write a registration (dry-run by default) | `$AUGENMASS register <body> --target {clone\|cached-sandbox\|sandbox} [--yes --force]` |
 | Read registrations back for one relying party | `$AUGENMASS list --target {clone\|cached-sandbox\|sandbox} [--rp <id>]` |
 | Run the local registrar-compatible clone store | `$AUGENMASS clone serve [--db --port]` |
@@ -175,7 +176,7 @@ For a live-wallet debugging report:
 
 Artifact inputs accept file paths, inline values, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Commands that render structured output accept `--json`.
 
-The read-only commands exit non-zero on the bad outcome so they slot into CI: `check` and `audit` exit 1 on over-ask (and `check` also on a blocking format error), `verify` exits 1 when not verified, untrusted, revoked, or erroring, `x509-hash --client-id` exits 1 on mismatch, `doctor` exits 1 when it has findings, and `evidence verify` / `evidence replay` exit non-zero when hashes, replay determinism, or signatures fail.
+The read-only commands exit non-zero on the bad outcome so they slot into CI: `check` and `audit` exit 1 on over-ask (and `check` also on a blocking format error), `verify` exits 1 when not verified, untrusted, revoked, or erroring, `x509-hash --client-id` exits 1 on mismatch, `doctor` exits 1 when it has findings, `evidence verify` / `evidence replay` exit non-zero when hashes, replay determinism, or signatures fail, and `evidence assert-live` exits non-zero unless the bundle proves the required live-wallet event spine.
 
 ## Relying party, examples, and fixtures
 

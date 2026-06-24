@@ -47,7 +47,7 @@ The skill starts `augenmass serve`, a local verifier-in-a-box for the German PID
 Tell the skill to enable local debug artifacts. It adds `--unsafe-debug-artifacts <dir>`, which writes the raw material locally and never serves it over HTTP. On Unix the files are tightened to owner-only permissions; on Windows, keep them in a private profile or encrypted workspace. Use it only when you need it, and never on a shared screen.
 
 "Turn that captured session into something I can replay in a review."
-The skill runs `evidence export`, then `evidence verify` to check the hashes and any signature, and `evidence replay` to render a redacted timeline you can show on a projector without leaking wallet contents.
+The skill runs `evidence export`, then `evidence verify` to check the hashes and any signature, `evidence replay` to render a redacted timeline you can show on a projector without leaking wallet contents, and `evidence assert-live` when you need proof that the captured run completed the encrypted phone-wallet exchange.
 
 "Keep sandbox reads stable for a demo."
 The skill starts `cache serve`, runs `cache warm` for the relying party you name, then reads through `list --target cached-sandbox`. The first call refreshes from the public sandbox, later calls can use the local cache, and stale fallback keeps the demo readable if the sandbox has a bad moment.

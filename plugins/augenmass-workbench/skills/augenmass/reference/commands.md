@@ -13,7 +13,7 @@ age_gate_18`.
 
 Input ergonomics: artifact arguments such as `<INPUT>`, `<BODY>`, and `<REQUEST>` accept a file path, an inline value, or `-` for stdin. So `... check examples/min.json`, `... check '{"rpId":...}'`, and `cat body.json | ... check -` are all equivalent. `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`; `--cert` is a file path.
 
-The `--json` flag: available on read-only commands that render machine output. It emits JSON instead of the text rendering, for agents and CI. Add it to `inspect`, `decode`, `check`, `audit`, `baselines`, `verify`, `x509-hash`, `generate`, `doctor`, `evidence verify`, `evidence replay`, or `list` invocations.
+The `--json` flag: available on read-only commands that render machine output. It emits JSON instead of the text rendering, for agents and CI. Add it to `inspect`, `decode`, `check`, `audit`, `baselines`, `verify`, `x509-hash`, `generate`, `doctor`, `evidence verify`, `evidence replay`, `evidence assert-live`, or `list` invocations.
 
 Exit codes: commands exit non-zero on the "bad" outcome so they gate cleanly in CI. The clean outcome is exit 0. See the exit-code column on each command and the summary table at the end.
 
@@ -197,8 +197,9 @@ $AUGENMASS serve
 | Verify hashes, replay determinism, and optional signature. | `$AUGENMASS evidence verify <bundle.json>` | 1 on mismatch |
 | Verify against a supplied public key. | `$AUGENMASS evidence verify <bundle.json> --verify-key <pem>` | 1 on mismatch |
 | Render the projector-safe replay timeline. | `$AUGENMASS evidence replay <bundle.json>` | 1 on invalid bundle |
+| Prove a completed encrypted phone-wallet run after capture. | `$AUGENMASS evidence assert-live <bundle.json>` | 1 unless request fetch, encrypted response receipt, decryption, and offline presentation verification are proven |
 
-`evidence export` writes a JSON bundle with `kind: "augenmass-evidence-bundle"`, `schemaVersion: 1`, `payloadSha256`, `sensitive: true`, raw artifacts as base64url-no-pad entries, a deterministic redacted `replayTrace`, and a machine-readable `caveats` list of handling restrictions. `evidence verify` checks each entry length and SHA-256, regenerates the replay trace, checks the canonical payload hash, and verifies the optional ES256 signature. `evidence replay` performs the same verification first, then prints only the redacted timeline.
+`evidence export` writes a JSON bundle with `kind: "augenmass-evidence-bundle"`, `schemaVersion: 1`, `payloadSha256`, `sensitive: true`, raw artifacts as base64url-no-pad entries, a deterministic redacted `replayTrace`, and a machine-readable `caveats` list of handling restrictions. `evidence verify` checks each entry length and SHA-256, regenerates the replay trace, checks the canonical payload hash, and verifies the optional ES256 signature. `evidence replay` performs the same verification first, then prints only the redacted timeline. `evidence assert-live` is stricter: it fails unless the redacted replay contains the completed live-wallet spine (`REQUEST_OBJECT_FETCHED`, `RESPONSE_RECEIVED`, `RESPONSE_DECRYPTED`, `VERIFIED`) with no terminal failure. It does not claim trust/status/over-ask.
 
 When the capture contains `direct-post.body`, `session-enc-key.jwk`, `verification-context.json`, and an encrypted response, replay decrypts and verifies the SD-JWT VC offline against the captured nonce, audience, vct, clock, and freshness window. It does not claim trust anchoring or live-status replay.
 
@@ -208,6 +209,7 @@ Example:
 $AUGENMASS evidence export ./debug-out/<session> --out evidence.json
 $AUGENMASS evidence verify evidence.json
 $AUGENMASS evidence replay evidence.json
+$AUGENMASS evidence assert-live evidence.json
 ```
 
 ## WRITE AND TARGETS: register under guardrails, read back, run local target servers
@@ -259,6 +261,7 @@ $AUGENMASS list
 | `x509-hash --client-id` | match | mismatch |
 | `doctor` | no findings | findings |
 | `evidence verify`, `evidence replay` | bundle valid | hash, replay, or signature mismatch |
+| `evidence assert-live` | bundle proves live-wallet event spine | invalid bundle, terminal failure, or missing required live-wallet event |
 | `serve` | runs until Ctrl-C | (server; no gating) |
 | `register` | dry-run or write succeeds | over-ask without `--force`, or a blocking format error |
 | `list`, `generate`, `clone serve`, `cache serve` | success | (no gating) |
