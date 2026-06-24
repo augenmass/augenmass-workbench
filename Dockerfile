@@ -23,7 +23,7 @@ COPY --from=release-archive-smoke /dist/*.tar.gz /
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends bash ca-certificates gosu \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 augenmass \
     && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin augenmass \
@@ -31,6 +31,8 @@ RUN apt-get update \
     && chown -R augenmass:augenmass /data
 
 COPY --from=build /app/target/release/augenmass /usr/local/bin/augenmass
+COPY scripts/docker-entrypoint.sh /usr/local/bin/augenmass-docker-entrypoint
+RUN chmod +x /usr/local/bin/augenmass-docker-entrypoint
 
 ENV AUGENMASS_CACHE_HOST=0.0.0.0
 ENV AUGENMASS_CACHE_DB=/data/augenmass-cache.sqlite
@@ -38,5 +40,5 @@ ENV AUGENMASS_CACHE_DB=/data/augenmass-cache.sqlite
 VOLUME ["/data"]
 EXPOSE 8081
 
-USER augenmass
+ENTRYPOINT ["augenmass-docker-entrypoint"]
 CMD ["augenmass", "cache", "serve"]

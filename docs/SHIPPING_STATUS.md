@@ -65,7 +65,7 @@ That proves:
   `https://sandbox.eudi-wallet.org/api`.
 - The schema endpoint fetched `113804` bytes from the public sandbox, then served
   a cache hit.
-- The latest public sandbox snapshot saw 558 registration certificates across 90
+- The public sandbox snapshot gate saw 558 registration certificates across 90
   relying parties, with newest public entries on 2026-06-23 and the configured RP
   still returning one registration.
 - The configured RP
@@ -74,6 +74,9 @@ That proves:
 - `cache warm` prewarmed schema metadata, schema vocabularies, and that RP's
   registration list through the cache refresh API, with JSON shape checks on
   warmed bodies.
+- Registration read-through is RP-allowlisted by default. The local and Docker
+  smokes allow the configured demo RP and prove a synthetic unlisted RP is
+  rejected with `403` before it can consume cache rows.
 - Stale fallback works with a deliberately broken upstream, returning the cached
   registration response with `x-augenmass-cache: STALE`.
 - The Docker cache image builds locally, runs as uid `10001`, can write `/data`,
@@ -173,8 +176,12 @@ These are good to show on stage or in a recording:
 - `register --target cached-sandbox`: dry-run symmetry only; confirmed writes are
   refused because cached-sandbox is read-only.
 - `live-sandbox-smoke`: a credential-gated, non-mutating rehearsal for the real
-  sandbox path. It skips without credentials and only performs a confirmed write
-  when `AUGENMASS_LIVE_SANDBOX_WRITE=1` is set.
+  sandbox path. It generates the body for the exact relying party being listed,
+  skips without credentials, and only performs a confirmed write when
+  `AUGENMASS_LIVE_SANDBOX_WRITE=1` is set.
+- `live-sandbox-smoke-required`: the same rehearsal in required mode. It fails
+  if sandbox credentials are missing, so it is the proof to use before claiming
+  the live sandbox path is configured.
 - `deployed-cache-smoke`: an opt-in hosted-cache proof. It skips without
   `AUGENMASS_DEPLOYED_CACHE_API_BASE`; with a Railway/VPS URL it checks health,
   public cached reads, CLI `cached-sandbox`, and admin/warm protection when an
@@ -191,14 +198,18 @@ The Docker image has the right shape for Railway:
 
 - It respects `PORT`.
 - It stores SQLite under `/data`.
-- It runs as non-root uid `10001`.
+- Its entrypoint prepares the database directory, then runs the server process as
+  non-root uid `10001`.
 - It should be deployed with a persistent volume and
   `AUGENMASS_CACHE_ADMIN_TOKEN`; non-loopback binds now refuse to start without
   that token.
 - It bounds stored rows with `AUGENMASS_CACHE_MAX_ENTRIES` / `--max-entries`
   and evicts the oldest entries after the cap is reached.
-- Because the image runs as uid `10001`, hosted volumes must be writable by that
-  user before the service is routed publicly.
+- It bounds registration-certificate read-through with
+  `AUGENMASS_CACHE_ALLOWED_RPS` / `--allowed-rp`; the CLI default is the demo
+  RP, and unlisted RPs get `403`.
+- The local Docker smoke verifies the server process uid and that uid `10001`
+  can write to `/data`.
 
 Cloudflare Workers and Vercel are not the best fit for the current Rust binary
 plus SQLite backend. They would need either a rewrite against their storage model
@@ -260,7 +271,8 @@ remain Apple Silicon until the plugin bundle grows platform-specific binaries.
 - If the public sandbox is unstable, prewarm the cache with:
 
 ```sh
-augenmass cache serve --db ./presenter-cache.sqlite --ttl-secs 315360000
+augenmass cache serve --db ./presenter-cache.sqlite --ttl-secs 315360000 \
+  --allowed-rp 2af138a8-59ea-4a84-aea3-666cafdb1369
 augenmass cache warm --api-base http://127.0.0.1:8081/api --rp 2af138a8-59ea-4a84-aea3-666cafdb1369
 ```
 
@@ -272,7 +284,7 @@ just public-sandbox-snapshot
 
 Last observed snapshot from this checkout:
 
-- Captured at: `2026-06-23T23:09:38Z`
+- Captured at: `2026-06-24T00:28:00Z`
 - Schema metadata: `113804` bytes, ETag
   `W/"1bc8c-WSRXyNo0svH/T001YeId4arFQcA"`
 - Schema vocabularies: `1001` bytes, ETag

@@ -1388,6 +1388,7 @@ Options:
 - `--timeout-secs <TIMEOUT_SECS>`: upstream request timeout in seconds. Default `10`; env `AUGENMASS_CACHE_TIMEOUT_SECS`.
 - `--max-entries <MAX_ENTRIES>`: maximum stored cache entries before oldest rows are evicted. Default `512`; env `AUGENMASS_CACHE_MAX_ENTRIES`.
 - `--admin-token <ADMIN_TOKEN>`: protect `GET /api/cache/status` and `POST /api/cache/refresh`; env `AUGENMASS_CACHE_ADMIN_TOKEN`.
+- `--allowed-rp <ALLOWED_RPS>`: allow registration-certificate read-through for this RP. Repeatable; env `AUGENMASS_CACHE_ALLOWED_RPS` accepts comma-separated values. Default `2af138a8-59ea-4a84-aea3-666cafdb1369`.
 - `-h, --help`.
 
 The cache serves these registrar-shaped read routes:
@@ -1403,6 +1404,8 @@ configured, status and refresh require `Authorization: Bearer <token>` or
 headers: `x-augenmass-cache`, `x-augenmass-cache-key`,
 `x-augenmass-cache-fetched-at`, and `x-augenmass-cache-sha256`. Full upstream
 URLs are available only through protected cache status.
+Registration-certificate reads are allowlisted by RP; unlisted RP reads and
+authenticated refreshes return `403` before contacting the upstream.
 
 Example:
 
@@ -1415,6 +1418,7 @@ Deploy shape for Railway or a small VPS:
 
 ```
 AUGENMASS_CACHE_ADMIN_TOKEN=<token> \
+AUGENMASS_CACHE_ALLOWED_RPS=2af138a8-59ea-4a84-aea3-666cafdb1369 \
 augenmass cache serve --host 0.0.0.0 --port ${PORT:-8081} --db /data/augenmass-cache.sqlite
 ```
 

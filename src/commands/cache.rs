@@ -19,6 +19,7 @@ pub struct ServeArgs {
     pub timeout_secs: u64,
     pub max_entries: usize,
     pub admin_token: Option<String>,
+    pub allowed_rps: Vec<String>,
 }
 
 pub struct WarmArgs {
@@ -50,6 +51,7 @@ pub async fn serve(args: ServeArgs) -> Result<()> {
         timeout_secs: args.timeout_secs,
         max_entries: args.max_entries,
         admin_token: args.admin_token,
+        allowed_rps: args.allowed_rps,
     })
     .await
 }

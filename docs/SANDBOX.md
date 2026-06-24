@@ -106,6 +106,7 @@ Flags (verified):
 - `--timeout-secs <SECS>`: upstream request timeout. Default `10`.
 - `--max-entries <N>`: maximum stored entries before oldest rows are evicted. Default `512`.
 - `--admin-token <TOKEN>`: protect status and refresh endpoints.
+- `--allowed-rp <RP>`: restrict registration-certificate read-through to named RP ids. Repeat it, or set comma-separated `AUGENMASS_CACHE_ALLOWED_RPS`. Defaults to the demo RP.
 
 The default server listens on `http://127.0.0.1:8081/api`. Point the CLI at it
 with `AUGENMASS_CACHE_API_BASE`, or use the default:
@@ -137,6 +138,11 @@ If `AUGENMASS_CACHE_ADMIN_TOKEN` or `--admin-token` is set, `cache/status` and
 `/api/health` stay public because `list --target cached-sandbox` depends on
 them. Loopback binds may run without a token for local-only work; non-loopback
 binds such as `0.0.0.0` refuse to start without a token.
+
+Set `--allowed-rp` for each RP you intentionally prewarm. Unlisted
+`registration-certificates?rp=...` reads and authenticated refreshes return
+`403` before the upstream is contacted, so public readers cannot churn the
+bounded cache away from the demo RP.
 
 Every cached response carries provenance headers:
 
@@ -212,7 +218,7 @@ BIN=${AUGENMASS_BIN:-./plugins/augenmass-workbench/bin/augenmass}
 RP=2af138a8-59ea-4a84-aea3-666cafdb1369
 CACHE=./presenter-cache.sqlite
 
-$BIN cache serve --db "$CACHE" --port 8081 --ttl-secs 315360000
+$BIN cache serve --db "$CACHE" --port 8081 --ttl-secs 315360000 --allowed-rp "$RP"
 ```
 
 In another shell:
@@ -228,6 +234,7 @@ For a shared backend, set an admin token and send it on refresh calls:
 
 ```
 AUGENMASS_CACHE_ADMIN_TOKEN=<token> \
+AUGENMASS_CACHE_ALLOWED_RPS="$RP" \
 augenmass cache serve --host 0.0.0.0 --port ${PORT:-8081} --db /data/augenmass-cache.sqlite
 
 augenmass cache warm --api-base https://cache.example/api --admin-token <token> --rp "$RP"
@@ -349,9 +356,20 @@ configured, run:
 just live-sandbox-smoke
 ```
 
-It checks the local guardrail, dry-runs `register --target sandbox`, and reads
-the relying party with `list --target sandbox`. It does not perform a confirmed
-write unless `AUGENMASS_LIVE_SANDBOX_WRITE=1` is explicitly set.
+It generates a proportionate body for the exact `AUGENMASS_SMOKE_RP` under test
+(defaulting to the demo RP), checks the local guardrail, dry-runs
+`register --target sandbox`, and reads the same relying party with
+`list --target sandbox`. It does not perform a confirmed write unless
+`AUGENMASS_LIVE_SANDBOX_WRITE=1` is explicitly set.
+
+To make missing credentials fail instead of skip, run:
+
+```sh
+just live-sandbox-smoke-required
+```
+
+Only required mode proves that the live sandbox path is configured on this
+machine.
 
 ## Caveat to verify at sandbox time: VCT URN vs @IsUrl
 

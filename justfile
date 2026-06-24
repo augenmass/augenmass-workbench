@@ -124,6 +124,10 @@ serve-smoke:
 live-sandbox-smoke:
     ./scripts/live-sandbox-smoke.sh
 
+# Require live sandbox credentials and verify the non-mutating sandbox path.
+live-sandbox-smoke-required:
+    AUGENMASS_LIVE_SANDBOX_REQUIRED=1 ./scripts/live-sandbox-smoke.sh
+
 # Build and run the cache backend container locally.
 docker-smoke:
     ./scripts/docker-smoke.sh
@@ -161,7 +165,7 @@ local-cli-release-proof: ci-credit-guard verify release install-smoke release-ar
 presenter-plugin-proof: plugin-smoke plugin-only-smoke claude-plugin-smoke codex-plugin-smoke plugin-demo-run
 
 # Local shipping proof that avoids remote GitHub CI runner credits.
-shipping-smoke: ci-credit-guard plugin-smoke plugin-only-smoke claude-plugin-smoke codex-plugin-smoke serve-smoke live-cache-smoke deployed-cache-smoke docker-smoke
+shipping-smoke: ci-credit-guard plugin-smoke plugin-only-smoke claude-plugin-smoke codex-plugin-smoke serve-smoke live-cache-smoke public-sandbox-snapshot deployed-cache-smoke docker-smoke
 
 # Strongest local release proof; no GitHub Actions, but multiple Linux Docker builds.
 local-release-proof: local-cli-release-proof presenter-plugin-proof

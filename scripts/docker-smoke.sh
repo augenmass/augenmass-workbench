@@ -6,6 +6,8 @@ PORT="${AUGENMASS_DOCKER_SMOKE_PORT:-18984}"
 NAME="${AUGENMASS_DOCKER_SMOKE_NAME:-augenmass-cache-smoke-$$}"
 VOLUME="${AUGENMASS_DOCKER_SMOKE_VOLUME:-${NAME}-data}"
 ADMIN="${AUGENMASS_DOCKER_SMOKE_ADMIN_TOKEN:-local-smoke-token}"
+RP="${AUGENMASS_DOCKER_SMOKE_RP:-2af138a8-59ea-4a84-aea3-666cafdb1369}"
+BLOCKED_RP="${AUGENMASS_DOCKER_SMOKE_BLOCKED_RP:-blocked-rp-smoke}"
 PLATFORM="${AUGENMASS_DOCKER_PLATFORM:-}"
 BASE="http://127.0.0.1:${PORT}/api"
 BODY="$(mktemp "${TMPDIR:-/tmp}/augenmass-docker-smoke.XXXXXX")"
@@ -29,6 +31,10 @@ if ! command -v curl >/dev/null 2>&1; then
 fi
 if ! command -v awk >/dev/null 2>&1; then
   echo "missing required command: awk" >&2
+  exit 1
+fi
+if ! command -v jq >/dev/null 2>&1; then
+  echo "missing required command: jq" >&2
   exit 1
 fi
 
@@ -59,6 +65,7 @@ run_container() {
     -p "127.0.0.1:${PORT}:${PORT}" \
     -e "PORT=${PORT}" \
     -e "AUGENMASS_CACHE_ADMIN_TOKEN=${ADMIN}" \
+    -e "AUGENMASS_CACHE_ALLOWED_RPS=${RP}" \
     -v "${VOLUME}:/data" \
     "${IMAGE}" >/dev/null
 }
@@ -84,12 +91,13 @@ if ! wait_healthy; then
 fi
 
 echo "container health: $(cat "${BODY}")"
+jq -e '.allowedRpCount == 1' "${BODY}" >/dev/null
 
-uid="$(docker exec "${NAME}" id -u)"
+uid="$(docker exec "${NAME}" sh -c "awk '/^Uid:/ {print \$2}' /proc/1/status")"
 test "${uid}" = "10001"
-echo "container uid: ${uid}"
+echo "container process uid: ${uid}"
 
-docker exec "${NAME}" sh -c 'test -w /data && touch /data/write-smoke'
+docker exec -u 10001:10001 "${NAME}" sh -c 'test -w /data && touch /data/write-smoke'
 echo "container data path: writable"
 
 code="$(curl --max-time 5 -s -o "${BODY}" -w '%{http_code}' "${BASE}/cache/status")"
@@ -105,12 +113,18 @@ test "${code}" = "200"
 test "$(header_value x-augenmass-cache "${HEADERS}")" = "MISS"
 schema_bytes="$(body_bytes "${BODY}")"
 test "${schema_bytes}" -gt 1000
+jq -e . "${BODY}" >/dev/null
 echo "container schema first fetch: MISS, ${schema_bytes} bytes"
 
 code="$(curl --max-time 15 -s -D "${HEADERS}" -o "${BODY}" -w '%{http_code}' "${BASE}/schema-metadata")"
 test "${code}" = "200"
 test "$(header_value x-augenmass-cache "${HEADERS}")" = "HIT"
+jq -e . "${BODY}" >/dev/null
 echo "container schema second fetch: HIT"
+
+code="$(curl --max-time 5 -s -o "${BODY}" -w '%{http_code}' "${BASE}/registration-certificates?rp=${BLOCKED_RP}")"
+test "${code}" = "403"
+echo "container blocked RP read-through: ${code}"
 
 docker stop "${NAME}" >/dev/null
 run_container
@@ -123,6 +137,7 @@ fi
 code="$(curl --max-time 15 -s -D "${HEADERS}" -o "${BODY}" -w '%{http_code}' "${BASE}/schema-metadata")"
 test "${code}" = "200"
 test "$(header_value x-augenmass-cache "${HEADERS}")" = "HIT"
+jq -e . "${BODY}" >/dev/null
 echo "container schema after restart: HIT"
 
 echo "docker smoke passed"

@@ -367,6 +367,14 @@ enum CacheCmd {
         /// Protect /api/cache/status and /api/cache/refresh (env AUGENMASS_CACHE_ADMIN_TOKEN).
         #[arg(long, env = "AUGENMASS_CACHE_ADMIN_TOKEN")]
         admin_token: Option<String>,
+        /// Restrict registration-certificate read-through to these RP ids. Repeatable, or comma-separated via env AUGENMASS_CACHE_ALLOWED_RPS.
+        #[arg(
+            long = "allowed-rp",
+            env = "AUGENMASS_CACHE_ALLOWED_RPS",
+            value_delimiter = ',',
+            default_value = DEFAULT_RP_ID
+        )]
+        allowed_rps: Vec<String>,
     },
     /// Force-refresh the cache server's demo-critical public sandbox routes.
     Warm {
@@ -470,6 +478,7 @@ pub async fn run() -> Result<()> {
                 timeout_secs,
                 max_entries,
                 admin_token,
+                allowed_rps,
             } => {
                 cache::serve(cache::ServeArgs {
                     db,
@@ -480,6 +489,7 @@ pub async fn run() -> Result<()> {
                     timeout_secs,
                     max_entries,
                     admin_token,
+                    allowed_rps,
                 })
                 .await?
             }

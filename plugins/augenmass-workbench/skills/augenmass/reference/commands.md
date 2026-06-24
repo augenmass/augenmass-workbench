@@ -2,6 +2,13 @@
 
 Natural-language intents mapped to exact `augenmass` commands. Every command below was verified against the real binary (`augenmass 0.2.0`). Examples use `$AUGENMASS`, the resolved binary path from the main skill. In a repo checkout, a local debug build is `./target/debug/augenmass`.
 
+Many examples below use committed `fixtures/` and `examples/` paths. Those paths
+exist in a full checkout and in release archives, but not necessarily in a
+marketplace-only plugin install. For plugin-only first runs, prefer no-file
+commands such as `$AUGENMASS baselines`, `$AUGENMASS generate regbody --json |
+$AUGENMASS check -`, and `$AUGENMASS audit --request overask --purpose
+age_gate_18`.
+
 ## Conventions that apply everywhere
 
 Input ergonomics: artifact arguments such as `<INPUT>`, `<BODY>`, and `<REQUEST>` accept a file path, an inline value, or `-` for stdin. So `... check examples/min.json`, `... check '{"rpId":...}'`, and `cat body.json | ... check -` are all equivalent. `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`; `--cert` is a file path.
@@ -217,14 +224,14 @@ These are the explicit live target commands. Writes are dry-run by default.
 | List for a specific RP, from cached-sandbox, or from sandbox. | `$AUGENMASS list --target cached-sandbox --rp <RP>` | Decoded payloads |
 | Run the local registrar-compatible store. | `$AUGENMASS clone serve` | Defaults `--db ./augenmass-clone.sqlite`, `--port 8080` |
 | Run the clone on another port / db file. | `$AUGENMASS clone serve --port <PORT> --db <FILE>` | |
-| Run the read-through cached-sandbox mirror. | `$AUGENMASS cache serve` | Defaults `--db ./augenmass-cache.sqlite`, `--host 127.0.0.1`, `--port 8081`, `--upstream https://sandbox.eudi-wallet.org/api`, `--timeout-secs 10`, `--max-entries 512` |
+| Run the read-through cached-sandbox mirror. | `$AUGENMASS cache serve` | Defaults `--db ./augenmass-cache.sqlite`, `--host 127.0.0.1`, `--port 8081`, `--upstream https://sandbox.eudi-wallet.org/api`, `--timeout-secs 10`, `--max-entries 512`, `--allowed-rp 2af138a8-59ea-4a84-aea3-666cafdb1369` |
 | Prewarm the cached-sandbox mirror. | `$AUGENMASS cache warm --api-base <BASE> --rp <RP> [--timeout-secs 10]` | Add `--admin-token <TOKEN>` if the backend protects refresh endpoints |
 
 `register` defaults: `--target clone`, dry-run unless `--yes`. The guardrails: it refuses with exit 1 on over-ask unless you add `--force`, and it bails on blocking format errors regardless. `--target` accepts `clone`, `cached-sandbox`, or `sandbox`; `cached-sandbox` is read-only and refuses confirmed writes before any network call.
 
 `list` defaults: `--target clone`, `--rp 2af138a8-59ea-4a84-aea3-666cafdb1369`. That id is a demo fixture default, not a production target. One relying party per entity, many certificates: write only under the relying party the user explicitly names and never mint extra relying parties.
 
-Clone vs cached-sandbox vs sandbox: `clone` is a local store (no signing, no auth, no x5c) that stores payload-only JWTs and serves the registrar-compatible endpoints; its base is `AUGENMASS_CLONE_API_BASE` (default `http://127.0.0.1:8080/api`). `cached-sandbox` is a read-only mirror served by `cache serve`; its base is `AUGENMASS_CACHE_API_BASE` (default `http://127.0.0.1:8081/api`) and responses carry cache provenance headers. For deploys, bind it with `--host 0.0.0.0`, keep a persistent `--db`, and set `AUGENMASS_CACHE_ADMIN_TOKEN` so `/api/cache/status` and `/api/cache/refresh` require a bearer token. `sandbox` is the real registrar reached over OAuth; it reads `AUGENMASS_API_BASE` (default `https://sandbox.eudi-wallet.org/api`), `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`, and the optional `AUGENMASS_OIDC_CLIENT_SECRET`. Never log, echo, or commit tokens, certs, or keys.
+Clone vs cached-sandbox vs sandbox: `clone` is a local store (no signing, no auth, no x5c) that stores payload-only JWTs and serves the registrar-compatible endpoints; its base is `AUGENMASS_CLONE_API_BASE` (default `http://127.0.0.1:8080/api`). `cached-sandbox` is a read-only mirror served by `cache serve`; its base is `AUGENMASS_CACHE_API_BASE` (default `http://127.0.0.1:8081/api`) and responses carry cache provenance headers. Registration-certificate read-through is RP-allowlisted: add RPs with `--allowed-rp <id>` or `AUGENMASS_CACHE_ALLOWED_RPS`, and unlisted RP reads return `403` before upstream contact. For deploys, bind it with `--host 0.0.0.0`, keep a persistent `--db`, set `AUGENMASS_CACHE_ADMIN_TOKEN` so `/api/cache/status` and `/api/cache/refresh` require a bearer token, and set `AUGENMASS_CACHE_ALLOWED_RPS` to the RPs you intentionally prewarm. `sandbox` is the real registrar reached over OAuth; it reads `AUGENMASS_API_BASE` (default `https://sandbox.eudi-wallet.org/api`), `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`, and the optional `AUGENMASS_OIDC_CLIENT_SECRET`. Never log, echo, or commit tokens, certs, or keys.
 
 Example:
 

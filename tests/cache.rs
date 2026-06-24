@@ -7,6 +7,7 @@ use std::time::Duration;
 use assert_cmd::Command;
 use augenmass_workbench::cache_server::{router, AppState};
 use axum::extract::{Query, State};
+use axum::http::header::CONTENT_TYPE;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -92,6 +93,21 @@ async fn spawn_chunked_oversize_upstream() -> String {
     format!("http://{addr}/api")
 }
 
+async fn spawn_invalid_json_upstream() -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind invalid-json upstream");
+    let addr = listener.local_addr().unwrap();
+    let app = Router::new().route(
+        "/api/schema-metadata",
+        get(|| async { ([(CONTENT_TYPE, "text/html")], "<html>not json</html>") }),
+    );
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    format!("http://{addr}/api")
+}
+
 async fn spawn_cache(upstream: &str, ttl_secs: u64) -> String {
     spawn_cache_with_admin(upstream, ttl_secs, None).await
 }
@@ -110,17 +126,43 @@ async fn spawn_cache_with_limits(
     admin_token: Option<String>,
     max_entries: usize,
 ) -> String {
+    spawn_cache_with_limits_and_allowed_rps(
+        upstream,
+        ttl_secs,
+        admin_token,
+        max_entries,
+        Vec::new(),
+    )
+    .await
+}
+
+async fn spawn_cache_with_allowed_rps(
+    upstream: &str,
+    ttl_secs: u64,
+    allowed_rps: Vec<String>,
+) -> String {
+    spawn_cache_with_limits_and_allowed_rps(upstream, ttl_secs, None, 512, allowed_rps).await
+}
+
+async fn spawn_cache_with_limits_and_allowed_rps(
+    upstream: &str,
+    ttl_secs: u64,
+    admin_token: Option<String>,
+    max_entries: usize,
+    allowed_rps: Vec<String>,
+) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind cache");
     let addr = listener.local_addr().unwrap();
-    let state = AppState::new_with_limits(
+    let state = AppState::new_with_limits_and_allowed_rps(
         &test_db("augenmass-cache-test"),
         upstream,
         ttl_secs,
         10,
         admin_token,
         max_entries,
+        allowed_rps,
     )
     .expect("cache state");
     let app = router(state);
@@ -260,6 +302,36 @@ async fn schema_metadata_refuses_body_above_cache_cap_without_storing() {
 }
 
 #[tokio::test]
+async fn schema_metadata_refuses_invalid_json_without_storing() {
+    let upstream = spawn_invalid_json_upstream().await;
+    let cache = spawn_cache(&upstream, 3600).await;
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get(format!("{cache}/schema-metadata"))
+        .send()
+        .await
+        .expect("invalid-json cache request");
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let text = response.text().await.expect("invalid-json error text");
+    assert!(text.contains("upstream fetch failed for schema-metadata"));
+    assert!(!text.contains(&upstream));
+
+    let status: Value = client
+        .get(format!("{cache}/cache/status"))
+        .send()
+        .await
+        .expect("cache status")
+        .json()
+        .await
+        .expect("status json");
+    assert_eq!(
+        status["entries"].as_array().expect("entries array").len(),
+        0
+    );
+}
+
+#[tokio::test]
 async fn cache_evicts_oldest_entries_when_limit_is_reached() {
     let upstream_state = upstream_state();
     let upstream = spawn_upstream(upstream_state).await;
@@ -293,6 +365,99 @@ async fn cache_evicts_oldest_entries_when_limit_is_reached() {
     assert!(keys.contains(&"registration-certificates?rp=rp-2"));
     assert!(keys.contains(&"registration-certificates?rp=rp-3"));
     assert!(!keys.contains(&"registration-certificates?rp=rp-1"));
+}
+
+#[tokio::test]
+async fn cache_allowlist_blocks_unlisted_registration_rp_before_upstream() {
+    let upstream_state = upstream_state();
+    let upstream = spawn_upstream(upstream_state.clone()).await;
+    let cache = spawn_cache_with_allowed_rps(&upstream, 3600, vec!["rp-1".to_string()]).await;
+    let client = reqwest::Client::new();
+
+    let allowed = client
+        .get(format!("{cache}/registration-certificates?rp=rp-1"))
+        .send()
+        .await
+        .expect("allowed registration list");
+    assert_eq!(allowed.status(), StatusCode::OK);
+    assert_eq!(cache_header(allowed.headers(), "x-augenmass-cache"), "MISS");
+
+    let blocked = client
+        .get(format!("{cache}/registration-certificates?rp=rp-2"))
+        .send()
+        .await
+        .expect("blocked registration list");
+    assert_eq!(blocked.status(), StatusCode::FORBIDDEN);
+    assert_eq!(upstream_state.registration_hits.load(Ordering::SeqCst), 1);
+
+    let status: Value = client
+        .get(format!("{cache}/cache/status"))
+        .send()
+        .await
+        .expect("cache status")
+        .json()
+        .await
+        .expect("status json");
+    assert_eq!(
+        status["entries"].as_array().expect("entries array").len(),
+        1
+    );
+    assert_eq!(
+        status["entries"][0]["key"],
+        "registration-certificates?rp=rp-1"
+    );
+}
+
+#[tokio::test]
+async fn cache_allowlist_keeps_unlisted_rp_from_evicting_warmed_entries() {
+    let upstream_state = upstream_state();
+    let upstream = spawn_upstream(upstream_state.clone()).await;
+    let cache = spawn_cache_with_limits_and_allowed_rps(
+        &upstream,
+        3600,
+        None,
+        2,
+        vec!["rp-1".to_string(), "rp-2".to_string()],
+    )
+    .await;
+    let client = reqwest::Client::new();
+
+    for rp in ["rp-1", "rp-2"] {
+        let response = client
+            .get(format!("{cache}/registration-certificates?rp={rp}"))
+            .send()
+            .await
+            .expect("allowed registration list");
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    let blocked = client
+        .post(format!(
+            "{cache}/cache/refresh?route=registration-certificates&rp=rp-3"
+        ))
+        .send()
+        .await
+        .expect("blocked refresh");
+    assert_eq!(blocked.status(), StatusCode::FORBIDDEN);
+    assert_eq!(upstream_state.registration_hits.load(Ordering::SeqCst), 2);
+
+    let status: Value = client
+        .get(format!("{cache}/cache/status"))
+        .send()
+        .await
+        .expect("cache status")
+        .json()
+        .await
+        .expect("status json");
+    let keys = status["entries"]
+        .as_array()
+        .expect("entries array")
+        .iter()
+        .map(|entry| entry["key"].as_str().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(keys.len(), 2);
+    assert!(keys.contains(&"registration-certificates?rp=rp-1"));
+    assert!(keys.contains(&"registration-certificates?rp=rp-2"));
 }
 
 #[tokio::test]
@@ -411,6 +576,7 @@ async fn health_stays_public_when_admin_token_is_configured() {
     assert_eq!(health["status"], "ok");
     assert_eq!(health["service"], "augenmass cache");
     assert_eq!(health["maxEntries"], 512);
+    assert_eq!(health["allowedRpCount"], 0);
     assert!(health.get("upstream").is_none());
 }
 

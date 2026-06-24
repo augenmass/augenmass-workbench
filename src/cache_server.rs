@@ -5,6 +5,7 @@
 //! responses with provenance so demos and audits can keep running when the
 //! sandbox drifts or is temporarily unreachable.
 
+use std::collections::BTreeSet;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -46,6 +47,7 @@ pub struct ServeConfig {
     pub timeout_secs: u64,
     pub max_entries: usize,
     pub admin_token: Option<String>,
+    pub allowed_rps: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -56,6 +58,7 @@ pub struct AppState {
     ttl: Duration,
     max_entries: usize,
     admin_token: Option<String>,
+    allowed_rps: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -80,6 +83,8 @@ struct RefreshQuery {
 struct CacheRequest {
     key: String,
     upstream_url: String,
+    endpoint: Endpoint,
+    rp: Option<String>,
 }
 
 #[derive(Debug)]
@@ -128,6 +133,7 @@ pub async fn serve(config: ServeConfig) -> Result<()> {
     let admin_token = normalize_token(config.admin_token.clone());
     require_admin_token_for_public_bind(addr, admin_token.as_deref())?;
     validate_max_entries(config.max_entries)?;
+    let allowed_rps = normalize_allowed_rps(config.allowed_rps)?;
 
     let conn = Connection::open(&config.db_path)
         .with_context(|| format!("open SQLite db {}", config.db_path))?;
@@ -143,6 +149,7 @@ pub async fn serve(config: ServeConfig) -> Result<()> {
         ttl: Duration::from_secs(config.ttl_secs),
         max_entries: config.max_entries,
         admin_token: admin_token.clone(),
+        allowed_rps: allowed_rps.clone(),
     };
 
     let app = router(state);
@@ -154,6 +161,14 @@ pub async fn serve(config: ServeConfig) -> Result<()> {
     println!("ttl: {}s", config.ttl_secs);
     println!("upstream timeout: {}s", config.timeout_secs);
     println!("max entries: {}", config.max_entries);
+    println!(
+        "registration RP read-through: {}",
+        if allowed_rps.is_empty() {
+            "any syntactically valid RP".to_string()
+        } else {
+            allowed_rps.iter().cloned().collect::<Vec<_>>().join(", ")
+        }
+    );
     println!(
         "admin endpoints: {}",
         if admin_token.is_some() {
@@ -224,7 +239,28 @@ impl AppState {
         admin_token: Option<String>,
         max_entries: usize,
     ) -> Result<Self> {
+        Self::new_with_limits_and_allowed_rps(
+            db_path,
+            upstream,
+            ttl_secs,
+            timeout_secs,
+            admin_token,
+            max_entries,
+            Vec::new(),
+        )
+    }
+
+    pub fn new_with_limits_and_allowed_rps(
+        db_path: &str,
+        upstream: &str,
+        ttl_secs: u64,
+        timeout_secs: u64,
+        admin_token: Option<String>,
+        max_entries: usize,
+        allowed_rps: Vec<String>,
+    ) -> Result<Self> {
         validate_max_entries(max_entries)?;
+        let allowed_rps = normalize_allowed_rps(allowed_rps)?;
         let conn =
             Connection::open(db_path).with_context(|| format!("open SQLite db {db_path}"))?;
         init_db(&conn)?;
@@ -238,6 +274,7 @@ impl AppState {
             ttl: Duration::from_secs(ttl_secs),
             max_entries,
             admin_token: normalize_token(admin_token),
+            allowed_rps,
         })
     }
 }
@@ -248,6 +285,7 @@ async fn health(State(state): State<AppState>) -> Json<serde_json::Value> {
         "service": "augenmass cache",
         "ttlSecs": state.ttl.as_secs(),
         "maxEntries": state.max_entries,
+        "allowedRpCount": state.allowed_rps.len(),
     }))
 }
 
@@ -301,6 +339,7 @@ async fn cache_status(
         "upstream": state.upstream,
         "ttlSecs": state.ttl.as_secs(),
         "maxEntries": state.max_entries,
+        "allowedRps": state.allowed_rps.iter().collect::<Vec<_>>(),
         "entries": rows,
     })))
 }
@@ -325,6 +364,10 @@ async fn cache_refresh(
 }
 
 async fn cached_or_fetch(state: &AppState, request: CacheRequest, force: bool) -> Response {
+    if let Err(error) = enforce_allowed_rp(state, &request) {
+        return forbidden(error).into_response();
+    }
+
     let cached = match load_cached(state, &request.key) {
         Ok(cached) => cached,
         Err(error) => return server_error(error).into_response(),
@@ -387,6 +430,8 @@ async fn fetch_and_store(state: &AppState, request: &CacheRequest) -> Result<Cac
             String::from_utf8_lossy(&body)
         );
     }
+    validate_upstream_body(request.endpoint, &body)
+        .with_context(|| format!("validate JSON body from {}", request.upstream_url))?;
 
     let fetched_at = Utc::now();
     let cached = CachedResponse {
@@ -424,6 +469,14 @@ async fn read_response_body_with_cap(
         body.extend_from_slice(&chunk);
     }
     Ok(body)
+}
+
+fn validate_upstream_body(endpoint: Endpoint, body: &[u8]) -> Result<()> {
+    let value: serde_json::Value = serde_json::from_slice(body).context("parse JSON")?;
+    if matches!(endpoint, Endpoint::RegistrationCertificates) && !value.is_array() {
+        anyhow::bail!("registration-certificates response must be a JSON array");
+    }
+    Ok(())
 }
 
 fn init_db(conn: &Connection) -> Result<()> {
@@ -568,6 +621,8 @@ fn request_for(upstream: &str, endpoint: Endpoint, rp: Option<&str>) -> Result<C
     Ok(CacheRequest {
         key,
         upstream_url: url.to_string(),
+        endpoint,
+        rp: rp.map(ToString::to_string),
     })
 }
 
@@ -594,6 +649,35 @@ fn validate_rp(rp: &str) -> Result<()> {
         .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
     {
         anyhow::bail!("rp contains unsupported characters");
+    }
+    Ok(())
+}
+
+fn normalize_allowed_rps(values: Vec<String>) -> Result<BTreeSet<String>> {
+    let mut out = BTreeSet::new();
+    for value in values {
+        for rp in value.split(',').map(str::trim).filter(|rp| !rp.is_empty()) {
+            validate_rp(rp).with_context(|| format!("invalid allowed RP {rp}"))?;
+            out.insert(rp.to_string());
+        }
+    }
+    Ok(out)
+}
+
+fn enforce_allowed_rp(state: &AppState, request: &CacheRequest) -> Result<()> {
+    if !matches!(request.endpoint, Endpoint::RegistrationCertificates)
+        || state.allowed_rps.is_empty()
+    {
+        return Ok(());
+    }
+    let rp = request
+        .rp
+        .as_deref()
+        .context("rp is required for registration-certificates cache access")?;
+    if !state.allowed_rps.contains(rp) {
+        anyhow::bail!(
+            "rp {rp} is not enabled on this cache; ask the operator to prewarm and allow it"
+        );
     }
     Ok(())
 }
@@ -634,6 +718,10 @@ fn insert_header(headers: &mut axum::http::HeaderMap, name: &'static str, value:
 
 fn bad_request(error: anyhow::Error) -> Response {
     (StatusCode::BAD_REQUEST, error.to_string()).into_response()
+}
+
+fn forbidden(error: anyhow::Error) -> Response {
+    (StatusCode::FORBIDDEN, error.to_string()).into_response()
 }
 
 fn server_error(error: anyhow::Error) -> Response {
@@ -746,6 +834,34 @@ mod tests {
         assert!(validate_rp("").is_err());
         assert!(validate_rp(&"a".repeat(MAX_RP_LEN + 1)).is_err());
         assert!(validate_rp("2af138a8-59ea-4a84-aea3-666cafdb1369").is_ok());
+    }
+
+    #[test]
+    fn normalizes_allowed_rps_from_repeated_or_comma_values() {
+        let allowed = normalize_allowed_rps(vec![
+            "rp-2,rp-1".to_string(),
+            " rp-1 ".to_string(),
+            "".to_string(),
+        ])
+        .expect("allowed rps");
+        assert_eq!(
+            allowed.into_iter().collect::<Vec<_>>(),
+            vec!["rp-1".to_string(), "rp-2".to_string()]
+        );
+        assert!(normalize_allowed_rps(vec!["bad rp".to_string()]).is_err());
+    }
+
+    #[test]
+    fn validates_upstream_json_shape_before_cache_store() {
+        assert!(validate_upstream_body(Endpoint::SchemaMetadata, br#"{"ok":true}"#).is_ok());
+        assert!(validate_upstream_body(Endpoint::SchemaVocabularies, br#"[{"id":"v"}]"#).is_ok());
+        assert!(
+            validate_upstream_body(Endpoint::RegistrationCertificates, br#"[{"id":"r"}]"#).is_ok()
+        );
+        assert!(validate_upstream_body(Endpoint::SchemaMetadata, b"<html>").is_err());
+        assert!(
+            validate_upstream_body(Endpoint::RegistrationCertificates, br#"{"id":"r"}"#).is_err()
+        );
     }
 
     #[test]

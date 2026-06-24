@@ -6,7 +6,8 @@ under `plugins/augenmass-workbench/bin`.
 
 ## Current support status
 
-- Source build: supported on platforms with Rust 1.92 or newer.
+- Source build: intended for the native release targets with Rust 1.92 or newer;
+  other Rust platforms are unproven.
 - Plugin bundle in this repository: Claude Code and Codex manifests are present;
   the committed bundled binary is macOS Apple Silicon only because it is a
   Mach-O arm64 executable.
@@ -149,7 +150,8 @@ exports the resulting archives to:
 no-file commands from outside the checkout, so marketplace-style first-run
 behavior is proved without `fixtures/` or `examples/`.
 `shipping-smoke` covers the plugin bundle, the plugin-only first-run path, the
-`serve` runtime smoke, the live cached-sandbox path, and the Docker backend.
+`serve` runtime smoke, the live cached-sandbox path, the public sandbox snapshot,
+and the Docker backend.
 `deployed-cache-smoke` is opt-in for a Railway/VPS cache URL and skips cleanly
 when `AUGENMASS_DEPLOYED_CACHE_API_BASE` is unset.
 `deployed-cache-smoke-required` is the hosted-readiness gate; it fails without

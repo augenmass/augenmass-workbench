@@ -133,6 +133,7 @@ help_has cache serve
 grep -q -- '--admin-token' "${OUT}"
 grep -q -- '--max-entries' "${OUT}"
 grep -q -- '--timeout-secs' "${OUT}"
+grep -q -- '--allowed-rp' "${OUT}"
 
 help_has cache warm
 grep -q -- '--api-base' "${OUT}"

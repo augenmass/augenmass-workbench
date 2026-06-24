@@ -51,6 +51,7 @@ expect_cache_header() {
 require curl
 require awk
 require grep
+require jq
 
 if [ -z "${BASE}" ]; then
   if [ "${REQUIRED}" = "1" ]; then
@@ -82,6 +83,7 @@ schema_cache="$(cache_header)"
 expect_cache_header "${schema_cache}"
 schema_bytes="$(wc -c <"${BODY}" | tr -d ' ')"
 test "${schema_bytes}" -gt 1000
+jq -e . "${BODY}" >/dev/null
 echo "schema fetch: ${schema_cache}, ${schema_bytes} bytes"
 
 AUGENMASS_CACHE_API_BASE="${BASE}" "${BIN}" list --target cached-sandbox --rp "${RP}" >"${LIST_OUT}"
@@ -101,6 +103,7 @@ echo "admin status without token: ${code}"
 code="$(curl --max-time 10 -s -o "${BODY}" -w '%{http_code}' -H "Authorization: Bearer ${ADMIN}" "${BASE}/cache/status")"
 test "${code}" = "200"
 grep -q '"kind":"augenmass-cache-status"' "${BODY}"
+jq -e --arg rp "${RP}" '(.allowedRps // []) as $allowed | ($allowed | length) == 0 or ($allowed | index($rp)) != null' "${BODY}" >/dev/null
 echo "admin status with token: ${code}"
 
 "${BIN}" cache warm --api-base "${BASE}" --admin-token "${ADMIN}" --rp "${RP}" >"${BODY}"

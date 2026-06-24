@@ -63,6 +63,9 @@ It runs:
 - `just plugin-smoke`: checks the Claude Code and Codex plugin metadata, the
   executable bundled binary, the hook, the skill wording for the key command
   surfaces, and a small fixture-backed command sequence.
+- `just plugin-only-smoke`: copies only the plugin bundle to a temporary
+  directory and proves generated/stdin first-run commands without a full checkout
+  or `fixtures/` / `examples/`.
 - `just claude-plugin-smoke`: validates the Claude Code plugin and marketplace
   manifests with `--strict`, installs the plugin from this checkout in a
   temporary `HOME`, and confirms it is enabled.
@@ -76,12 +79,12 @@ It runs:
 - `just live-cache-smoke`: starts `cache serve`, reaches the public sandbox API,
   proves admin-token protection, proves `MISS` then `HIT`, reads the configured
   relying party through `list --target cached-sandbox`, prewarms with
-  `cache warm`, then restarts the cache with a broken upstream and proves stale
-  fallback.
-- `just public-sandbox-snapshot`: optional live-data snapshot for presentation
-  prep. It fetches public sandbox reads without credentials and prints aggregate
-  counts, ETags, latest registrations, and top relying parties without printing
-  JWT/CWT bodies.
+  `cache warm`, proves an unlisted RP is blocked with `403`, then restarts the
+  cache with a broken upstream and proves stale fallback.
+- `just public-sandbox-snapshot`: live-data snapshot for presentation prep. It
+  fetches public sandbox reads without credentials and prints aggregate counts,
+  ETags, latest registrations, and top relying parties without printing JWT/CWT
+  bodies.
 - `just deployed-cache-smoke`: optional hosted-backend proof. It skips when no
   deployed cache URL is configured, or checks a Railway/VPS cache URL with
   health, public cached reads, CLI `cached-sandbox`, and protected admin/warm
@@ -89,6 +92,9 @@ It runs:
 - `just deployed-cache-smoke-required`: hosted-readiness proof. It fails unless
   `AUGENMASS_DEPLOYED_CACHE_API_BASE` points at a deployed cache backend and
   `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` is set.
+- `just live-sandbox-smoke-required`: live sandbox readiness proof. It fails
+  unless sandbox credentials are configured, then runs the non-mutating sandbox
+  rehearsal for the selected relying party.
 - `just docker-smoke`: builds the Docker image locally, runs the cache backend
   container, checks `/api/health`, verifies it runs as uid `10001`, and proves
   admin-token protection.
@@ -97,6 +103,7 @@ Use the smaller gates when you are only touching one surface:
 
 ```sh
 just plugin-smoke
+just plugin-only-smoke
 just claude-plugin-smoke
 just codex-plugin-smoke
 just serve-smoke
@@ -105,6 +112,7 @@ just public-sandbox-snapshot
 just deployed-cache-smoke
 just deployed-cache-smoke-required
 just live-sandbox-smoke
+just live-sandbox-smoke-required
 just docker-smoke
 ```
 

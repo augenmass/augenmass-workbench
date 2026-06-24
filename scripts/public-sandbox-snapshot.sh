@@ -160,7 +160,7 @@ jq -n \
             createdAt,
             id,
             relyingPartyId,
-            purpose: ((.intendedUse.purpose[0].name // "") | tostring)
+            purpose: ((.intendedUse.purpose[0].content // .purpose[0].content // .intendedUse.purpose[0].name // "") | tostring)
           })
       ),
       topRelyingParties: (
@@ -193,7 +193,7 @@ jq -n \
         | map({
             createdAt,
             id,
-            purpose: ((.intendedUse.purpose[0].name // "") | tostring)
+            purpose: ((.intendedUse.purpose[0].content // .purpose[0].content // .intendedUse.purpose[0].name // "") | tostring)
           })
       )
     }

@@ -13,6 +13,7 @@ resolve_bin() {
 
 BIN="$(resolve_bin)"
 RP="${AUGENMASS_SMOKE_RP:-2af138a8-59ea-4a84-aea3-666cafdb1369}"
+BLOCKED_RP="${AUGENMASS_SMOKE_BLOCKED_RP:-blocked-rp-smoke}"
 PORT="${AUGENMASS_SMOKE_PORT:-18983}"
 ADMIN="${AUGENMASS_SMOKE_ADMIN_TOKEN:-local-smoke-token}"
 BASE="http://127.0.0.1:${PORT}/api"
@@ -64,7 +65,7 @@ if [ ! -x "${BIN}" ]; then
   exit 1
 fi
 
-"${BIN}" cache serve --db "${DB}" --port "${PORT}" --admin-token "${ADMIN}" >"${LOG}" 2>&1 &
+"${BIN}" cache serve --db "${DB}" --port "${PORT}" --admin-token "${ADMIN}" --allowed-rp "${RP}" >"${LOG}" 2>&1 &
 PID="$!"
 wait_for_health
 
@@ -94,6 +95,10 @@ AUGENMASS_CACHE_API_BASE="${BASE}" "${BIN}" list --target cached-sandbox --rp "$
 grep -q "registration(s) for RP ${RP} on cached-sandbox" "${BODY}"
 echo "cached-sandbox list: $(sed -n '1p' "${BODY}")"
 
+code="$(curl --max-time 5 -s -o "${BODY}" -w '%{http_code}' "${BASE}/registration-certificates?rp=${BLOCKED_RP}")"
+test "${code}" = "403"
+echo "blocked RP read-through: ${code}"
+
 curl --max-time 5 -fsS -H "Authorization: Bearer ${ADMIN}" "${BASE}/cache/status" >"${BODY}"
 grep -q "schema-metadata" "${BODY}"
 grep -q "registration-certificates" "${BODY}"
@@ -112,6 +117,7 @@ PID=""
   --db "${DB}" \
   --port "${PORT}" \
   --admin-token "${ADMIN}" \
+  --allowed-rp "${RP}" \
   --ttl-secs 0 \
   --timeout-secs 1 \
   --upstream "http://127.0.0.1:9/api" >"${LOG}" 2>&1 &

@@ -143,7 +143,7 @@ For a live-wallet debugging report:
 | Write a registration (dry-run by default) | `$AUGENMASS register <body> --target {clone\|cached-sandbox\|sandbox} [--yes --force]` |
 | Read registrations back for one relying party | `$AUGENMASS list --target {clone\|cached-sandbox\|sandbox} [--rp <id>]` |
 | Run the local registrar-compatible clone store | `$AUGENMASS clone serve [--db --port]` |
-| Run the read-through cached-sandbox mirror | `$AUGENMASS cache serve [--db --host --port --upstream --ttl-secs --timeout-secs --max-entries --admin-token]` |
+| Run the read-through cached-sandbox mirror | `$AUGENMASS cache serve [--db --host --port --upstream --ttl-secs --timeout-secs --max-entries --admin-token --allowed-rp]` |
 | Prewarm the cached-sandbox mirror before a demo | `$AUGENMASS cache warm [--api-base --admin-token --rp --timeout-secs]` |
 
 Artifact inputs accept file paths, inline values, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Commands that render structured output accept `--json`.

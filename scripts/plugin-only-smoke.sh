@@ -73,6 +73,7 @@ grep -q 'DCQL VALID' "${OUT}"
 
 "${BIN}" cache serve --help >"${OUT}"
 grep -q -- '--max-entries' "${OUT}"
+grep -q -- '--allowed-rp' "${OUT}"
 
 "${BIN}" serve --help >"${OUT}"
 grep -q -- '--unsafe-debug-artifacts' "${OUT}"

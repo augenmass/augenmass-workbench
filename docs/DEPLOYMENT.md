@@ -28,6 +28,12 @@ The cache stores public sandbox responses only. It still deserves a persistent
 database and an admin token because refresh and status expose operational
 control.
 
+Registration-certificate read-through is RP-allowlisted. The CLI defaults to the
+demo RP (`2af138a8-59ea-4a84-aea3-666cafdb1369`); add more with
+`AUGENMASS_CACHE_ALLOWED_RPS` or repeated `--allowed-rp <id>`. Unlisted RP reads
+and refreshes return `403` before the upstream is contacted, which protects
+prewarmed demo entries from public cache churn.
+
 Upstream response bodies are capped at 5 MiB while they are being read. If an
 upstream crosses that cap, the refresh is refused before the full body is
 downloaded; existing stale cache entries can still be served.
@@ -46,6 +52,7 @@ The server can be configured with flags or environment variables.
 | Upstream timeout | `AUGENMASS_CACHE_TIMEOUT_SECS` | `10` |
 | Max cached entries | `AUGENMASS_CACHE_MAX_ENTRIES` | `512` |
 | Admin token | `AUGENMASS_CACHE_ADMIN_TOKEN` | unset for loopback; required for non-loopback binds |
+| Allowed registration RPs | `AUGENMASS_CACHE_ALLOWED_RPS` | `2af138a8-59ea-4a84-aea3-666cafdb1369` |
 
 Local run:
 
@@ -57,6 +64,7 @@ Public or platform run:
 
 ```sh
 AUGENMASS_CACHE_ADMIN_TOKEN=<token> \
+AUGENMASS_CACHE_ALLOWED_RPS=2af138a8-59ea-4a84-aea3-666cafdb1369 \
 augenmass cache serve --host 0.0.0.0 --port ${PORT:-8081} --db /data/augenmass-cache.sqlite
 ```
 
@@ -116,7 +124,12 @@ AUGENMASS_CACHE_MAX_ENTRIES=512
 AUGENMASS_CACHE_TTL_SECS=3600
 AUGENMASS_CACHE_TIMEOUT_SECS=10
 AUGENMASS_CACHE_UPSTREAM=https://sandbox.eudi-wallet.org/api
+AUGENMASS_CACHE_ALLOWED_RPS=2af138a8-59ea-4a84-aea3-666cafdb1369
 ```
+
+Do not set `AUGENMASS_CACHE_PORT` on Railway; let Railway inject `PORT` and let
+the CLI use that value. `.env.example` is for local development and includes a
+fixed cache port, so do not copy it wholesale into Railway variables.
 
 `AUGENMASS_CACHE_ADMIN_TOKEN` is mandatory for this Railway shape. Without it,
 the server refuses the non-loopback bind and the health check fails. That is
@@ -125,11 +138,11 @@ intentional: do not make public refresh/status unauthenticated.
 Attach a persistent volume at `/data`. Without a volume, the service still runs,
 but the cache is rebuilt after each redeploy.
 
-The Docker image runs as uid `10001`. If the Railway volume is not writable by
-that user, fix the volume ownership during provisioning or with a one-time
-platform init step before routing public traffic. Do not remove the admin token
-to work around a volume problem; a public bind without
-`AUGENMASS_CACHE_ADMIN_TOKEN` is intentionally refused at startup.
+The Docker image entrypoint prepares the configured database directory, fixes its
+ownership for uid `10001`, then starts the server as uid `10001`. Do not remove
+the admin token to work around a volume problem; a public bind without
+`AUGENMASS_CACHE_ADMIN_TOKEN` is intentionally refused at startup. The local
+`docker-smoke` gate verifies the server process uid and `/data` writability.
 
 Railway references:
 
@@ -150,6 +163,7 @@ docker run --rm \
   -p 8081:8081 \
   -v "$PWD/data:/data" \
   -e AUGENMASS_CACHE_ADMIN_TOKEN=<secret> \
+  -e AUGENMASS_CACHE_ALLOWED_RPS=2af138a8-59ea-4a84-aea3-666cafdb1369 \
   augenmass-cache
 ```
 
@@ -166,9 +180,11 @@ just docker-smoke
 That builds the Docker image, runs the cache backend, checks `/api/health`, checks
 that the process runs as the non-root uid `10001`, verifies that cache status
 requires the admin token, then fetches `schema-metadata` through the container
-and proves the first response is a `MISS` and the second is a `HIT`. It then
-restarts the container against the same Docker volume and proves the cached
-schema is still a `HIT`, so `/data` persistence is exercised locally.
+and proves the first response is a `MISS` and the second is a `HIT`. The smoke
+also starts the container with the demo RP allowlisted and proves an unlisted RP
+read returns `403`. It then restarts the container against the same Docker
+volume and proves the cached schema is still a `HIT`, so `/data` persistence is
+exercised locally.
 
 Live cache proof:
 
@@ -179,8 +195,9 @@ just live-cache-smoke
 That starts a local cache server with an admin token, fetches public sandbox
 data, proves `MISS` and `HIT`, reads registrations through
 `list --target cached-sandbox`, runs `cache warm` through the protected refresh
-API, validates warmed JSON shape, then proves stale fallback with an
-intentionally broken upstream. It uses no sandbox credentials.
+API, validates warmed JSON shape, proves an unlisted RP is blocked with `403`,
+then proves stale fallback with an intentionally broken upstream. It uses no
+sandbox credentials.
 
 Deployed cache proof, once Railway or a VPS URL exists:
 
@@ -194,10 +211,15 @@ Without `AUGENMASS_DEPLOYED_CACHE_API_BASE`, the deployed smoke exits cleanly so
 local release gates do not depend on a hosted service. With only the API base,
 `just deployed-cache-smoke` checks health, public cached reads, and the CLI
 `cached-sandbox` path. With the admin token, it also proves `/cache/status` is
-protected, verifies authenticated status access, runs `cache warm`, and confirms
-warmed entries are visible. Use `just deployed-cache-smoke-required` for hosted
-readiness; required mode fails unless both `AUGENMASS_DEPLOYED_CACHE_API_BASE`
-and `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` are set.
+protected, verifies authenticated status access, checks any configured allowlist
+includes the RP under test, runs `cache warm`, and confirms warmed entries are
+visible. Use `just deployed-cache-smoke-required` for current
+hosted-deployment readiness; required mode fails unless both
+`AUGENMASS_DEPLOYED_CACHE_API_BASE` and `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN`
+are set. To prove persistence across a hosted restart or redeploy, warm the
+cache, restart/redeploy the service on the platform, then rerun
+`just deployed-cache-smoke-required` and confirm the warmed entries remain
+visible or return as cache hits.
 
 ## Fly.io and Render
 
