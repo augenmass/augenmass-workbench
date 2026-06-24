@@ -255,6 +255,17 @@ targets are not installed on this machine, so native Linux and Windows execution
 remain unproven here. Both Docker runtime smokes passed locally, including
 non-root uid `10001`, writable `/data`, admin-token protection, cache
 `MISS`/`HIT`, RP allowlist blocking, and persistence across container restart.
+An explicit `linux/amd64` Docker runtime smoke also passed locally on
+2026-06-24:
+
+```sh
+just docker-smoke-amd64
+```
+
+That proves the cache backend container can build and run as Linux amd64 under
+the local Docker environment. It does not prove the separate Linux amd64 release
+archive export; keep that caveat until `just docker-release-archive-smoke-amd64`
+finishes.
 
 ## Presentation-safe surfaces
 
