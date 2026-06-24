@@ -418,12 +418,22 @@ Proven:
 - Linux amd64 release archive built inside Docker, extracted inside Linux, and
   run against packaged docs, examples, and fixtures, with clean git provenance in
   the manifest.
+- Native Blacksmith debug builds on Linux x64, Windows x64, and macOS arm64.
+  The pushed workflow `Blacksmith Smoke` ran manually on commit `812248e` with
+  `scope=debug-build` and passed as run `28100757840`: macOS arm64 completed in
+  `59s`, Linux x64 in `1m27s`, and Windows x64 in `2m19s`. This proves the
+  Blacksmith org integration, runner labels, Rust toolchain install, and native
+  workspace compilation on all three OS families without enabling push or PR
+  triggers.
 
 Not yet fully proven:
 
 - Native Windows execution on Windows. The zip package layout is locally
-  smoke-tested, but the Windows binary itself still needs Windows.
-- Native Linux release archive outside Docker or a native Linux host runner.
+  smoke-tested, and Windows now compiles natively on Blacksmith, but the
+  packaged Windows binary still needs an execution smoke.
+- Native Linux release archive outside Docker or a native Linux host runner. The
+  workspace now compiles natively on Blacksmith Linux, but the release archive
+  smoke remains Docker-proven only.
 - Multi-platform plugin bundle; non-macOS-ARM agent users should set
   `AUGENMASS_BIN` to a native CLI binary.
 
