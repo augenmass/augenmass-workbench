@@ -147,11 +147,10 @@ code="$(curl --max-time 10 -s -o "${BODY}" -w '%{http_code}' "${BASE}/cache/stat
 test "${code}" = "401"
 echo "admin status without token: ${code}"
 
-code="$(curl --max-time 10 -s -o "${BODY}" -w '%{http_code}' -H "Authorization: Bearer ${ADMIN}" "${BASE}/cache/status")"
-test "${code}" = "200"
-grep -q '"kind":"augenmass-cache-status"' "${BODY}"
+"${BIN}" --json cache status --api-base "${BASE}" --admin-token "${ADMIN}" >"${BODY}"
+jq -e '.kind == "augenmass-cache-status"' "${BODY}" >/dev/null
 jq -e --arg rp "${RP}" '(.allowedRps // []) | index($rp) != null' "${BODY}" >/dev/null
-echo "admin status with token: ${code}"
+echo "admin status with token: CLI"
 
 if [ "${BLOCKED_RP}" = "${RP}" ]; then
   echo "AUGENMASS_DEPLOYED_CACHE_BLOCKED_RP must differ from AUGENMASS_DEPLOYED_CACHE_RP" >&2
@@ -167,8 +166,9 @@ grep -q "schema-metadata/vocabularies" "${BODY}"
 grep -q "registration-certificates?rp=${RP}" "${BODY}"
 echo "cache warm: $(sed -n '1p' "${BODY}")"
 
-curl --max-time 10 -fsS -H "Authorization: Bearer ${ADMIN}" "${BASE}/cache/status" >"${BODY}"
-grep -q "schema-metadata" "${BODY}"
-grep -q "registration-certificates" "${BODY}"
+"${BIN}" --json cache status --api-base "${BASE}" --admin-token "${ADMIN}" >"${BODY}"
+jq -e '.entries | map(.key) | index("schema-metadata") != null' "${BODY}" >/dev/null
+jq -e --arg key "registration-certificates?rp=${RP}" \
+  '.entries | map(.key) | index($key) != null' "${BODY}" >/dev/null
 
 echo "deployed cache smoke passed"
