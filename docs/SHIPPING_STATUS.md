@@ -239,6 +239,23 @@ release archives. The plugin smokes assert that the plugin-local phone proof
 reference is present and contains the `--unsafe-debug-artifacts` /
 `evidence assert-live` path.
 
+Latest platform/runtime refresh on 2026-06-24 passed:
+
+```sh
+just install-smoke
+just platform-smoke
+just docker-smoke
+just docker-smoke-arm64
+```
+
+`platform-smoke` passed for `aarch64-apple-darwin` and
+`x86_64-apple-darwin`. It skipped `x86_64-unknown-linux-gnu`,
+`aarch64-unknown-linux-gnu`, and `x86_64-pc-windows-msvc` because those Rust
+targets are not installed on this machine, so native Linux and Windows execution
+remain unproven here. Both Docker runtime smokes passed locally, including
+non-root uid `10001`, writable `/data`, admin-token protection, cache
+`MISS`/`HIT`, RP allowlist blocking, and persistence across container restart.
+
 ## Presentation-safe surfaces
 
 These are good to show on stage or in a recording:
