@@ -28,10 +28,12 @@ cp -R "${SOURCE}" "${TMP}/augenmass-workbench"
 PLUGIN_ROOT="${TMP}/augenmass-workbench"
 BIN="${PLUGIN_ROOT}/bin/augenmass"
 SKILL="${PLUGIN_ROOT}/skills/augenmass/SKILL.md"
+ASK_REF="${PLUGIN_ROOT}/skills/augenmass/reference/ask-it-like-this.md"
+EXPLAINER_REF="${PLUGIN_ROOT}/skills/augenmass/reference/explainer.md"
 RUN_DIR="${TMP}/no-checkout"
 mkdir -p "${RUN_DIR}"
 
-for path in "${BIN}" "${SKILL}" "${PLUGIN_ROOT}/.claude-plugin/plugin.json" "${PLUGIN_ROOT}/.codex-plugin/plugin.json"; do
+for path in "${BIN}" "${SKILL}" "${ASK_REF}" "${EXPLAINER_REF}" "${PLUGIN_ROOT}/.claude-plugin/plugin.json" "${PLUGIN_ROOT}/.codex-plugin/plugin.json"; do
   if [ ! -e "${path}" ]; then
     echo "plugin-only copy is missing: ${path}" >&2
     exit 1
@@ -79,5 +81,7 @@ grep -q -- '--allowed-rp' "${OUT}"
 grep -q -- '--unsafe-debug-artifacts' "${OUT}"
 
 grep -q 'Do not assume those files exist' "${SKILL}"
+grep -q 'Non-Technical Answer Example' "${ASK_REF}"
+grep -q 'Plain-Language Rule' "${EXPLAINER_REF}"
 
 echo "plugin-only smoke passed"

@@ -18,7 +18,9 @@ description: >-
   registrar, over-ask, data minimisation, DCQL, OpenID4VP, OpenID4VCI,
   credential offer, authorization request, JAR, x5c, x509_hash, status list,
   trust anchor, PID, sandbox, wallet debugger, verifier-in-a-box, serve,
-  evidence replay, audit bundle.
+  evidence replay, audit bundle, asks for too much data, proof of age, date of
+  birth, minimum disclosure, privacy review, plain-language explanation, is this
+  necessary, explain this for an auditor.
 ---
 
 # Augenmaß Workbench
@@ -35,6 +37,14 @@ Resolve the binary once before running commands:
 4. Use a bare `augenmass` only when the agent session or shell has a compatible binary on PATH.
 
 For the rest of this skill, call the resolved path `$AUGENMASS`. That is a convention for the agent's own reasoning and examples, not a variable the user has to set. Do not lead with shell commands unless the user asks for them or needs a reproducible hook; lead with the answer, the evidence, the caveat, and the fix.
+
+If no compatible binary is available, do not pretend the skill can run checks.
+Say the platform caveat plainly. On macOS Apple Silicon, the bundled plugin
+binary should work. On Linux, Windows, or Intel macOS, ask the user to install a
+native release archive or build once with `cargo build --release --locked`, then
+set `AUGENMASS_BIN` to the resulting `augenmass` or `augenmass.exe`. Keep the
+answer useful while blocked: explain what you can infer from the artifact shape,
+but mark anything not actually run as unverified.
 
 ## How to think about it
 
@@ -106,6 +116,12 @@ For a non-technical reviewer:
 - Say what the relying party is trying to do, what extra information it asks for, why that is unnecessary, and the safer replacement.
 - Use one or two examples, then offer to produce the fixed body or a short review note.
 
+Good first answer shape:
+
+- "This is an age check, but the request asks for identity details too. The safer version asks only whether the person is over 18."
+- "The extra fields are not needed for the stated purpose. They create tracking and breach risk without helping the check."
+- "The fix is to ask for `age_equal_or_over.18` and remove birthdate, name, address, and nationality."
+
 For a live-wallet debugging report:
 
 - Treat the trace as sensitive even when redacted.
@@ -143,7 +159,7 @@ For a live-wallet debugging report:
 | Write a registration (dry-run by default) | `$AUGENMASS register <body> --target {clone\|cached-sandbox\|sandbox} [--yes --force]` |
 | Read registrations back for one relying party | `$AUGENMASS list --target {clone\|cached-sandbox\|sandbox} [--rp <id>]` |
 | Run the local registrar-compatible clone store | `$AUGENMASS clone serve [--db --port]` |
-| Run the read-through cached-sandbox mirror | `$AUGENMASS cache serve [--db --host --port --upstream --ttl-secs --timeout-secs --max-entries --admin-token --allowed-rp]` |
+| Run the read-through cached-sandbox mirror | `$AUGENMASS cache serve [--db --host --port --upstream --ttl-secs --timeout-secs --max-entries --admin-token --allowed-rp --allow-any-rp --unsafe-upstream]` |
 | Prewarm the cached-sandbox mirror before a demo | `$AUGENMASS cache warm [--api-base --admin-token --rp --timeout-secs]` |
 
 Artifact inputs accept file paths, inline values, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Commands that render structured output accept `--json`.
@@ -162,3 +178,5 @@ The read-only commands exit non-zero on the bad outcome so they slot into CI: `c
 - `reference/commands.md`: full command reference, flags, and worked examples.
 - `reference/gotchas.md`: the registrar and JAR traps this tool catches, and ecosystem pitfalls.
 - `reference/use-cases.md`: end-to-end workflows (audit over-ask, fix a registration, verify a presentation, diagnose a JAR).
+- `reference/ask-it-like-this.md`: plain-language prompts for developers, auditors, live demos, and non-technical reviewers.
+- `reference/explainer.md`: the non-technical explanation of over-ask, why it matters, and who the tool helps.

@@ -6,6 +6,8 @@ BIN="${PLUGIN_ROOT}/bin/augenmass"
 SKILL="${PLUGIN_ROOT}/skills/augenmass/SKILL.md"
 PLUGIN_JSON="${PLUGIN_ROOT}/.claude-plugin/plugin.json"
 CODEX_PLUGIN_JSON="${PLUGIN_ROOT}/.codex-plugin/plugin.json"
+ASK_REF="${PLUGIN_ROOT}/skills/augenmass/reference/ask-it-like-this.md"
+EXPLAINER_REF="${PLUGIN_ROOT}/skills/augenmass/reference/explainer.md"
 MARKETPLACE_JSON="${AUGENMASS_MARKETPLACE_JSON:-marketplace.json}"
 OUT="$(mktemp "${TMPDIR:-/tmp}/augenmass-plugin-smoke.XXXXXX")"
 EVIDENCE_SOURCE=""
@@ -48,7 +50,7 @@ len_file() {
   wc -c <"$1" | tr -d '[:space:]'
 }
 
-for path in "${BIN}" "${SKILL}" "${PLUGIN_JSON}" "${CODEX_PLUGIN_JSON}" "${MARKETPLACE_JSON}"; do
+for path in "${BIN}" "${SKILL}" "${PLUGIN_JSON}" "${CODEX_PLUGIN_JSON}" "${ASK_REF}" "${EXPLAINER_REF}" "${MARKETPLACE_JSON}"; do
   if [ ! -e "${path}" ]; then
     echo "missing plugin file: ${path}" >&2
     exit 1
@@ -64,6 +66,8 @@ grep -q '"name": "augenmass-workbench"' "${PLUGIN_JSON}"
 grep -q '"name": "augenmass-workbench"' "${CODEX_PLUGIN_JSON}"
 grep -q '"skills": "./skills/"' "${CODEX_PLUGIN_JSON}"
 grep -q '"displayName": "Augenmaß Workbench"' "${CODEX_PLUGIN_JSON}"
+grep -q 'developers, auditors, privacy reviewers' "${CODEX_PLUGIN_JSON}"
+grep -q 'Explain whether this age-check registration asks for too much data' "${CODEX_PLUGIN_JSON}"
 grep -q '"name": "augenmass"' "${MARKETPLACE_JSON}"
 grep -q '"path": "./plugins/augenmass-workbench"' "${MARKETPLACE_JSON}"
 grep -q 'AUGENMASS_BIN' "${SKILL}"
@@ -73,6 +77,11 @@ grep -q 'Prewarm the cached-sandbox mirror before a demo' "${SKILL}"
 grep -q 'Debug a live wallet interaction' "${SKILL}"
 grep -q 'Response contracts' "${SKILL}"
 grep -q 'evidence replay' "${SKILL}"
+grep -q 'asks for too much data' "${SKILL}"
+grep -q 'reference/ask-it-like-this.md' "${SKILL}"
+grep -q 'reference/explainer.md' "${SKILL}"
+grep -q 'What should an age-check service ask for' "${ASK_REF}"
+grep -q 'Developers use it before registering a relying party' "${EXPLAINER_REF}"
 
 CARGO_VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
 PLUGIN_VERSION="$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' "${PLUGIN_JSON}" | head -n 1)"
