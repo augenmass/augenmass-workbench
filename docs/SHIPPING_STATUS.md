@@ -276,17 +276,19 @@ provenance.
 Latest hosted-cache deployment proof on 2026-06-24:
 
 ```sh
-AUGENMASS_DEPLOYED_CACHE_API_BASE=https://cache-production-c33f.up.railway.app/api \
+AUGENMASS_DEPLOYED_CACHE_API_BASE=https://cache.augenmass.tech/api \
 AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN=<token> \
   just deployed-cache-smoke-required
 ```
 
 Railway project `augenmass-workbench-cache`, service `cache`, deployed
 successfully with a `/data` volume, non-loopback bind, admin token, demo RP
-allowlist, and the public sandbox upstream. The hosted smoke passed twice: first
-with a schema `MISS`, then with a schema `HIT`. `cache status` showed three
-warmed entries for schema metadata, schema vocabularies, and the configured demo
-RP registration list. The admin token is set in Railway and is not committed.
+allowlist, the public sandbox upstream, and custom domain
+`https://cache.augenmass.tech`. DNS is propagated and the Railway certificate is
+valid. The hosted smoke passed twice: first with a schema `MISS`, then with a
+schema `HIT`. `cache status` showed three warmed entries for schema metadata,
+schema vocabularies, and the configured demo RP registration list. The admin
+token is set in Railway and is not committed.
 
 ## Presentation-safe surfaces
 
@@ -373,7 +375,7 @@ The Docker image has the right shape for Railway:
 The current hosted cache is:
 
 ```sh
-AUGENMASS_CACHE_API_BASE=https://cache-production-c33f.up.railway.app/api
+AUGENMASS_CACHE_API_BASE=https://cache.augenmass.tech/api
 ```
 
 Use the Railway admin token only for `cache warm`, `cache status`, and required
@@ -389,7 +391,7 @@ release. Vercel still needs a function-shaped adapter and storage decision.
 To revalidate the hosted cache locally:
 
 ```sh
-AUGENMASS_DEPLOYED_CACHE_API_BASE=https://cache-production-c33f.up.railway.app/api \
+AUGENMASS_DEPLOYED_CACHE_API_BASE=https://cache.augenmass.tech/api \
 AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN=<token> \
   just deployed-cache-smoke-required
 ```

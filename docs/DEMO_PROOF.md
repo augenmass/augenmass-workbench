@@ -100,7 +100,7 @@ It runs:
   health, public cached reads, CLI `cached-sandbox`, and protected admin/warm
   checks when `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` is set.
 - Current Railway presentation cache:
-  `https://cache-production-c33f.up.railway.app/api`. On 2026-06-24,
+  `https://cache.augenmass.tech/api`. On 2026-06-24,
   `just deployed-cache-smoke-required` passed against it with the Railway admin
   token, then passed again with `schema fetch: HIT`.
 - `just deployed-cache-guard-smoke`: no-network local guard proving required

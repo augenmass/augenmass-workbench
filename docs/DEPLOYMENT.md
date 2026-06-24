@@ -177,8 +177,9 @@ The presentation cache backend is deployed on Railway:
 
 - Project: `augenmass-workbench-cache`
 - Service: `cache`
-- Domain: `https://cache-production-c33f.up.railway.app`
-- API base: `https://cache-production-c33f.up.railway.app/api`
+- Domain: `https://cache.augenmass.tech`
+- Railway fallback domain: `https://cache-production-c33f.up.railway.app`
+- API base: `https://cache.augenmass.tech/api`
 - Volume: mounted at `/data`
 
 The service uses the demo RP allowlist
@@ -189,7 +190,7 @@ set in Railway and is not committed to this repository.
 On 2026-06-24, the hosted proof passed:
 
 ```sh
-AUGENMASS_DEPLOYED_CACHE_API_BASE=https://cache-production-c33f.up.railway.app/api \
+AUGENMASS_DEPLOYED_CACHE_API_BASE=https://cache.augenmass.tech/api \
 AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN=<token> \
   just deployed-cache-smoke-required
 ```
@@ -198,7 +199,9 @@ That proof checked health, public cached reads, the CLI `cached-sandbox` path,
 admin status protection, authenticated status access, RP allowlist blocking, and
 authenticated cache warming. A second run returned `schema fetch: HIT`.
 `cache status` showed three warmed entries: schema metadata, schema
-vocabularies, and the configured demo RP registration list.
+vocabularies, and the configured demo RP registration list. The custom domain
+had propagated DNS and a valid Railway certificate before the hosted proof was
+run against it.
 
 ## Docker or VPS
 
