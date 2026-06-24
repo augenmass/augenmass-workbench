@@ -18,6 +18,12 @@ esac
 SAFE_PLATFORM="${PLATFORM//\//-}"
 OUT="${AUGENMASS_DOCKER_RELEASE_ARCHIVE_OUT:-dist/docker-release-archive-smoke/${SAFE_PLATFORM}}"
 OUT_TMP="${OUT}.tmp.$$"
+GIT_COMMIT="$(git rev-parse HEAD 2>/dev/null || printf unknown)"
+if git diff --quiet --ignore-submodules -- 2>/dev/null && git diff --cached --quiet --ignore-submodules -- 2>/dev/null; then
+  GIT_DIRTY=false
+else
+  GIT_DIRTY=true
+fi
 
 hash_file() {
   if command -v shasum >/dev/null 2>&1; then
@@ -47,6 +53,8 @@ BUILD_ARGS=(
   --platform "${PLATFORM}"
   --target release-archive-export
   --output "type=local,dest=${OUT_TMP}"
+  --build-arg "AUGENMASS_RELEASE_GIT_COMMIT=${GIT_COMMIT}"
+  --build-arg "AUGENMASS_RELEASE_GIT_DIRTY=${GIT_DIRTY}"
 )
 
 if [ "${AUGENMASS_DOCKER_NO_CACHE:-0}" = "1" ]; then
@@ -85,6 +93,8 @@ fi
 grep -Fq '"schema": "augenmass-release-manifest-v1"' "${archives[0]}.manifest.json"
 grep -Fq "\"archive\": \"$(basename "${archives[0]}")\"" "${archives[0]}.manifest.json"
 grep -Fq "\"archiveSha256\": \"${archive_sha}\"" "${archives[0]}.manifest.json"
+grep -Fq "\"gitCommit\": \"${GIT_COMMIT}\"" "${archives[0]}.manifest.json"
+grep -Fq "\"gitDirty\": ${GIT_DIRTY}" "${archives[0]}.manifest.json"
 
 rm -rf "${OUT}"
 mv "${OUT_TMP}" "${OUT}"

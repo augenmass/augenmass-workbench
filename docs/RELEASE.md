@@ -177,7 +177,7 @@ exports the resulting archives to:
 The exported Docker archive directories include the matching `.sha256` and
 `.manifest.json` sidecars. The export is atomic: the script builds into a temp
 directory, requires the archive and both sidecars, verifies the checksum and
-manifest, and then replaces the public
+manifest, including the host-passed git commit and dirty flag, and then replaces the public
 `dist/docker-release-archive-smoke/<platform>` folder. The executable smoke runs
 inside the matching Linux container before export.
 

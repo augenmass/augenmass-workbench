@@ -5,9 +5,13 @@ COPY . .
 RUN cargo build --release --locked
 
 FROM build AS release-archive
+ARG AUGENMASS_RELEASE_GIT_COMMIT=unknown
+ARG AUGENMASS_RELEASE_GIT_DIRTY=true
 RUN set -eux; \
     target="$(rustc -vV | sed -n 's/^host: //p')"; \
-    ./scripts/package-release-archive.sh "${target}" target/release/augenmass tar.gz /dist
+    AUGENMASS_RELEASE_GIT_COMMIT="${AUGENMASS_RELEASE_GIT_COMMIT}" \
+    AUGENMASS_RELEASE_GIT_DIRTY="${AUGENMASS_RELEASE_GIT_DIRTY}" \
+      ./scripts/package-release-archive.sh "${target}" target/release/augenmass tar.gz /dist
 
 FROM debian:bookworm-slim AS release-archive-smoke
 RUN apt-get update \

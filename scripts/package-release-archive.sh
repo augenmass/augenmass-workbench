@@ -90,8 +90,18 @@ BINARY_SHA256="$(hash_file "${BINARY}")"
 RUSTC_VERSION="$(rustc -V)"
 RUSTC_HOST="$(rustc -vV | sed -n 's/^host: //p')"
 BINARY_ACTUAL_HOST="${AUGENMASS_RELEASE_BINARY_ACTUAL_HOST:-${RUSTC_HOST}}"
-GIT_COMMIT="$(git rev-parse HEAD 2>/dev/null || printf unknown)"
-if git diff --quiet --ignore-submodules -- 2>/dev/null && git diff --cached --quiet --ignore-submodules -- 2>/dev/null; then
+GIT_COMMIT="${AUGENMASS_RELEASE_GIT_COMMIT:-$(git rev-parse HEAD 2>/dev/null || printf unknown)}"
+if [ -n "${AUGENMASS_RELEASE_GIT_DIRTY:-}" ]; then
+  case "${AUGENMASS_RELEASE_GIT_DIRTY}" in
+    true | false)
+      GIT_DIRTY="${AUGENMASS_RELEASE_GIT_DIRTY}"
+      ;;
+    *)
+      echo "AUGENMASS_RELEASE_GIT_DIRTY must be true or false" >&2
+      exit 1
+      ;;
+  esac
+elif git diff --quiet --ignore-submodules -- 2>/dev/null && git diff --cached --quiet --ignore-submodules -- 2>/dev/null; then
   GIT_DIRTY=false
 else
   GIT_DIRTY=true
