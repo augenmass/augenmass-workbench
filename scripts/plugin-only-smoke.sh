@@ -31,10 +31,11 @@ SKILL="${PLUGIN_ROOT}/skills/augenmass/SKILL.md"
 OPENAI_AGENT="${PLUGIN_ROOT}/skills/augenmass/agents/openai.yaml"
 ASK_REF="${PLUGIN_ROOT}/skills/augenmass/reference/ask-it-like-this.md"
 EXPLAINER_REF="${PLUGIN_ROOT}/skills/augenmass/reference/explainer.md"
+PHONE_REF="${PLUGIN_ROOT}/skills/augenmass/reference/phone-wallet-proof.md"
 RUN_DIR="${TMP}/no-checkout"
 mkdir -p "${RUN_DIR}"
 
-for path in "${BIN}" "${SKILL}" "${OPENAI_AGENT}" "${ASK_REF}" "${EXPLAINER_REF}" "${PLUGIN_ROOT}/.claude-plugin/plugin.json" "${PLUGIN_ROOT}/.codex-plugin/plugin.json"; do
+for path in "${BIN}" "${SKILL}" "${OPENAI_AGENT}" "${ASK_REF}" "${EXPLAINER_REF}" "${PHONE_REF}" "${PLUGIN_ROOT}/.claude-plugin/plugin.json" "${PLUGIN_ROOT}/.codex-plugin/plugin.json"; do
   if [ ! -e "${path}" ]; then
     echo "plugin-only copy is missing: ${path}" >&2
     exit 1
@@ -89,5 +90,8 @@ grep -q 'Do not assume those files exist' "${SKILL}"
 grep -q 'Use \$augenmass to show the purpose baselines' "${OPENAI_AGENT}"
 grep -q 'Non-Technical Answer Example' "${ASK_REF}"
 grep -q 'Plain-Language Rule' "${EXPLAINER_REF}"
+grep -q 'Phone wallet proof checklist' "${PHONE_REF}"
+grep -q 'evidence assert-live' "${PHONE_REF}"
+grep -q -- '--unsafe-debug-artifacts' "${PHONE_REF}"
 
 echo "plugin-only smoke passed"

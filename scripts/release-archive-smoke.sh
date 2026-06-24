@@ -187,6 +187,9 @@ fi
   test -f docs/INSTALL.md
   test -f docs/RELEASE.md
   test -f docs/COMMANDS.md
+  test -f docs/PHONE_WALLET_PROOF.md
+  grep -q 'evidence assert-live' docs/PHONE_WALLET_PROOF.md
+  grep -q -- '--unsafe-debug-artifacts' docs/PHONE_WALLET_PROOF.md
   test -f examples/min.json
   test -f examples/over.json
   test -f fixtures/requests/eudiplo-request.jwt

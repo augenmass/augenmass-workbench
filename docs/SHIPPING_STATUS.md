@@ -221,6 +221,24 @@ not configured, and ran `just deployed-cache-smoke`, which skipped because
 `AUGENMASS_DEPLOYED_CACHE_API_BASE` is not configured. Treat live sandbox and
 hosted cache readiness as unproven until their required gates pass.
 
+Latest distribution pass on 2026-06-24 added a plugin-local
+`reference/phone-wallet-proof.md` copy so marketplace/plugin-only installs have
+the same phone proof checklist even without the root `docs/` directory. It
+passed:
+
+```sh
+git diff --check
+just plugin-smoke
+just plugin-only-smoke
+just release-archive-smoke
+just release-zip-layout-smoke
+```
+
+The archive smoke now asserts that `docs/PHONE_WALLET_PROOF.md` is present in
+release archives. The plugin smokes assert that the plugin-local phone proof
+reference is present and contains the `--unsafe-debug-artifacts` /
+`evidence assert-live` path.
+
 ## Presentation-safe surfaces
 
 These are good to show on stage or in a recording:

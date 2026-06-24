@@ -56,7 +56,8 @@ Answer shape: run `evidence export`, then `evidence verify` to check hashes and
 any signature, `evidence replay` for the projector-safe timeline, and
 `evidence assert-live` only when the user needs proof that a captured run
 completed the encrypted phone-wallet exchange. If the repository checkout is
-available, follow `docs/PHONE_WALLET_PROOF.md`.
+available, follow `docs/PHONE_WALLET_PROOF.md`; in plugin-only installs, follow
+`reference/phone-wallet-proof.md`.
 
 "Keep sandbox reads stable for the demo."
 

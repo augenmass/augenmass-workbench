@@ -9,6 +9,7 @@ PLUGIN_JSON="${PLUGIN_ROOT}/.claude-plugin/plugin.json"
 CODEX_PLUGIN_JSON="${PLUGIN_ROOT}/.codex-plugin/plugin.json"
 ASK_REF="${PLUGIN_ROOT}/skills/augenmass/reference/ask-it-like-this.md"
 EXPLAINER_REF="${PLUGIN_ROOT}/skills/augenmass/reference/explainer.md"
+PHONE_REF="${PLUGIN_ROOT}/skills/augenmass/reference/phone-wallet-proof.md"
 MARKETPLACE_JSON="${AUGENMASS_MARKETPLACE_JSON:-marketplace.json}"
 OUT="$(mktemp "${TMPDIR:-/tmp}/augenmass-plugin-smoke.XXXXXX")"
 EVIDENCE_SOURCE=""
@@ -51,7 +52,7 @@ len_file() {
   wc -c <"$1" | tr -d '[:space:]'
 }
 
-for path in "${BIN}" "${SKILL}" "${OPENAI_AGENT}" "${PLUGIN_JSON}" "${CODEX_PLUGIN_JSON}" "${ASK_REF}" "${EXPLAINER_REF}" "${MARKETPLACE_JSON}"; do
+for path in "${BIN}" "${SKILL}" "${OPENAI_AGENT}" "${PLUGIN_JSON}" "${CODEX_PLUGIN_JSON}" "${ASK_REF}" "${EXPLAINER_REF}" "${PHONE_REF}" "${MARKETPLACE_JSON}"; do
   if [ ! -e "${path}" ]; then
     echo "missing plugin file: ${path}" >&2
     exit 1
@@ -81,11 +82,15 @@ grep -q 'Debug a live wallet interaction' "${SKILL}"
 grep -q 'Response contracts' "${SKILL}"
 grep -q 'evidence replay' "${SKILL}"
 grep -q 'evidence assert-live' "${SKILL}"
+grep -q 'reference/phone-wallet-proof.md' "${SKILL}"
 grep -q 'asks for too much data' "${SKILL}"
 grep -q 'reference/ask-it-like-this.md' "${SKILL}"
 grep -q 'reference/explainer.md' "${SKILL}"
 grep -q 'What should an age-check service ask for' "${ASK_REF}"
 grep -q 'Developers use it before registering a relying party' "${EXPLAINER_REF}"
+grep -q 'Phone wallet proof checklist' "${PHONE_REF}"
+grep -q 'evidence assert-live' "${PHONE_REF}"
+grep -q -- '--unsafe-debug-artifacts' "${PHONE_REF}"
 
 CARGO_VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
 PLUGIN_VERSION="$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' "${PLUGIN_JSON}" | head -n 1)"
