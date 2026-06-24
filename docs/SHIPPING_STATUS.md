@@ -53,6 +53,9 @@ That proves:
   activity. CI is manual-only, and release publishing is tag-only.
 - The bundled plugin binary is present, executable, current, and exposes the
   advertised command surfaces through both Claude Code and Codex metadata checks.
+- `just plugin-bundle-freshness` rebuilds the locked release binary on macOS
+  Apple Silicon and fails unless the committed plugin binary is byte-for-byte
+  identical.
 - The repo-local Claude Code marketplace validates with `--strict`, installs
   `augenmass-workbench@augenmass` in a temporary `HOME`, and reports it enabled.
 - The repo-local Codex marketplace installs `augenmass-workbench@augenmass` in a
@@ -133,6 +136,7 @@ The strongest local release proof is:
 ```sh
 just local-cli-release-proof
 just presenter-plugin-proof
+just plugin-bundle-freshness
 just local-release-proof
 ```
 
@@ -141,8 +145,9 @@ fail-fast preflights before the long build/test work. `local-cli-release-proof`
 is plugin-free and uses the native release binary for demo, serve, live cache,
 install, archive, zip-layout, platform, and Docker checks. It resolves the Unix
 binary and the Windows `.exe` fallback. `presenter-plugin-proof` checks the
-committed macOS Apple Silicon plugin bundle and local Claude Code/Codex
-marketplace installs. `local-release-proof` composes both. Together they cover
+committed macOS Apple Silicon plugin bundle, its byte-for-byte freshness, and
+local Claude Code/Codex marketplace installs. `local-release-proof` composes both.
+Together they cover
 the deterministic Rust gates, the GitHub Actions runner-credit guard,
 source-install smoke, release-archive smoke, Windows-style zip layout smoke,
 plugin smoke, live cached-sandbox smoke, platform smoke, and explicit Docker

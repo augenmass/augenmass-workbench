@@ -63,6 +63,9 @@ It runs:
 - `just plugin-smoke`: checks the Claude Code and Codex plugin metadata, the
   executable bundled binary, the hook, the skill wording for the key command
   surfaces, and a small fixture-backed command sequence.
+- `just plugin-bundle-freshness`: on macOS Apple Silicon, rebuilds the locked
+  release binary and fails unless the committed plugin binary is byte-for-byte
+  identical.
 - `just plugin-only-smoke`: copies only the plugin bundle to a temporary
   directory and proves generated/stdin first-run commands without a full checkout
   or `fixtures/` / `examples/`.

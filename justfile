@@ -72,6 +72,10 @@ plugin-demo-run:
 plugin-smoke:
     ./scripts/plugin-smoke.sh
 
+# Verify the committed plugin binary is byte-for-byte the current release build.
+plugin-bundle-freshness:
+    ./scripts/plugin-bundle-freshness.sh
+
 # Verify the installed plugin/skill remains useful without a full repo checkout.
 plugin-only-smoke:
     ./scripts/plugin-only-smoke.sh
@@ -182,10 +186,10 @@ local-cli-release-proof: local-cli-release-preflight ci-credit-guard verify rele
     ./scripts/local-cli-release-smokes.sh
 
 # Presenter plugin proof for the committed macOS Apple Silicon plugin bundle.
-presenter-plugin-proof: presenter-release-preflight plugin-smoke plugin-only-smoke claude-plugin-smoke codex-plugin-smoke plugin-demo-run
+presenter-plugin-proof: presenter-release-preflight plugin-bundle-freshness plugin-smoke plugin-only-smoke claude-plugin-smoke codex-plugin-smoke plugin-demo-run
 
 # Local shipping proof that avoids remote GitHub CI runner credits.
-shipping-smoke: ci-credit-guard plugin-smoke plugin-only-smoke claude-plugin-smoke codex-plugin-smoke serve-smoke live-cache-smoke public-sandbox-snapshot deployed-cache-smoke docker-smoke
+shipping-smoke: ci-credit-guard plugin-bundle-freshness plugin-smoke plugin-only-smoke claude-plugin-smoke codex-plugin-smoke serve-smoke live-cache-smoke public-sandbox-snapshot deployed-cache-smoke docker-smoke
 
 # Strongest local release proof; no GitHub Actions, but multiple Linux Docker builds.
 local-release-proof: local-cli-release-proof presenter-plugin-proof

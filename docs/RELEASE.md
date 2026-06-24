@@ -92,6 +92,7 @@ just verify
 just ci-credit-guard
 just demo-run
 just install-smoke
+just plugin-bundle-freshness
 just codex-plugin-smoke
 just release-archive-smoke
 just release-zip-layout-smoke
@@ -110,6 +111,10 @@ git status --short
 `just bundle` refuses to overwrite the committed plugin binary unless the host
 target is `aarch64-apple-darwin`, because the current plugin bundle is a private
 preview artifact for macOS Apple Silicon.
+`just plugin-bundle-freshness` rebuilds the locked release binary on that host
+and fails unless `plugins/augenmass-workbench/bin/augenmass` is byte-for-byte the
+same binary. If it fails, run `just bundle`, review the binary diff, then rerun
+the presenter proof.
 
 Then tag from a clean tree:
 
@@ -127,13 +132,14 @@ After the release workflow finishes, install or test the platform archive on a
 machine matching the target. The plugin marketplace bundle remains a separate
 artifact from the CLI release archives.
 
-`just ci-credit-guard`, `just install-smoke`, `just demo-run`, `just plugin-demo-run`,
+`just ci-credit-guard`, `just install-smoke`, `just demo-run`,
+`just plugin-demo-run`, `just plugin-bundle-freshness`,
 `just claude-plugin-smoke`, `just codex-plugin-smoke`, `just serve-smoke`,
-`just release-archive-smoke`, `just release-zip-layout-smoke`, `just shipping-smoke`,
-`just deployed-cache-smoke`, `just deployed-cache-smoke-required`,
-`just hosted-release-proof`, `just sandbox-readiness-proof`, `just platform-smoke`,
-and `just platform-smoke-strict` are local. They do not
-start GitHub Actions.
+`just release-archive-smoke`, `just release-zip-layout-smoke`,
+`just shipping-smoke`, `just deployed-cache-smoke`,
+`just deployed-cache-smoke-required`, `just hosted-release-proof`,
+`just sandbox-readiness-proof`, `just platform-smoke`, and
+`just platform-smoke-strict` are local. They do not start GitHub Actions.
 `ci-credit-guard` proves the workflow trigger invariant: normal branch pushes
 and pull-request activity cannot start GitHub Actions.
 `install-smoke` proves a fresh source install into a temporary local root.
@@ -219,8 +225,9 @@ just presenter-plugin-proof
 ```
 
 That checks the committed macOS Apple Silicon plugin bundle, the plugin-only
-first-run path, and local Claude Code/Codex marketplace installs. It is
-intentionally separate from the plugin-free CLI proof.
+first-run path, local Claude Code/Codex marketplace installs, and the
+byte-for-byte freshness of the bundled binary against the current locked release
+build. It is intentionally separate from the plugin-free CLI proof.
 
 For the strongest presenter-machine proof, run:
 

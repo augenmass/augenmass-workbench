@@ -135,6 +135,16 @@ It uses a temporary `CODEX_HOME`, adds this checkout as a local Codex
 marketplace, confirms `augenmass-workbench@augenmass` is available, installs it,
 and confirms it is enabled. It does not modify your real Codex config.
 
+The plugin binary freshness gate is:
+
+```sh
+just plugin-bundle-freshness
+```
+
+It runs only on macOS Apple Silicon, rebuilds the locked release binary, and
+fails unless the committed plugin binary is byte-for-byte identical. When it
+fails, refresh the bundle with `just bundle` and rerun the presenter proof.
+
 The Claude Code plugin install gate is:
 
 ```sh
