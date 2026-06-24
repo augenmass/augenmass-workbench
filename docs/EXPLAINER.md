@@ -64,7 +64,7 @@ codex plugin marketplace add .
 codex plugin add augenmass-workbench@augenmass
 ```
 
-Then ask in your own words. For example: "Here is a registration body. Is it asking for more than it needs? Explain it for a non-technical reader and tell me which rule it breaks." The skill reads the artifact, runs the check, and answers in plain language, citing the legal basis only where it helps.
+Then ask in your own words. For example: "Here is a registration body. Is it asking for more than it needs? Explain it for a non-technical reader and tell me which data-minimisation basis the finding rests on." The skill reads the artifact, runs the check, and answers in plain language, citing the legal basis only where it helps.
 
 For more example phrasings, see `ASK-IT-LIKE-THIS.md`.
 

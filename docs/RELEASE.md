@@ -80,6 +80,7 @@ just demo-run
 just install-smoke
 just codex-plugin-smoke
 just release-archive-smoke
+just release-zip-layout-smoke
 just docker-release-archive-smoke-linux
 just shipping-smoke
 just platform-smoke
@@ -114,7 +115,7 @@ artifact from the CLI release archives.
 
 `just ci-credit-guard`, `just install-smoke`, `just demo-run`, `just plugin-demo-run`,
 `just claude-plugin-smoke`, `just codex-plugin-smoke`, `just serve-smoke`,
-`just release-archive-smoke`, `just shipping-smoke`,
+`just release-archive-smoke`, `just release-zip-layout-smoke`, `just shipping-smoke`,
 `just deployed-cache-smoke`, and `just platform-smoke` are local. They do not
 start GitHub Actions.
 `ci-credit-guard` proves the workflow trigger invariant: normal branch pushes
@@ -133,6 +134,10 @@ release gate; it fetches public sandbox reads and prints aggregate counts/ETags
 without credentialed writes.
 `release-archive-smoke` builds the host release archive, extracts it, then runs
 the packaged binary against packaged docs, examples, and fixtures.
+`release-zip-layout-smoke` builds a Windows-style `.zip` package layout from the
+host release binary renamed to `augenmass.exe`, extracts it, and runs the same
+archive smoke. On non-Windows hosts it proves zip packaging and self-contained
+layout only; it is not native Windows execution proof.
 `docker-release-archive-smoke-linux` builds Linux arm64 and amd64 archives
 inside Docker, runs the archive smoke inside the matching Linux container, and
 exports the resulting archives to:
@@ -140,14 +145,19 @@ exports the resulting archives to:
 - `dist/docker-release-archive-smoke/linux-arm64/augenmass-v<version>-aarch64-unknown-linux-gnu.tar.gz`
 - `dist/docker-release-archive-smoke/linux-amd64/augenmass-v<version>-x86_64-unknown-linux-gnu.tar.gz`
 
-`shipping-smoke` covers the plugin bundle, the `serve` runtime smoke, the live
-cached-sandbox path, and the Docker backend. `deployed-cache-smoke` is opt-in for
-a Railway/VPS cache URL and skips cleanly when `AUGENMASS_DEPLOYED_CACHE_API_BASE`
-is unset. `deployed-cache-smoke-required` is the hosted-readiness gate; it fails
-without `AUGENMASS_DEPLOYED_CACHE_API_BASE` and
-`AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN`. `platform-smoke` checks the host
-target and any locally available cross-targets; by default it skips Linux or
-Windows targets when the required cross C/MSVC toolchain is missing. Set
+`plugin-only-smoke` copies only the plugin bundle to a temp directory and runs
+no-file commands from outside the checkout, so marketplace-style first-run
+behavior is proved without `fixtures/` or `examples/`.
+`shipping-smoke` covers the plugin bundle, the plugin-only first-run path, the
+`serve` runtime smoke, the live cached-sandbox path, and the Docker backend.
+`deployed-cache-smoke` is opt-in for a Railway/VPS cache URL and skips cleanly
+when `AUGENMASS_DEPLOYED_CACHE_API_BASE` is unset.
+`deployed-cache-smoke-required` is the hosted-readiness gate; it fails without
+`AUGENMASS_DEPLOYED_CACHE_API_BASE` and
+`AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN`. `platform-smoke` checks the host target
+and any locally available cross-targets; by default it skips Linux or Windows
+targets, including Linux arm64, when the Rust target or required cross C/MSVC
+toolchain is missing. Set
 `AUGENMASS_STRICT_PLATFORM_SMOKE=1` on a release machine if missing targets
 should fail the gate.
 
@@ -159,18 +169,37 @@ resolves `AUGENMASS_DEMO_BIN`, then
 `AUGENMASS_BIN`, then the bundled binary. Plugin-bundle gates (`plugin-smoke`,
 `plugin-demo-run`) intentionally stay bound to the committed plugin binary.
 
-For the strongest local proof without spending runner credits, run:
+For the plugin-free local CLI release proof without spending runner credits, run:
+
+```sh
+just local-cli-release-proof
+```
+
+That uses the native release binary through `AUGENMASS_BIN` for the demo,
+serve, and live-cache smokes; it also proves source install, host archive,
+Windows-style zip layout, platform probes, Linux Docker cache images, and Linux
+release archives. It avoids the committed plugin bundle, so it is the right proof
+when checking CLI portability from source or release archives.
+
+For the presenter plugin proof, run:
+
+```sh
+just presenter-plugin-proof
+```
+
+That checks the committed macOS Apple Silicon plugin bundle, the plugin-only
+first-run path, and local Claude Code/Codex marketplace installs. It is
+intentionally separate from the plugin-free CLI proof.
+
+For the strongest presenter-machine proof, run:
 
 ```sh
 just local-release-proof
 ```
 
-That adds the source-install smoke, release-archive smoke, and explicit Docker
-builds and runtime checks for `linux/arm64` and `linux/amd64` using
-`AUGENMASS_DOCKER_PLATFORM`. It proves the cache backend container and the
-standalone Linux archive layout on those Linux platforms inside Docker. It still
-does not replace a native Linux host check outside Docker, and it does not prove
-the Windows archive. Those need native runners or manual machines.
+It composes `local-cli-release-proof` and `presenter-plugin-proof`. It still does
+not replace a native Linux host check outside Docker, and it does not prove
+native Windows execution. Those need native runners or manual machines.
 
 For a no-runner-credit Linux archive proof only, run:
 

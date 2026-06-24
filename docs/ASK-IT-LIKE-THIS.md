@@ -41,7 +41,7 @@ The skill restates the over-ask in one plain sentence, says why the extra data i
 ## If you are running a live wallet test
 
 "Run a verifier so I can test with a real wallet, and show me every step."
-The skill starts `augenmass serve`, a local verifier-in-a-box for the German PID profile. You scan the QR with a real wallet, and the exchange is traced step by step on the console, in a browser timeline, and as JSON. The trace is redacted by default: it shows shapes, sizes, hashes, and disclosed claim keys, never raw bodies or claim values, so it is safe to show during a demo with real personal data.
+The skill starts `augenmass serve`, a local verifier-in-a-box for the German PID profile. You scan the QR with a real wallet, and the exchange is traced step by step on the console, in a browser timeline, and as JSON. The trace is redacted by default: it shows shapes, sizes, hashes, and disclosed claim keys, never raw bodies or claim values. Use it for controlled demos and debugging, but still treat trace URLs and session metadata as sensitive.
 
 "I need the raw bytes to debug a failure."
 Tell the skill to enable local debug artifacts. It adds `--unsafe-debug-artifacts <dir>`, which writes the raw material locally and never serves it over HTTP. On Unix the files are tightened to owner-only permissions; on Windows, keep them in a private profile or encrypted workspace. Use it only when you need it, and never on a shared screen.

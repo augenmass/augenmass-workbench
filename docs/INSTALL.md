@@ -84,9 +84,11 @@ The runtime smoke gates follow the same convention. `serve-smoke`,
 `AUGENMASS_BIN` when it is set, then fall back to the bundled macOS Apple
 Silicon plugin binary. The plugin-bundle gates intentionally keep using the
 bundled binary because they prove that exact private-preview artifact.
-`demo-run` is portable too: it resolves `AUGENMASS_DEMO_BIN`, then
-`AUGENMASS_BIN`, then the bundled binary. Use `plugin-demo-run` for the exact
-bundled sequence.
+`plugin-only-smoke` copies only the plugin bundle to a temp directory and runs
+no-file commands from outside the checkout, proving marketplace-style first-run
+behavior without `fixtures/` or `examples/`. `demo-run` is portable too: it
+resolves `AUGENMASS_DEMO_BIN`, then `AUGENMASS_BIN`, then the bundled binary.
+Use `plugin-demo-run` for the exact bundled sequence.
 
 ## Source install
 
@@ -173,21 +175,30 @@ The release-archive gate is:
 
 ```sh
 just release-archive-smoke
+just release-zip-layout-smoke
 ```
 
-It builds the host archive layout, extracts it into a temporary directory, then
-runs the packaged binary against packaged docs, examples, and fixtures. This is
-the local check that the downloaded archive is self-contained.
+`release-archive-smoke` builds a candidate host archive layout, extracts it into a
+temporary directory, then runs the packaged binary against packaged docs,
+examples, and fixtures. `release-zip-layout-smoke` exercises the Windows-style
+`.zip` package layout locally without claiming native Windows execution unless
+the gate is run on Windows. Together they are the local checks that candidate
+archives are self-contained.
 
 The broader local release proof is:
 
 ```sh
+just local-cli-release-proof
 just local-release-proof
 ```
 
-That adds workspace verification, release archive proof, the plugin bundle
-smoke, `serve` runtime proof, live cached-sandbox proof, macOS target probing,
-explicit Linux arm64 and amd64 Docker build-and-run checks, and Linux release
-archives smoke-tested inside matching Docker containers. The
+`local-cli-release-proof` is plugin-free: it uses the native release binary for
+demo, serve, live cache, install, archive, zip-layout, platform, and Docker
+checks. `local-release-proof` adds the presenter plugin proof for the committed
+macOS Apple Silicon bundle. Together they cover workspace verification, release
+archive proof, the plugin bundle smoke, `serve` runtime proof, live
+cached-sandbox proof, macOS target probing, explicit Linux arm64 and amd64 Docker
+build-and-run checks, and Linux release archives smoke-tested inside matching
+Docker containers. The
 `deployed-cache-smoke` gate is separate and opt-in because it needs a hosted
 cache URL. None of these local gates spends runner credits.

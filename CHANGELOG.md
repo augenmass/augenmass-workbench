@@ -23,6 +23,9 @@ cached-sandbox mirror, and the live wallet-interaction debugger.
 
 ### Added
 
+- `plugin-only-smoke`: copies only the plugin bundle to a temporary directory
+  and runs no-file generated/stdin workflows from outside the checkout, proving
+  marketplace-style first-run behavior without `fixtures/` or `examples/`.
 - Universal `inspect <input>`: sniff any common EUDI artifact and decode it
   ("what is this?"). It detects the type, then dispatches to the right decoder.
   Recognised types include SD-JWT VC presentation, WRPRC registration certificate
@@ -155,6 +158,14 @@ cached-sandbox mirror, and the live wallet-interaction debugger.
 - Cache deployment proof is stricter: `deployed-cache-smoke-required` now
   requires an admin token, and Docker smoke restarts the cache container against
   the same volume to prove cached data survives a container restart.
+- `just release-zip-layout-smoke`: a local no-runner-credit check for the
+  Windows-style `.zip` archive layout. It proves packaging/extraction mechanics
+  without claiming native Windows execution unless run on Windows.
+- Local release proof is split into plugin-free CLI proof
+  (`local-cli-release-proof`) and presenter plugin proof
+  (`presenter-plugin-proof`), with `local-release-proof` composing both.
+- `platform-smoke` now includes Linux arm64 in its default probe list and skips
+  it when the target or cross C toolchain is not installed.
 - `just demo-proof`, `just demo-run`, and `docs/DEMO_PROOF.md`: a focused,
   offline proof gate and rehearsal sequence for the agent-first presentation
   story. It pins the stable commands for artifact identification, over-ask

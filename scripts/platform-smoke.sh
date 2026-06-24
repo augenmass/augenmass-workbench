@@ -60,7 +60,7 @@ if [ -n "${AUGENMASS_PLATFORM_TARGETS:-}" ]; then
   # shellcheck disable=SC2206
   TARGETS=(${AUGENMASS_PLATFORM_TARGETS})
 else
-  TARGETS=("${HOST}" "x86_64-unknown-linux-gnu" "x86_64-pc-windows-msvc")
+  TARGETS=("${HOST}" "x86_64-unknown-linux-gnu" "aarch64-unknown-linux-gnu" "x86_64-pc-windows-msvc")
   if [ "${HOST}" = "aarch64-apple-darwin" ]; then
     TARGETS+=("x86_64-apple-darwin")
   fi

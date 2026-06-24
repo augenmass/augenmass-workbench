@@ -49,3 +49,4 @@ if [ "${#archives[@]}" -ne 1 ]; then
 fi
 
 echo "docker release archive smoke passed for ${PLATFORM}: ${archives[0]}"
+echo "proof: Dockerfile release-archive-export copies only from the in-container release-archive-smoke stage"

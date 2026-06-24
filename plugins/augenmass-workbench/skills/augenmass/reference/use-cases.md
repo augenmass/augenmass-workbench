@@ -1,6 +1,6 @@
 # Augenmaß Workbench: end-to-end use cases
 
-Five complete walkthroughs. Every command here runs against the real binary as written, using committed fixtures under `fixtures/` and `examples/`. Paths are relative to the repo root and require the full checkout. The examples use bare `augenmass` for readability; inside the skill, use the resolved `$AUGENMASS` path. In this repo a local debug build is `./target/debug/augenmass`.
+Six complete walkthroughs. Every command here runs against the real binary as written, using committed fixtures under `fixtures/` and `examples/`. Paths are relative to the repo root and require the full checkout. The examples use bare `augenmass` for readability; inside the skill, use the resolved `$AUGENMASS` path. In this repo a local debug build is `./target/debug/augenmass`.
 
 Conventions used throughout:
 
@@ -609,11 +609,11 @@ A note on replay: you cannot post a static or fixture wallet response to a runni
 | Compute or check x509_hash | `x509-hash <input> [--client-id ...]` | client_id mismatch |
 | Produce a body or query | `generate {regbody\|dcql} ...` | (producer) |
 | Diagnose a JAR | `doctor <request>` | findings |
-| Debug a live wallet interaction | `serve [--port --host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet]` | (server; runs until Ctrl-C) |
+| Debug a live wallet interaction | `serve [--port --host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet --unsafe-debug-artifacts]` | (server; runs until Ctrl-C) |
 | Write a registration | `register <body> --target <clone\|cached-sandbox\|sandbox> [--yes --force]` | over-ask without `--force`, blocking format error, or confirmed cached-sandbox write |
 | Read registrations back | `list --target <clone\|cached-sandbox\|sandbox> [--rp <id>]` | (read-only) |
 | Run the local clone store | `clone serve [--db <path> --port <n>]` | (server) |
-| Run the cached-sandbox mirror | `cache serve [--db <path> --host <host> --port <n> --upstream <url> --ttl-secs <n> --timeout-secs <n> --admin-token <token>]` | (server) |
+| Run the cached-sandbox mirror | `cache serve [--db <path> --host <host> --port <n> --upstream <url> --ttl-secs <n> --timeout-secs <n> --max-entries <n> --admin-token <token>]` | (server) |
 | Prewarm the cached-sandbox mirror | `cache warm [--api-base <url> --admin-token <token> --rp <id> --timeout-secs <n>]` | refresh failure |
 
 Add `--json` to any read-only command for machine output. Compose freely with `-` for stdin, as in `generate regbody | check -` and `generate regbody --over-broad | register - --target clone --yes`.

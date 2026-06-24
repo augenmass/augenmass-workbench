@@ -97,10 +97,13 @@ The local release-archive gate is:
 
 ```sh
 just release-archive-smoke
+just release-zip-layout-smoke
 ```
 
-It builds a host archive, extracts it, and runs the packaged binary only against
-packaged docs, examples, and fixtures.
+`release-archive-smoke` builds a host archive, extracts it, and runs the
+packaged binary only against packaged docs, examples, and fixtures.
+`release-zip-layout-smoke` exercises the Windows-style `.zip` layout locally
+without claiming native Windows execution unless it is run on Windows.
 
 The local platform probe is:
 
@@ -116,16 +119,23 @@ are installed or strict mode is enabled on a release machine.
 The strongest local release proof is:
 
 ```sh
+just local-cli-release-proof
+just presenter-plugin-proof
 just local-release-proof
 ```
 
-This gate passed locally on 2026-06-24. It combines the deterministic Rust
-gates, the GitHub Actions runner-credit guard, source-install smoke,
-release-archive smoke, plugin smoke, live cached-sandbox smoke, platform smoke,
-and explicit Docker cache-backend
-builds/runs for `linux/arm64` and `linux/amd64`, plus Docker-built Linux
-release archives smoke-tested inside matching Linux containers. It still does
-not replace native Windows testing or a native Linux host check outside Docker.
+This gate passed locally on 2026-06-24. `local-cli-release-proof` is plugin-free
+and uses the native release binary for demo, serve, live cache, install, archive,
+zip-layout, platform, and Docker checks. `presenter-plugin-proof` checks the
+committed macOS Apple Silicon plugin bundle and local Claude Code/Codex
+marketplace installs. `local-release-proof` composes both. Together they cover
+the deterministic Rust gates, the GitHub Actions runner-credit guard,
+source-install smoke, release-archive smoke, Windows-style zip layout smoke,
+plugin smoke, live cached-sandbox smoke, platform smoke, and explicit Docker
+cache-backend builds/runs for `linux/arm64` and `linux/amd64`, plus Docker-built
+Linux release archives smoke-tested inside matching Linux containers. They still
+do not replace native Windows testing or a native Linux host check outside
+Docker.
 
 The most recent local Linux archive proof also passed separately on 2026-06-24:
 
@@ -210,6 +220,9 @@ Proven:
 - macOS Apple Silicon source build and test.
 - macOS Apple Silicon source install into an isolated local Cargo root.
 - macOS Apple Silicon bundled plugin binary.
+- Installed-plugin no-file first run, by copying only the plugin bundle to a
+  temp directory and running generated/stdin commands without `fixtures/` or
+  `examples/`.
 - macOS Intel target check from the Apple Silicon development machine when the
   `x86_64-apple-darwin` Rust target is installed.
 - Linux arm64 container build and runtime for the cache backend.
@@ -223,7 +236,8 @@ Proven:
 
 Not yet fully proven:
 
-- Native Windows binary on Windows.
+- Native Windows execution on Windows. The zip package layout is locally
+  smoke-tested, but the Windows binary itself still needs Windows.
 - Native Linux release archive outside Docker or a native Linux host runner.
 - Multi-platform plugin bundle; non-macOS-ARM agent users should set
   `AUGENMASS_BIN` to a native CLI binary.

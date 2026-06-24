@@ -77,7 +77,7 @@ Many of the people who care about over-ask are not engineers: auditors, privacy 
 
 - Name the gap in one sentence: "This registration asks for the user's full birthdate, but its stated purpose is only to check that they are over 18."
 - Say why it matters without jargon: the extra data is not needed, it can be used to track the person, and it is a liability to hold.
-- Cite the rule it rests on, verbatim, when it helps: eIDAS Art. 5b(3), GDPR Art. 5(1)(c), EUDI ARF RPRC_07.
+- Cite the data-minimisation basis it rests on, verbatim, when it helps: eIDAS Art. 5b(3), GDPR Art. 5(1)(c), EUDI ARF RPRC_07.
 - Offer the fix: "Ask only for the over-18 attribute. I can generate that body."
 
 Never paste raw tokens, certificates, claim values, or keys back to anyone. Decode, describe, and redact.
@@ -143,7 +143,7 @@ For a live-wallet debugging report:
 | Write a registration (dry-run by default) | `$AUGENMASS register <body> --target {clone\|cached-sandbox\|sandbox} [--yes --force]` |
 | Read registrations back for one relying party | `$AUGENMASS list --target {clone\|cached-sandbox\|sandbox} [--rp <id>]` |
 | Run the local registrar-compatible clone store | `$AUGENMASS clone serve [--db --port]` |
-| Run the read-through cached-sandbox mirror | `$AUGENMASS cache serve [--db --host --port --upstream --ttl-secs --timeout-secs --admin-token]` |
+| Run the read-through cached-sandbox mirror | `$AUGENMASS cache serve [--db --host --port --upstream --ttl-secs --timeout-secs --max-entries --admin-token]` |
 | Prewarm the cached-sandbox mirror before a demo | `$AUGENMASS cache warm [--api-base --admin-token --rp --timeout-secs]` |
 
 Artifact inputs accept file paths, inline values, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Commands that render structured output accept `--json`.

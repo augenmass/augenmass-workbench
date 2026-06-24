@@ -12,7 +12,7 @@ The hackathon version was a light tool with six commands (`generate`, `check`, `
 
 ## Install
 
-Install the Claude Code plugin; the skill then auto-triggers on EUDI registration and wallet-debugging work.
+Install the skill/plugin; it then auto-triggers on EUDI registration and wallet-debugging work in Claude Code or Codex.
 
 ```
 /plugin marketplace add augenmass/augenmass-workbench
@@ -54,6 +54,8 @@ cargo install --locked --path . --bin augenmass --root "$HOME/.local"
 
 The binary that ships inside the plugin is the same one. The skill resolves `AUGENMASS_BIN` first, then the bundled plugin binary on macOS Apple Silicon; use a bare `augenmass` only when your session or shell has a compatible binary on PATH.
 
+When the plugin was installed from a marketplace without the full repository checkout, start with no-file prompts such as "show the purpose baselines, generate a proportionate age-check body, and check it." Fixture prompts like `inspect fixtures/requests/eudiplo-request.jwt` are for full checkouts or release archives that include `fixtures/` and `examples/`.
+
 ## Ask it like this
 
 The skill is the front door. You talk to it the way you would talk to a colleague who knows the EUDI ecosystem cold; it picks the right command, runs it, and explains the result, citing the legal basis when a finding turns on it.
@@ -64,7 +66,7 @@ The skill is the front door. You talk to it the way you would talk to a colleagu
 - "What is this token?" It sniffs the artifact and decodes it: an SD-JWT VC presentation, a JAR, a credential offer, an mdoc, a status list.
 - "Why is the wallet rejecting my request?" It diagnoses the signed request (x5c shape, the x509_hash client_id binding, content type).
 - "Run a verifier so I can test with a real wallet, and show me every step." It starts `augenmass serve`, a local verifier-in-a-box, and traces the exchange with raw wallet data redacted by default.
-- "Explain this finding for someone non-technical." It restates the over-ask in plain language and ties it to the rule it breaks.
+- "Explain this finding for someone non-technical." It restates the over-ask in plain language and ties it to the data-minimisation basis it rests on.
 
 For example, a privacy reviewer should not have to read JSON first. The skill
 can answer: "This age-check registration asks for the person's full birthdate,
@@ -241,11 +243,11 @@ The curated purpose baselines (`age_gate_18`, `event_checkin`, `car_rental`, `ba
 6. `STATUS_CHECKED` (with `--live-status` and a trust anchor): the token-status-list is resolved and a revoked or suspended credential is rejected fail-closed.
 7. `OVER_ASK_ANALYZED`: what the wallet actually disclosed is run through the over-ask inspector.
 
-The trace is redacted by default: each step records its shape (lengths, SHA-256 digests, sorted field names) and the disclosed claim keys, never the raw POST body, the decrypted payload, or a claim value, so the unauthenticated `/api/trace/<session>` is safe to expose during a real PID demo. The same trace is available three ways: live on the console (color-coded), as a browser timeline at `/trace/<session>` (refreshes while the exchange is in flight), and as JSON at `/api/trace/<session>` for programmatic debugging. `/api/sessions` lists every session seen this run.
+The trace is redacted by default: each step records its shape (lengths, SHA-256 digests, sorted field names) and the disclosed claim keys, never the raw POST body, the decrypted payload, or a claim value. That makes it suitable for controlled demos and debugging, but the unauthenticated `/api/trace/<session>` and `/api/sessions` endpoints are still debug surfaces: treat trace URLs and session metadata as sensitive, and do not publish them. The same trace is available three ways: live on the console (color-coded), as a browser timeline at `/trace/<session>` (refreshes while the exchange is in flight), and as JSON at `/api/trace/<session>` for programmatic debugging.
 
 Zero-config, it runs on a throwaway development certificate (the client_id is then not the registered identity). To sign with the real registrar-issued leaf so the client_id matches the registration, pass `--key` and `--leaf` (or set `RP_KEY_PATH` and `RP_LEAF_PATH`). To enforce issuer trust, pass `--trust-anchor`; add `--live-status` to resolve revocation over the network.
 
-Safe by default for a real PID demo. The trace is built for a phone-wallet presentation that carries real personal data, so it never exposes raw wallet material over the unauthenticated trace API. The received response and the decrypted payload are recorded as shape only: byte length, a SHA-256 digest, the sorted field names, and whether a `vp_token` is present, never the raw body and never a disclosed claim value. Each Authorization Request mints its own ephemeral response-encryption key, used once and dropped after the response is processed, so no key is shared across sessions. A plaintext `direct_post` is rejected with HTTP 422, because the verifier advertises the encrypted `direct_post.jwt` profile. The credential-controlled status-list fetch behind `--live-status` connects only to the addresses it already vetted (no re-resolution at connect time, which closes the DNS-rebinding window), stays https-only with redirects disabled and a timeout, caps the response body, normalizes IPv4-mapped IPv6 before vetting, and denies loopback, private, link-local, CGNAT, and unique-local targets.
+Redacted by default for a real PID demo. The trace is built for a phone-wallet presentation that carries real personal data, so it never exposes raw wallet material over the unauthenticated trace API. The received response and the decrypted payload are recorded as shape only: byte length, a SHA-256 digest, the sorted field names, and whether a `vp_token` is present, never the raw body and never a disclosed claim value. Each Authorization Request mints its own ephemeral response-encryption key, used once and dropped after the response is processed, so no key is shared across sessions. A plaintext `direct_post` is rejected with HTTP 422, because the verifier advertises the encrypted `direct_post.jwt` profile. The credential-controlled status-list fetch behind `--live-status` connects only to the addresses it already vetted (no re-resolution at connect time, which closes the DNS-rebinding window), stays https-only with redirects disabled and a timeout, caps the response body, normalizes IPv4-mapped IPv6 before vetting, and denies loopback, private, link-local, CGNAT, and unique-local targets.
 
 Full-fidelity local debugging when you ask for it. When you need the raw bytes, `--unsafe-debug-artifacts <dir>` writes the raw `direct_post` body, the decrypted authorization response when an encrypted wallet response is decrypted, the per-session private key, the signed request object, the decoded request payload, and a verification context (`nonce`, `aud`, `vct`, clock, freshness window) to `<dir>/<session>/` with owner-only permissions on Unix (dirs `0700`, files `0600`) and a manifest marked sensitive. It is opt-in, local, and never served over HTTP; the trace records the file name, a label, the length, a SHA-256, and the redaction fields `unsafeDebugArtifacts`, `pathRedacted`, `redacted`, and `redaction`, never a path or a value. It is labeled UNSAFE in the startup banner. Leave it off for demos and shared machines; on Windows, use it only in a private profile or encrypted workspace until native ACL hardening is added.
 

@@ -51,14 +51,21 @@ For install or release wording changes, run:
 just ci-credit-guard
 just install-smoke
 just release-archive-smoke
+just release-zip-layout-smoke
 just docker-release-archive-smoke-linux
 ```
 
 They prove that normal branch pushes cannot start GitHub Actions, a fresh source
-install into an isolated local root, and an extracted release archive that
-carries its own docs, examples, and fixtures. The Docker gate proves the Linux
-arm64 and amd64 release archives inside matching Linux containers without
-spending runner credits.
+install into an isolated local root, an extracted host release archive that
+carries its own docs, examples, and fixtures, and the Windows-style zip package
+layout. The Docker gate proves the Linux arm64 and amd64 release archives inside
+matching Linux containers without spending runner credits.
+
+For a plugin-free release proof, run `just local-cli-release-proof`. For the
+committed macOS Apple Silicon plugin bundle, run `just presenter-plugin-proof`;
+it includes `plugin-only-smoke`, which copies only the installed plugin to a temp
+directory and proves no-file first-run commands without `fixtures/` or
+`examples/`. `just local-release-proof` composes both on the presenter machine.
 
 When in doubt about command behavior, do not guess. Run the binary:
 

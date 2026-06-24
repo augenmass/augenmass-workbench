@@ -72,6 +72,10 @@ plugin-demo-run:
 plugin-smoke:
     ./scripts/plugin-smoke.sh
 
+# Verify the installed plugin/skill remains useful without a full repo checkout.
+plugin-only-smoke:
+    ./scripts/plugin-only-smoke.sh
+
 # Verify Claude Code can validate and install the local plugin from this repo marketplace.
 claude-plugin-smoke:
     ./scripts/claude-plugin-smoke.sh
@@ -91,6 +95,10 @@ install-smoke:
 # Verify the self-contained release archive layout before tagging.
 release-archive-smoke: release
     bash -c 'set -euo pipefail; target="$(rustc -vV | sed -n "s/^host: //p")"; binary="augenmass"; package_ext="tar.gz"; case "${target}" in *windows*) binary="augenmass.exe"; package_ext="zip";; esac; out="dist/local-release-archive-smoke"; rm -rf "${out}"; mkdir -p "${out}"; archive="$(./scripts/package-release-archive.sh "${target}" "target/release/${binary}" "${package_ext}" "${out}")"; ./scripts/release-archive-smoke.sh "${archive}"'
+
+# Verify the Windows-style zip package layout locally without claiming native Windows proof.
+release-zip-layout-smoke: release
+    ./scripts/release-zip-layout-smoke.sh
 
 # Verify the live cached-sandbox path against the public sandbox API.
 live-cache-smoke:
@@ -143,11 +151,20 @@ docker-release-archive-smoke-linux: docker-release-archive-smoke-arm64 docker-re
 platform-smoke:
     ./scripts/platform-smoke.sh
 
+# Plugin-free local CLI release proof, suitable for non-plugin platform checks.
+local-cli-release-proof: ci-credit-guard verify release install-smoke release-archive-smoke release-zip-layout-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64 docker-release-archive-smoke-linux
+    AUGENMASS_DEMO_BIN=./target/release/augenmass AUGENMASS_BIN=./target/release/augenmass ./scripts/demo-run.sh
+    AUGENMASS_BIN=./target/release/augenmass ./scripts/serve-smoke.sh
+    AUGENMASS_BIN=./target/release/augenmass ./scripts/live-cache-smoke.sh
+
+# Presenter plugin proof for the committed macOS Apple Silicon plugin bundle.
+presenter-plugin-proof: plugin-smoke plugin-only-smoke claude-plugin-smoke codex-plugin-smoke plugin-demo-run
+
 # Local shipping proof that avoids remote GitHub CI runner credits.
-shipping-smoke: ci-credit-guard plugin-smoke claude-plugin-smoke codex-plugin-smoke serve-smoke live-cache-smoke deployed-cache-smoke docker-smoke
+shipping-smoke: ci-credit-guard plugin-smoke plugin-only-smoke claude-plugin-smoke codex-plugin-smoke serve-smoke live-cache-smoke deployed-cache-smoke docker-smoke
 
 # Strongest local release proof; no GitHub Actions, but multiple Linux Docker builds.
-local-release-proof: ci-credit-guard verify demo-run plugin-smoke claude-plugin-smoke codex-plugin-smoke serve-smoke install-smoke release-archive-smoke live-cache-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64 docker-release-archive-smoke-linux
+local-release-proof: local-cli-release-proof presenter-plugin-proof
 
 # Bundle the release binary into the plugin (Apple Silicon macOS).
 bundle: release
