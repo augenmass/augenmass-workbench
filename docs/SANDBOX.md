@@ -17,8 +17,8 @@ sandbox time.
 
 | Mode | Network | Credentials | Mutates data | Persistence | Proof gate |
 | --- | --- | --- | --- | --- | --- |
-| Offline fixtures and artifacts | No | No | No | None | `just plugin-only-smoke`, `just fixture-command-proofs` |
-| `clone` | Loopback only | No | Yes, local SQLite only | `augenmass-clone.sqlite` | `just clone-smoke` via `just verify` |
+| Offline fixtures and artifacts | No | No | No | None | `just plugin-only-smoke`, `just demo-proof`, `just verify` |
+| `clone` | Loopback only | No | Yes, local SQLite only | `augenmass-clone.sqlite` | Covered by `just verify` and `cargo test --test cli` |
 | Local `cached-sandbox` | Public sandbox GETs | No | No | `augenmass-cache.sqlite` | `just live-cache-smoke` |
 | Deployed cache/proxy | Public sandbox GETs through your backend | Admin token for status and refresh | No | Hosted SQLite volume | `just deployed-cache-smoke-required` after deployment |
 | `sandbox` | Real sandbox registrar | Keycloak credentials | Yes, live registrar when explicitly confirmed | Sandbox-owned | `just live-sandbox-smoke` with credentials |

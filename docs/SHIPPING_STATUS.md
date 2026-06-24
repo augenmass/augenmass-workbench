@@ -44,6 +44,11 @@ The local shipping gate passed:
 just shipping-smoke
 ```
 
+This is a local shipping gate, not a hosted deployment proof. It includes one
+optional deployed-cache check that exits cleanly when no hosted cache URL is
+configured; hosted readiness is proven only by
+`just deployed-cache-smoke-required` / `just hosted-release-proof`.
+
 That proves:
 
 - GitHub Actions workflows cannot start on normal branch pushes or pull-request
@@ -172,6 +177,8 @@ sidecars. The manifest records commit `d13da9f4de5778f0c61e55dd27213e41c1fa445d`
 with `gitDirty: false`, `layoutOnly: false`, and `nativeExecution: true`. The
 Docker export script publishes archive directories
 atomically only after archive smoke has passed.
+The `dist/` directory is ignored, so these generated archives and sidecars are
+local proof outputs, not committed release artifacts.
 
 ## Presentation-safe surfaces
 

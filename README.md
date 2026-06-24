@@ -12,7 +12,10 @@ The hackathon version was a light tool with six commands (`generate`, `check`, `
 
 ## Install the skill
 
-Install the skill/plugin; it is then available to trigger on EUDI registration and wallet-debugging work in Claude Code or Codex. The first experience should be a conversation with the skill, not a terminal manual.
+Current install status: private/local preview. Install the skill/plugin from the
+private Claude Code marketplace if your account has access, or from this checked
+out repository in Codex. The first experience should be a conversation with the
+skill, not a terminal manual.
 
 ```
 /plugin marketplace add augenmass/augenmass-workbench
@@ -27,7 +30,10 @@ codex plugin marketplace add .
 codex plugin add augenmass-workbench@augenmass
 ```
 
-The Claude Code marketplace path is currently a private preview, so it resolves only for accounts with repository access. The Codex commands above install from the checked-out local repository. Once the repository is published, the same plugin metadata can back a public marketplace install.
+These install proofs are local/private today: the Claude Code path resolves only
+for accounts with repository access, and the Codex commands install from the
+checked-out local repository. Once the repository is published, the same plugin
+metadata can back a public marketplace install.
 
 ## First run in an agent
 
@@ -176,7 +182,13 @@ Generate a proportionate registration body (the minimal age check by default):
 augenmass generate regbody --json
 ```
 
-Debug a live wallet interaction: run a local verifier, scan the QR with a real EUDI wallet, and watch every step of the exchange in the terminal and the browser:
+Debug a live wallet interaction: run a local verifier, scan the QR with a real
+EUDI wallet, and watch every step of the exchange in the terminal and the
+browser. The committed smoke test proves the verifier runtime, request fetch,
+trace endpoints, plaintext rejection, and redaction without a phone wallet; a
+full `RESPONSE_DECRYPTED` / `VERIFIED` trace is the expected output of an actual
+phone-wallet run and should be captured before claiming a specific wallet demo
+environment is proven.
 
 ```sh
 augenmass serve
@@ -189,6 +201,7 @@ augenmass serve
 #   23:20:51.551  29bbb9a0  SESSION_CREATED         new presentation session created
 #   23:20:51.551  29bbb9a0  REQUEST_BUILT           built the authorization request (minimal German PID query)
 #   23:20:51.608  29bbb9a0  REQUEST_OBJECT_FETCHED  wallet fetched the signed request object (JAR)
+#   # The remaining events appear when a real encrypted wallet response completes:
 #   ...           ...       RESPONSE_RECEIVED       wallet posted its response (direct_post.jwt)
 #   ...           ...       RESPONSE_DECRYPTED      decrypted the JWE response (ECDH-ES)
 #   ...           ...       VERIFIED                presentation verified: urn:eudi:pid:de:1
