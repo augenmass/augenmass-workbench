@@ -11,25 +11,30 @@ permissions:
 
 jobs:
   build:
-    name: build ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
+    name: build ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - name: linux-x64
+            runner: blacksmith-2vcpu-ubuntu-2404
             target: x86_64-unknown-linux-gnu
             binary: augenmass
             package_ext: tar.gz
-          - os: macos-13
+          - name: macos-intel
+            runner: macos-15-intel
             target: x86_64-apple-darwin
             binary: augenmass
             package_ext: tar.gz
-          - os: macos-14
+          - name: macos-arm64
+            runner: blacksmith-6vcpu-macos-15
             target: aarch64-apple-darwin
             binary: augenmass
             package_ext: tar.gz
-          - os: windows-latest
+          - name: windows-x64
+            runner: blacksmith-2vcpu-windows-2025
             target: x86_64-pc-windows-msvc
             binary: augenmass.exe
             package_ext: zip
@@ -83,9 +88,11 @@ jobs:
           ./scripts/release-archive-smoke.sh "${{ steps.package.outputs.archive }}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: augenmass-${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 7
           path: |
             dist/*${{ matrix.package_ext }}
             dist/*${{ matrix.package_ext }}.sha256
@@ -95,16 +102,17 @@ jobs:
     name: publish GitHub release
     needs: build
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 15
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: artifacts
           merge-multiple: true
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: artifacts/*

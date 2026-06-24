@@ -26,10 +26,10 @@ dependencies.
 pushes do not spend private-repo runner credits. When you explicitly run it, it
 uses:
 
-- `ubuntu-latest`
-- `macos-13`
-- `macos-14`
-- `windows-latest`
+- `blacksmith-2vcpu-ubuntu-2404` for Linux x64
+- `blacksmith-2vcpu-windows-2025` for Windows x64
+- `blacksmith-6vcpu-macos-15` for macOS Apple Silicon
+- `macos-15-intel` for macOS Intel
 
 Each job installs Rust 1.92, then runs:
 
@@ -79,6 +79,12 @@ runner credits.
 - `augenmass-v<version>-x86_64-pc-windows-msvc.zip`
 - `augenmass-v<version>-x86_64-apple-darwin.tar.gz`
 - `augenmass-v<version>-aarch64-apple-darwin.tar.gz`
+
+The release workflow uses Blacksmith runners for Linux x64, Windows x64, macOS
+Apple Silicon, and the publish job. The remaining Intel Mac artifact uses
+GitHub's `macos-15-intel` runner because Blacksmith macOS runners are Apple
+Silicon. Both the CI and release workflows remain manual/tag-only; they still do
+not run on ordinary pushes or pull-request activity.
 
 The workflow, local host smoke, and Docker Linux archive smoke all use
 `scripts/package-release-archive.sh` for the package layout.

@@ -5,16 +5,21 @@ on:
 
 jobs:
   native:
-    name: native ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: native ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - macos-13
-          - macos-14
-          - windows-latest
+        include:
+          - name: linux-x64
+            runner: blacksmith-2vcpu-ubuntu-2404
+          - name: windows-x64
+            runner: blacksmith-2vcpu-windows-2025
+          - name: macos-arm64
+            runner: blacksmith-6vcpu-macos-15
+          - name: macos-intel
+            runner: macos-15-intel
 
     steps:
       - name: Checkout
