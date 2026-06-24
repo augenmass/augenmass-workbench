@@ -158,10 +158,9 @@ code-bearing checkpoint `435956f` passed `just verify` and `just shipping-smoke`
 before push, including the new `evidence assert-live` command and refreshed
 plugin bundle. Packaging checkpoint `f7e5f5b` then passed native archive smoke,
 Windows zip-layout smoke, platform smoke, and Docker Linux arm64 release archive
-smoke. Earlier local Docker runtime proof covered `linux/amd64`. The Docker
-Linux amd64 release-archive provenance rerun was cancelled under local emulation
-after a long compile, so do not count the clean-provenance amd64 release archive
-as proven until `just docker-release-archive-smoke-amd64` completes.
+smoke. Later checkpoint `9b4bfea` passed local Docker runtime proof for
+`linux/amd64`, then passed the clean-provenance Linux amd64 release-archive
+export and smoke gate from the same clean commit.
 
 Latest code-bearing checkpoint: commit `435956f` added
 `evidence assert-live`, the post-capture proof gate for completed encrypted
@@ -182,21 +181,25 @@ new evidence command through CLI tests and plugin help, exercised live public
 sandbox reads, and built the local Docker cache image. GitHub Actions remained
 manual/tag-only; no remote CI run was started by the push.
 
-The most recent clean-provenance local Linux archive proof passed for arm64 at
-checkpoint `f7e5f5b` on 2026-06-24:
+The most recent clean-provenance local Linux archive proofs passed for arm64 and
+amd64 on 2026-06-24:
 
 ```sh
 just docker-release-archive-smoke-arm64
+just docker-release-archive-smoke-amd64
 ```
 
-It exported and smoke-tested:
+They exported and smoke-tested:
 
 - `dist/docker-release-archive-smoke/linux-arm64/augenmass-v0.2.0-aarch64-unknown-linux-gnu.tar.gz`
+- `dist/docker-release-archive-smoke/linux-amd64/augenmass-v0.2.0-x86_64-unknown-linux-gnu.tar.gz`
 
 The exported archive directory includes matching `.sha256` and `.manifest.json`
-sidecars. The manifest records commit `f7e5f5b0c7ee5fc5b2be4310012a83d03f5cf7d6`
-with `gitDirty: false`, `layoutOnly: false`, and `nativeExecution: true`. The
-host macOS archive and Windows layout-only zip manifests from the same packaging
+sidecars. The arm64 manifest records commit
+`f7e5f5b0c7ee5fc5b2be4310012a83d03f5cf7d6`; the amd64 manifest records commit
+`9b4bfea277de12ca6d727e649bd01f98080aa36f`. Both Linux manifests record
+`gitDirty: false`, `layoutOnly: false`, and `nativeExecution: true`. The host
+macOS archive and Windows layout-only zip manifests from the same packaging
 checkpoint also record `gitDirty: false`; the Windows zip remains
 `layoutOnly: true` and `nativeExecution: false`. The Docker export script
 publishes archive directories atomically only after archive smoke has passed.
@@ -263,9 +266,10 @@ just docker-smoke-amd64
 ```
 
 That proves the cache backend container can build and run as Linux amd64 under
-the local Docker environment. It does not prove the separate Linux amd64 release
-archive export; keep that caveat until `just docker-release-archive-smoke-amd64`
-finishes.
+the local Docker environment. The subsequent
+`just docker-release-archive-smoke-amd64` run also built, exported, extracted,
+and smoked the Linux amd64 release archive inside Docker with clean git
+provenance.
 
 ## Presentation-safe surfaces
 
@@ -383,15 +387,15 @@ Proven:
 - Linux arm64 release archive built inside Docker, extracted inside Linux, and
   run against packaged docs, examples, and fixtures, with clean git provenance in
   the manifest.
+- Linux amd64 release archive built inside Docker, extracted inside Linux, and
+  run against packaged docs, examples, and fixtures, with clean git provenance in
+  the manifest.
 
 Not yet fully proven:
 
 - Native Windows execution on Windows. The zip package layout is locally
   smoke-tested, but the Windows binary itself still needs Windows.
 - Native Linux release archive outside Docker or a native Linux host runner.
-- Clean-provenance Linux amd64 release archive. The Docker runtime path has
-  passed on amd64, but the release-archive export should be rerun when the local
-  machine can spare the emulated build time.
 - Multi-platform plugin bundle; non-macOS-ARM agent users should set
   `AUGENMASS_BIN` to a native CLI binary.
 
