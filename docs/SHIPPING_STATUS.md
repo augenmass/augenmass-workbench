@@ -433,6 +433,12 @@ Proven:
   `release-archive-smoke.sh` was fixed to prefer `augenmass.exe` on Windows
   filesystems. Timings: macOS arm64 `1m43s`, Linux x64 `3m35s`, Windows x64
   `5m42s`, macOS Intel `12m19s`.
+- Published release `v0.2.0` at
+  `https://github.com/augenmass/augenmass-workbench/releases/tag/v0.2.0`.
+  The tag-triggered release run `28103514119` passed Linux x64, Windows x64,
+  macOS Apple Silicon, macOS Intel, and the publish job, producing 12 release
+  assets: four native CLI archives, four SHA-256 sidecars, and four provenance
+  manifests.
 
 Not yet fully proven:
 

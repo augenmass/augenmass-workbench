@@ -106,6 +106,19 @@ release. Tag pushes spend runner minutes and should happen only after explicit
 approval. On manual dispatch, it publishes workflow artifacts only. Tag builds
 fail unless the tag name matches `v$(Cargo.toml version)`.
 
+Published release `v0.2.0` is available at:
+
+```text
+https://github.com/augenmass/augenmass-workbench/releases/tag/v0.2.0
+```
+
+It contains native CLI archives plus `.sha256` and `.manifest.json` sidecars for
+Linux x64, Windows x64, macOS Apple Silicon, and macOS Intel. The tag release
+run `28103514119` passed all native build/package/smoke jobs and the publish
+job. The release archive is the cross-platform install path; the committed
+plugin bundle remains the macOS Apple Silicon preview bundle until plugin
+packaging grows platform-specific binaries.
+
 ## Cutting a release
 
 Run the local gate first:
