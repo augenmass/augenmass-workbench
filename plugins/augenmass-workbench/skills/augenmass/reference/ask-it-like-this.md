@@ -50,6 +50,14 @@ Answer shape: start the live debugger only when the user is ready. Explain that
 traces are redacted by default, raw material is captured only with
 `--unsafe-debug-artifacts`, and trace URLs still deserve care.
 
+"Turn that captured session into something I can replay in a review."
+
+Answer shape: run `evidence export`, then `evidence verify` to check hashes and
+any signature, `evidence replay` for the projector-safe timeline, and
+`evidence assert-live` only when the user needs proof that a captured run
+completed the encrypted phone-wallet exchange. If the repository checkout is
+available, follow `docs/PHONE_WALLET_PROOF.md`.
+
 "Keep sandbox reads stable for the demo."
 
 Answer shape: start `cache serve`, warm the configured RP, read through

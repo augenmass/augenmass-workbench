@@ -190,6 +190,9 @@ full `RESPONSE_DECRYPTED` / `VERIFIED` trace is the expected output of an actual
 phone-wallet run and should be captured before claiming a specific wallet demo
 environment is proven.
 
+For the exact capture/export/proof checklist, use
+`docs/PHONE_WALLET_PROOF.md`.
+
 ```sh
 augenmass serve
 # augenmass serve: wallet-interaction debugger
@@ -309,6 +312,8 @@ One engine is the spine. `augenmass-core` is a vendored, HTTP-free, pure-Rust cr
 - `docs/INSTALL.md`: source install, plugin install, and platform caveats.
 - `docs/RELEASE.md`: CI, release archives, and platform support.
 - `docs/DEMO_PROOF.md`: offline demo gates plus local plugin, live-cache, deployed-cache, and Docker smoke checks.
+- `docs/PHONE_WALLET_PROOF.md`: exact rehearsal checklist for capturing,
+  exporting, replaying, and proving a real phone-wallet interaction.
 - `docs/SHIPPING_STATUS.md`: the current demo-readiness verdict, proven gates, deployment status, and platform caveats.
 - The skill: `plugins/augenmass-workbench/skills/augenmass`.
 

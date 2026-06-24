@@ -22,12 +22,15 @@ sandbox time.
 | Local `cached-sandbox` | Public sandbox GETs | No | No | `augenmass-cache.sqlite` | `just live-cache-smoke` |
 | Deployed cache/proxy | Public sandbox GETs through your backend | Admin token for status and refresh | No | Hosted SQLite volume | `just deployed-cache-smoke-required` after deployment |
 | `sandbox` | Real sandbox registrar | Keycloak credentials | Yes, live registrar when explicitly confirmed | Sandbox-owned | `just live-sandbox-smoke` with credentials |
-| `serve` wallet debugger | Loopback plus optional public tunnel | No by default; wallet presents to local verifier | No registrar writes | Redacted in memory; optional local unsafe artifacts | `just serve-smoke` |
+| `serve` wallet debugger | Loopback plus optional public tunnel | No by default; wallet presents to local verifier | No registrar writes | Redacted in memory; optional local unsafe artifacts | `just serve-smoke` for runtime, `evidence assert-live` for a captured phone run |
 
 Use offline commands for first contact, `clone` for safe write rehearsal,
 `cached-sandbox` for stable public reads, `sandbox` only for credentialed
 off-stage rehearsal, and `serve` when the actual wallet exchange is the thing
-under test.
+under test. The `serve-smoke` gate proves the verifier runtime without a phone
+wallet. A specific phone-wallet environment is proven only after following
+`docs/PHONE_WALLET_PROOF.md` and passing `evidence assert-live` on the captured
+bundle.
 
 ## The clone target
 

@@ -1,6 +1,7 @@
 /target
 **/target
 /dist/
+/debug-out/
 **/node_modules/
 *.sqlite
 *.sqlite-journal

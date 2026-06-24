@@ -579,7 +579,7 @@ The same trace is available three ways: live on this console (color-coded; suppr
 To make the `client_id` the registered identity, sign with the real registrar leaf by passing `--key` and `--leaf` together (or set `RP_KEY_PATH` and `RP_LEAF_PATH`). To enforce issuer trust and reject revoked credentials, add `--trust-anchor` and `--live-status`:
 
 ```
-augenmass serve --key rp-key.pem --leaf rp-leaf.pem \
+augenmass serve --key rp-private.pem.key --leaf rp-leaf.pem \
   --trust-anchor pid-issuer-anchor.pem --live-status
 ```
 
@@ -592,6 +592,13 @@ augenmass serve --host 0.0.0.0 --public-url http://192.0.2.10:8080/
 ```
 
 A note on replay: you cannot post a static or fixture wallet response to a running server. Each run generates a fresh ephemeral encryption key and nonce, so the wallet must encrypt to this run's key and echo this run's nonce; a captured response from an earlier run will not decrypt or will fail the nonce binding.
+
+To prove a real phone-wallet run after capture, use the repository runbook
+`docs/PHONE_WALLET_PROOF.md`: start `serve` with a phone-reachable
+`--public-url` and `--unsafe-debug-artifacts`, scan the QR, export the verified
+session with `evidence export`, then run `evidence verify`, `evidence replay`,
+and `evidence assert-live`. Do not claim trust, status, or over-ask proof unless
+those explicit trace steps were configured and observed.
 
 ## Quick reference: commands and exit codes
 

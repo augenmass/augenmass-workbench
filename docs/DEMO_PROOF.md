@@ -83,7 +83,8 @@ It runs:
   `just wallet-evidence-proof <bundle.json>`: post-capture proof for a real
   phone-wallet run. It is intentionally not part of `shipping-smoke`, because it
   requires a captured `serve --unsafe-debug-artifacts` session from an actual
-  wallet interaction.
+  wallet interaction. Use `docs/PHONE_WALLET_PROOF.md` as the operator checklist
+  for producing that bundle.
 - `just live-cache-smoke`: starts `cache serve`, reaches the public sandbox API,
   proves admin-token protection, proves `MISS` then `HIT`, reads the configured
   relying party through `list --target cached-sandbox`, prewarms with
@@ -176,6 +177,9 @@ Good narration anchors:
 - `VERIFIED`, `holder binding: true`, and `trust anchored: true`
 - `REJECTED [Revoked]: credential is revoked`
 
-Avoid for the five-minute proof: live `sandbox`, `--live-status`, full phone-wallet
-scans, and `--unsafe-debug-artifacts`. Those are real capabilities, but they are
-the parts most likely to depend on credentials, network, or device state.
+Avoid for the five-minute proof unless rehearsed immediately beforehand: live
+`sandbox`, `--live-status`, full phone-wallet scans, and
+`--unsafe-debug-artifacts`. Those are real capabilities, but they are the parts
+most likely to depend on credentials, network, or device state. If a real phone
+run is used, gate the claim with `docs/PHONE_WALLET_PROOF.md` and
+`evidence assert-live`.

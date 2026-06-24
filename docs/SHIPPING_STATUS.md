@@ -203,6 +203,24 @@ publishes archive directories atomically only after archive smoke has passed.
 The `dist/` directory is ignored, so these generated archives and sidecars are
 local proof outputs, not committed release artifacts.
 
+Latest docs-and-demo rehearsal pass on 2026-06-24 added the phone-wallet proof
+runbook and passed:
+
+```sh
+git diff --check
+just plugin-smoke
+just plugin-only-smoke
+just demo-proof
+just public-sandbox-snapshot
+just live-cache-smoke
+```
+
+The same pass ran `just live-sandbox-smoke`, which skipped because
+`AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, and `AUGENMASS_PASSWORD` are
+not configured, and ran `just deployed-cache-smoke`, which skipped because
+`AUGENMASS_DEPLOYED_CACHE_API_BASE` is not configured. Treat live sandbox and
+hosted cache readiness as unproven until their required gates pass.
+
 ## Presentation-safe surfaces
 
 These are good to show on stage or in a recording:
@@ -342,7 +360,8 @@ remain Apple Silicon until the plugin bundle grows platform-specific binaries.
 ## Remaining polish
 
 - Record a live wallet run with `serve --unsafe-debug-artifacts`, export it, and
-  run `evidence assert-live` if network/public URL setup cooperates.
+  run `evidence assert-live` if network/public URL setup cooperates. The
+  operator checklist is `docs/PHONE_WALLET_PROOF.md`.
 - Build and manually test native Linux and Windows archives before claiming
   one-command install on those platforms.
 - Keep GitHub CI manual-only unless runner-minute spending is explicitly
@@ -364,7 +383,7 @@ just public-sandbox-snapshot
 
 Last observed snapshot from this checkout:
 
-- Captured at: `2026-06-24T02:34:04Z`
+- Captured at: `2026-06-24T03:05:36Z`
 - Schema metadata: `113804` bytes, ETag
   `W/"1bc8c-WSRXyNo0svH/T001YeId4arFQcA"`
 - Schema vocabularies: `1001` bytes, ETag

@@ -1137,7 +1137,7 @@ augenmass serve --unsafe-debug-artifacts ./debug-out
 Sign with the real registrar leaf so the `client_id` matches the registered identity, and enforce issuer trust with revocation:
 
 ```
-augenmass serve --key rp-key.pem --leaf rp-leaf.pem \
+augenmass serve --key rp-private.pem.key --leaf rp-leaf.pem \
   --trust-anchor pid-issuer-anchor.pem --live-status
 ```
 
