@@ -113,6 +113,8 @@ macOS notarization is local and manual-only for now; it does not run from normal
 CI and does not spend remote runner minutes. The machine running it needs:
 
 - a Developer ID Application identity in Keychain
+- a Developer ID Installer identity in Keychain for signed/stapled `.pkg`
+  installers
 - a validated `notarytool` Keychain profile, defaulting to `augenmass-notary`
 - Xcode command-line tools with `codesign`, `notarytool`, `spctl`, and `zip`
 
@@ -206,6 +208,26 @@ stapled: false
 
 That is a valid Apple notarization acceptance for the submitted ZIP. It is not
 the same as a stapled installer proof.
+
+For a stapled/offline-verifiable installer, install a Developer ID Installer
+identity and run:
+
+```sh
+security find-identity -v | grep "Developer ID Installer"
+just macos-pkg-notarize
+just macos-pkg-notarization-status
+```
+
+The `.pkg` lane signs the CLI with Developer ID Application, builds a flat
+installer for `/usr/local/bin/augenmass`, signs the package with Developer ID
+Installer, submits it to Apple's notary service, staples the ticket, and verifies
+with `pkgutil --check-signature`, `xcrun stapler validate`, and
+`spctl --assess --type install`.
+
+If a `.p12` import only adds `Developer ID Application`, it is the wrong
+certificate for `.pkg` signing. Create/download **Developer ID Installer** in
+Apple Developer Certificates, install it into Keychain, and verify that
+`security find-identity -v` prints a `Developer ID Installer: ...` identity.
 
 Published release `v0.2.0` is available at:
 

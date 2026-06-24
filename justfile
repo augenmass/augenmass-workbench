@@ -122,6 +122,22 @@ macos-notarization-status:
 macos-notarization-status-target target:
     ./scripts/macos-notarization-status.sh "{{target}}"
 
+# Build, sign, notarize, staple, and verify a macOS flat .pkg installer.
+macos-pkg-notarize:
+    ./scripts/macos-build-notarized-pkg.sh
+
+# Build, sign, notarize, staple, and verify a macOS flat .pkg for a target.
+macos-pkg-notarize-target target:
+    ./scripts/macos-build-notarized-pkg.sh "{{target}}"
+
+# Summarize and verify the latest local macOS .pkg notarization proof.
+macos-pkg-notarization-status:
+    ./scripts/macos-pkg-notarization-status.sh
+
+# Summarize and verify a specific local macOS .pkg notarization proof.
+macos-pkg-notarization-status-target target:
+    ./scripts/macos-pkg-notarization-status.sh "{{target}}"
+
 # Verify the live cached-sandbox path against the public sandbox API.
 live-cache-smoke:
     ./scripts/live-cache-smoke.sh

@@ -484,6 +484,10 @@ Not yet fully proven:
 - macOS Intel notarization has not been run from this machine yet.
 - macOS ZIPs are accepted by Apple's notary service but are not stapled; a
   stapled `.pkg` or `.dmg` release path is still future polish.
+- The `.pkg` lane now exists as `just macos-pkg-notarize`, but it requires a
+  `Developer ID Installer` identity. The provided `p12.p12` contained
+  `Developer ID Application`, which signs apps/CLIs but cannot sign flat
+  installer packages.
 - Windows binaries are not code-signed.
 
 The code is Rust-only, and native release archives are now proven for the main
