@@ -368,8 +368,9 @@ To make missing credentials fail instead of skip, run:
 just live-sandbox-smoke-required
 ```
 
-Only required mode proves that the live sandbox path is configured on this
-machine.
+`just sandbox-readiness-proof` is the same required gate with a presentation
+checklist name. Only required mode proves that the live sandbox path is
+configured on this machine.
 
 ## Caveat to verify at sandbox time: VCT URN vs @IsUrl
 

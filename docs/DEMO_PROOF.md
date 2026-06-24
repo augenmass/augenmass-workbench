@@ -92,9 +92,13 @@ It runs:
 - `just deployed-cache-smoke-required`: hosted-readiness proof. It fails unless
   `AUGENMASS_DEPLOYED_CACHE_API_BASE` points at a deployed cache backend and
   `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN` is set.
+- `just hosted-release-proof`: alias for the required hosted cache proof, used
+  before claiming a deployed cache is presentation-ready.
 - `just live-sandbox-smoke-required`: live sandbox readiness proof. It fails
   unless sandbox credentials are configured, then runs the non-mutating sandbox
   rehearsal for the selected relying party.
+- `just sandbox-readiness-proof`: alias for the required live sandbox proof,
+  used before claiming the real sandbox path is configured on this machine.
 - `just docker-smoke`: builds the Docker image locally, runs the cache backend
   container, checks `/api/health`, verifies it runs as uid `10001`, and proves
   admin-token protection.
@@ -111,8 +115,10 @@ just live-cache-smoke
 just public-sandbox-snapshot
 just deployed-cache-smoke
 just deployed-cache-smoke-required
+just hosted-release-proof
 just live-sandbox-smoke
 just live-sandbox-smoke-required
+just sandbox-readiness-proof
 just docker-smoke
 ```
 

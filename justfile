@@ -116,6 +116,9 @@ deployed-cache-smoke:
 deployed-cache-smoke-required:
     AUGENMASS_DEPLOYED_CACHE_REQUIRED=1 ./scripts/deployed-cache-smoke.sh
 
+# Required hosted backend proof before claiming a deployed cache is ready.
+hosted-release-proof: deployed-cache-smoke-required
+
 # Verify the bundled verifier-in-a-box runtime over loopback HTTP.
 serve-smoke:
     ./scripts/serve-smoke.sh
@@ -127,6 +130,9 @@ live-sandbox-smoke:
 # Require live sandbox credentials and verify the non-mutating sandbox path.
 live-sandbox-smoke-required:
     AUGENMASS_LIVE_SANDBOX_REQUIRED=1 ./scripts/live-sandbox-smoke.sh
+
+# Required live sandbox proof before claiming the real sandbox path is configured.
+sandbox-readiness-proof: live-sandbox-smoke-required
 
 # Build and run the cache backend container locally.
 docker-smoke:
@@ -155,14 +161,24 @@ docker-release-archive-smoke-linux: docker-release-archive-smoke-arm64 docker-re
 platform-smoke:
     ./scripts/platform-smoke.sh
 
+# Require every configured platform target to be installed and checkable.
+platform-smoke-strict:
+    AUGENMASS_STRICT_PLATFORM_SMOKE=1 ./scripts/platform-smoke.sh
+
+# Fail fast before the long plugin-free local CLI release proof.
+local-cli-release-preflight:
+    ./scripts/local-release-preflight.sh cli
+
+# Fail fast before the presenter plugin proof.
+presenter-release-preflight:
+    ./scripts/local-release-preflight.sh presenter
+
 # Plugin-free local CLI release proof, suitable for non-plugin platform checks.
-local-cli-release-proof: ci-credit-guard verify release install-smoke release-archive-smoke release-zip-layout-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64 docker-release-archive-smoke-linux
-    AUGENMASS_DEMO_BIN=./target/release/augenmass AUGENMASS_BIN=./target/release/augenmass ./scripts/demo-run.sh
-    AUGENMASS_BIN=./target/release/augenmass ./scripts/serve-smoke.sh
-    AUGENMASS_BIN=./target/release/augenmass ./scripts/live-cache-smoke.sh
+local-cli-release-proof: local-cli-release-preflight ci-credit-guard verify release install-smoke release-archive-smoke release-zip-layout-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64 docker-release-archive-smoke-linux
+    ./scripts/local-cli-release-smokes.sh
 
 # Presenter plugin proof for the committed macOS Apple Silicon plugin bundle.
-presenter-plugin-proof: plugin-smoke plugin-only-smoke claude-plugin-smoke codex-plugin-smoke plugin-demo-run
+presenter-plugin-proof: presenter-release-preflight plugin-smoke plugin-only-smoke claude-plugin-smoke codex-plugin-smoke plugin-demo-run
 
 # Local shipping proof that avoids remote GitHub CI runner credits.
 shipping-smoke: ci-credit-guard plugin-smoke plugin-only-smoke claude-plugin-smoke codex-plugin-smoke serve-smoke live-cache-smoke public-sandbox-snapshot deployed-cache-smoke docker-smoke

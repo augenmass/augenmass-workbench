@@ -207,6 +207,9 @@ AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN=<token> \
   just deployed-cache-smoke-required
 ```
 
+`just hosted-release-proof` is the same required gate with a release-oriented
+name.
+
 Without `AUGENMASS_DEPLOYED_CACHE_API_BASE`, the deployed smoke exits cleanly so
 local release gates do not depend on a hosted service. With only the API base,
 `just deployed-cache-smoke` checks health, public cached reads, and the CLI

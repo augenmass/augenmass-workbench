@@ -112,12 +112,15 @@ The local platform probe is:
 
 ```sh
 just platform-smoke
+just platform-smoke-strict
 ```
 
 It checks the host target and any installed cross-targets that have the required
 local C/MSVC toolchain. On this macOS development machine, native macOS builds
 are locally provable; Linux and Windows are skipped unless their cross toolchains
-are installed or strict mode is enabled on a release machine.
+are installed. `platform-smoke-strict` flips those skips into failures and is
+the gate to use on a machine where every configured target is expected to be
+present. A skipped target is not counted as proven.
 
 The strongest local release proof is:
 
@@ -127,9 +130,11 @@ just presenter-plugin-proof
 just local-release-proof
 ```
 
-This gate passed locally on 2026-06-24. `local-cli-release-proof` is plugin-free
-and uses the native release binary for demo, serve, live cache, install, archive,
-zip-layout, platform, and Docker checks. `presenter-plugin-proof` checks the
+This gate passed locally on 2026-06-24. Both local release proofs now run
+fail-fast preflights before the long build/test work. `local-cli-release-proof`
+is plugin-free and uses the native release binary for demo, serve, live cache,
+install, archive, zip-layout, platform, and Docker checks. It resolves the Unix
+binary and the Windows `.exe` fallback. `presenter-plugin-proof` checks the
 committed macOS Apple Silicon plugin bundle and local Claude Code/Codex
 marketplace installs. `local-release-proof` composes both. Together they cover
 the deterministic Rust gates, the GitHub Actions runner-credit guard,
@@ -182,6 +187,8 @@ These are good to show on stage or in a recording:
 - `live-sandbox-smoke-required`: the same rehearsal in required mode. It fails
   if sandbox credentials are missing, so it is the proof to use before claiming
   the live sandbox path is configured.
+- `sandbox-readiness-proof`: release-checklist alias for
+  `live-sandbox-smoke-required`.
 - `deployed-cache-smoke`: an opt-in hosted-cache proof. It skips without
   `AUGENMASS_DEPLOYED_CACHE_API_BASE`; with a Railway/VPS URL it checks health,
   public cached reads, CLI `cached-sandbox`, and admin/warm protection when an
@@ -189,6 +196,8 @@ These are good to show on stage or in a recording:
 - `deployed-cache-smoke-required`: the hosted-readiness proof. It fails without
   both a deployed cache URL and `AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN`, then
   proves public reads, protected status, authenticated warm, and warmed entries.
+- `hosted-release-proof`: release-checklist alias for
+  `deployed-cache-smoke-required`.
 
 ## Backend deployment verdict
 

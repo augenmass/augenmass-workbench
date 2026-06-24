@@ -117,7 +117,9 @@ artifact from the CLI release archives.
 `just ci-credit-guard`, `just install-smoke`, `just demo-run`, `just plugin-demo-run`,
 `just claude-plugin-smoke`, `just codex-plugin-smoke`, `just serve-smoke`,
 `just release-archive-smoke`, `just release-zip-layout-smoke`, `just shipping-smoke`,
-`just deployed-cache-smoke`, and `just platform-smoke` are local. They do not
+`just deployed-cache-smoke`, `just deployed-cache-smoke-required`,
+`just hosted-release-proof`, `just sandbox-readiness-proof`, `just platform-smoke`,
+and `just platform-smoke-strict` are local. They do not
 start GitHub Actions.
 `ci-credit-guard` proves the workflow trigger invariant: normal branch pushes
 and pull-request activity cannot start GitHub Actions.
@@ -156,12 +158,13 @@ and the Docker backend.
 when `AUGENMASS_DEPLOYED_CACHE_API_BASE` is unset.
 `deployed-cache-smoke-required` is the hosted-readiness gate; it fails without
 `AUGENMASS_DEPLOYED_CACHE_API_BASE` and
-`AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN`. `platform-smoke` checks the host target
-and any locally available cross-targets; by default it skips Linux or Windows
-targets, including Linux arm64, when the Rust target or required cross C/MSVC
-toolchain is missing. Set
-`AUGENMASS_STRICT_PLATFORM_SMOKE=1` on a release machine if missing targets
-should fail the gate.
+`AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN`. `hosted-release-proof` is the same
+required hosted gate. `sandbox-readiness-proof` is the required live sandbox
+gate. `platform-smoke` checks the host target and any locally available
+cross-targets; by default it skips Linux or Windows targets, including Linux
+arm64, when the Rust target or required cross C/MSVC toolchain is missing.
+`platform-smoke-strict` turns those skips into failures for a release machine
+where every configured target must be present.
 
 Runtime smokes that touch a running server or hosted cache (`serve-smoke`,
 `live-cache-smoke`, `deployed-cache-smoke`, `deployed-cache-smoke-required`,
@@ -178,10 +181,12 @@ just local-cli-release-proof
 ```
 
 That uses the native release binary through `AUGENMASS_BIN` for the demo,
-serve, and live-cache smokes; it also proves source install, host archive,
-Windows-style zip layout, platform probes, Linux Docker cache images, and Linux
-release archives. It avoids the committed plugin bundle, so it is the right proof
-when checking CLI portability from source or release archives.
+serve, and live-cache smokes; if `AUGENMASS_BIN` is unset, the helper resolves
+`./target/release/augenmass` and then `./target/release/augenmass.exe`. It also
+proves source install, host archive, Windows-style zip layout, platform probes,
+Linux Docker cache images, and Linux release archives. It avoids the committed
+plugin bundle, so it is the right proof when checking CLI portability from source
+or release archives.
 
 For the presenter plugin proof, run:
 

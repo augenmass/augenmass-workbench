@@ -194,11 +194,14 @@ just local-release-proof
 
 `local-cli-release-proof` is plugin-free: it uses the native release binary for
 demo, serve, live cache, install, archive, zip-layout, platform, and Docker
-checks. `local-release-proof` adds the presenter plugin proof for the committed
-macOS Apple Silicon bundle. Together they cover workspace verification, release
+checks. It resolves `./target/release/augenmass` first and falls back to
+`./target/release/augenmass.exe`, so Windows Git Bash does not need a different
+recipe. `local-release-proof` adds the presenter plugin proof for the committed
+macOS Apple Silicon bundle. Both proofs run a fail-fast preflight before the
+long build/test work starts. Together they cover workspace verification, release
 archive proof, the plugin bundle smoke, `serve` runtime proof, live
 cached-sandbox proof, macOS target probing, explicit Linux arm64 and amd64 Docker
 build-and-run checks, and Linux release archives smoke-tested inside matching
-Docker containers. The
-`deployed-cache-smoke` gate is separate and opt-in because it needs a hosted
-cache URL. None of these local gates spends runner credits.
+Docker containers. The hosted cache and live sandbox readiness gates are
+separate because they need external configuration. None of these local gates
+spends runner credits.

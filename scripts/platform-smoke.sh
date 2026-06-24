@@ -82,4 +82,8 @@ if [ "${FAILURES}" -ne 0 ]; then
   exit 1
 fi
 
-echo "platform smoke passed for available targets"
+if [ "${STRICT}" = "1" ]; then
+  echo "platform smoke passed for required targets"
+else
+  echo "platform smoke passed for available targets"
+fi

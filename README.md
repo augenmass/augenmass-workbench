@@ -12,7 +12,7 @@ The hackathon version was a light tool with six commands (`generate`, `check`, `
 
 ## Install
 
-Install the skill/plugin; it then auto-triggers on EUDI registration and wallet-debugging work in Claude Code or Codex.
+Install the skill/plugin; it is then available to trigger on EUDI registration and wallet-debugging work in Claude Code or Codex.
 
 ```
 /plugin marketplace add augenmass/augenmass-workbench
