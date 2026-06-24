@@ -464,9 +464,27 @@ That proof installs through both local Claude Code and Codex marketplace smokes,
 runs generated/stdin commands from a plugin-only copy, and runs the demo sequence
 through the bundled launcher.
 
+macOS notarization checkpoint `fc22e9a4-a21d-4c85-a5e6-7d0372c2f30f` passed
+for the local Apple Silicon ZIP:
+
+```sh
+just macos-notarize
+just macos-notarization-status
+```
+
+The proof is local under
+`dist/macos-notarization/aarch64-apple-darwin/notarization-proof.json`, with
+`notaryStatus: Accepted`, `stapled: false`, and `spctlAccepted: false`. This is
+Apple notarization acceptance for the submitted standalone CLI ZIP. It is not a
+stapled offline installer proof; a `.pkg` lane needs a Developer ID Installer
+certificate.
+
 Not yet fully proven:
 
-- macOS binaries are not notarized, and Windows binaries are not code-signed.
+- macOS Intel notarization has not been run from this machine yet.
+- macOS ZIPs are accepted by Apple's notary service but are not stapled; a
+  stapled `.pkg` or `.dmg` release path is still future polish.
+- Windows binaries are not code-signed.
 
 The code is Rust-only, and native release archives are now proven for the main
 desktop targets. The shipped plugin bundle now carries a launcher plus target

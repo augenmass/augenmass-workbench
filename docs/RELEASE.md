@@ -135,13 +135,16 @@ Then produce a signed and notarized macOS ZIP for the host target:
 
 ```sh
 just macos-notarize
+just macos-notarization-status
 ```
 
 For an explicit target:
 
 ```sh
 just macos-notarize-target aarch64-apple-darwin
+just macos-notarization-status-target aarch64-apple-darwin
 just macos-notarize-target x86_64-apple-darwin
+just macos-notarization-status-target x86_64-apple-darwin
 ```
 
 `scripts/macos-sign-notarize.sh` builds the target, copies the binary into a
@@ -188,7 +191,21 @@ ZIP submissions are accepted by Apple's notary service, but this standalone CLI
 archive is not stapled. `xcrun stapler` staples app bundles, disk images, and
 signed flat installer packages, not the current loose CLI ZIP layout. If we need
 offline stapling later, add a signed `.pkg` or `.dmg` lane, which will also need
-a Developer ID Installer certificate for `.pkg`.
+a Developer ID Installer certificate for `.pkg`. On this machine,
+`Developer ID Application: Reza Shokri (B4F7YTTM6C)` and the `augenmass-notary`
+profile produced an accepted `aarch64-apple-darwin` ZIP submission on
+2026-06-24:
+
+```text
+submission: fc22e9a4-a21d-4c85-a5e6-7d0372c2f30f
+archive: dist/macos-notarization/aarch64-apple-darwin/augenmass-v0.2.0-aarch64-apple-darwin.zip
+notaryStatus: Accepted
+spctlAccepted: false
+stapled: false
+```
+
+That is a valid Apple notarization acceptance for the submitted ZIP. It is not
+the same as a stapled installer proof.
 
 Published release `v0.2.0` is available at:
 

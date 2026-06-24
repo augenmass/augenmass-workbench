@@ -114,6 +114,14 @@ macos-notarize:
 macos-notarize-target target:
     ./scripts/macos-sign-notarize.sh "{{target}}"
 
+# Summarize and smoke the latest local macOS notarization proof.
+macos-notarization-status:
+    ./scripts/macos-notarization-status.sh
+
+# Summarize and smoke a specific local macOS notarization proof.
+macos-notarization-status-target target:
+    ./scripts/macos-notarization-status.sh "{{target}}"
+
 # Verify the live cached-sandbox path against the public sandbox API.
 live-cache-smoke:
     ./scripts/live-cache-smoke.sh
