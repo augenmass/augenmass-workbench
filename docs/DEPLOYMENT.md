@@ -138,6 +138,15 @@ AUGENMASS_CACHE_UPSTREAM=https://sandbox.eudi-wallet.org/api
 AUGENMASS_CACHE_ALLOWED_RPS=2af138a8-59ea-4a84-aea3-666cafdb1369
 ```
 
+Pre-deploy checklist:
+
+- Attach a persistent volume mounted at `/data`.
+- Set `AUGENMASS_CACHE_ADMIN_TOKEN` to a long random value.
+- Set `AUGENMASS_CACHE_ALLOWED_RPS` to the relying party ids you will demo.
+- Leave `AUGENMASS_CACHE_PORT` unset so Railway's injected `PORT` wins.
+- Keep the upstream on the default `https://sandbox.eudi-wallet.org/api`.
+- Run `just cache-public-bind-guard-smoke` locally before deploying.
+
 Do not set `AUGENMASS_CACHE_PORT` on Railway; let Railway inject `PORT` and let
 the CLI use that value. `.env.example` is for local development and includes a
 fixed cache port, so do not copy it wholesale into Railway variables.

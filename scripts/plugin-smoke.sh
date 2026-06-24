@@ -4,6 +4,7 @@ set -euo pipefail
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-./plugins/augenmass-workbench}"
 BIN="${PLUGIN_ROOT}/bin/augenmass"
 SKILL="${PLUGIN_ROOT}/skills/augenmass/SKILL.md"
+OPENAI_AGENT="${PLUGIN_ROOT}/skills/augenmass/agents/openai.yaml"
 PLUGIN_JSON="${PLUGIN_ROOT}/.claude-plugin/plugin.json"
 CODEX_PLUGIN_JSON="${PLUGIN_ROOT}/.codex-plugin/plugin.json"
 ASK_REF="${PLUGIN_ROOT}/skills/augenmass/reference/ask-it-like-this.md"
@@ -50,7 +51,7 @@ len_file() {
   wc -c <"$1" | tr -d '[:space:]'
 }
 
-for path in "${BIN}" "${SKILL}" "${PLUGIN_JSON}" "${CODEX_PLUGIN_JSON}" "${ASK_REF}" "${EXPLAINER_REF}" "${MARKETPLACE_JSON}"; do
+for path in "${BIN}" "${SKILL}" "${OPENAI_AGENT}" "${PLUGIN_JSON}" "${CODEX_PLUGIN_JSON}" "${ASK_REF}" "${EXPLAINER_REF}" "${MARKETPLACE_JSON}"; do
   if [ ! -e "${path}" ]; then
     echo "missing plugin file: ${path}" >&2
     exit 1
@@ -67,9 +68,11 @@ grep -q '"name": "augenmass-workbench"' "${CODEX_PLUGIN_JSON}"
 grep -q '"skills": "./skills/"' "${CODEX_PLUGIN_JSON}"
 grep -q '"displayName": "Augenmaß Workbench"' "${CODEX_PLUGIN_JSON}"
 grep -q 'developers, auditors, privacy reviewers' "${CODEX_PLUGIN_JSON}"
-grep -q 'Explain whether this age-check registration asks for too much data' "${CODEX_PLUGIN_JSON}"
+grep -q 'show the purpose baselines, generate a proportionate age-check body' "${CODEX_PLUGIN_JSON}"
 grep -q '"name": "augenmass"' "${MARKETPLACE_JSON}"
 grep -q '"path": "./plugins/augenmass-workbench"' "${MARKETPLACE_JSON}"
+grep -q 'display_name: "Augenmaß"' "${OPENAI_AGENT}"
+grep -q 'Use \$augenmass to show the purpose baselines' "${OPENAI_AGENT}"
 grep -q 'AUGENMASS_BIN' "${SKILL}"
 grep -q '\$AUGENMASS inspect' "${SKILL}"
 grep -q 'cache serve' "${SKILL}"

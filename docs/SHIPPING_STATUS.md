@@ -37,7 +37,7 @@ commands. At the time of this status note, the suite includes:
 
 - 46 unit tests.
 - 43 CLI integration tests.
-- 9 cache integration tests.
+- 14 cache integration tests.
 - 5 demo-proof integration tests.
 - 1 serve integration test.
 
@@ -210,6 +210,9 @@ These are good to show on stage or in a recording:
   admin token is provided.
 - `deployed-cache-guard-smoke`: a no-network local guard that proves required
   hosted-cache proof rejects `http://`, loopback, and private-IP API bases.
+- `cache-public-bind-guard-smoke`: a no-network local guard that proves
+  `cache serve --host 0.0.0.0` refuses missing admin tokens, empty RP allowlists,
+  unsafe upstreams, and `--max-entries 0` before it starts listening.
 - `cloudflare-containers-typecheck`: a local proof that the optional Cloudflare
   Containers Worker adapter still compiles without deploying it.
 - `deployed-cache-smoke-required`: the hosted-readiness proof. It fails without
@@ -243,6 +246,8 @@ The Docker image has the right shape for Railway:
   not stampede the sandbox upstream.
 - The local Docker smoke verifies the server process uid and that uid `10001`
   can write to `/data`.
+- The local public-bind guard smoke verifies a shared bind refuses unsafe deploy
+  configuration before it listens.
 
 Cloudflare Containers now have an optional Worker adapter under
 `deploy/cloudflare-containers/`, proven locally with
