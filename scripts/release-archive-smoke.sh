@@ -128,9 +128,9 @@ if [ -f "${MANIFEST}" ] && ! manifest_has packageName "${PACKAGE_NAME}"; then
   exit 1
 fi
 
-BIN="${PACKAGE}/augenmass"
+BIN="${PACKAGE}/augenmass.exe"
 if [ ! -f "${BIN}" ]; then
-  BIN="${PACKAGE}/augenmass.exe"
+  BIN="${PACKAGE}/augenmass"
 fi
 if [ ! -f "${BIN}" ]; then
   echo "archive does not contain an augenmass binary" >&2
