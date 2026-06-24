@@ -636,6 +636,72 @@ async fn cache_warm_cli_refreshes_demo_routes() {
 }
 
 #[tokio::test]
+async fn cache_status_cli_reports_entries() {
+    let upstream_state = upstream_state();
+    let upstream = spawn_upstream(upstream_state.clone()).await;
+    let cache = spawn_cache_with_admin(&upstream, 3600, Some("secret".to_string())).await;
+    let client = reqwest::Client::new();
+    let response = client
+        .get(format!("{cache}/schema-metadata"))
+        .send()
+        .await
+        .expect("prime schema cache");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let text_cache = cache.clone();
+    let text_output = tokio::task::spawn_blocking(move || {
+        Command::cargo_bin("augenmass")
+            .expect("binary builds")
+            .args([
+                "cache",
+                "status",
+                "--api-base",
+                text_cache.as_str(),
+                "--admin-token",
+                "secret",
+            ])
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone()
+    })
+    .await
+    .expect("status command task");
+    let stdout = String::from_utf8(text_output).expect("stdout is utf8");
+    assert!(stdout.contains("Cache status for"));
+    assert!(stdout.contains("entries: 1"));
+    assert!(stdout.contains("schema-metadata"));
+    assert!(stdout.contains("allowed RPs: none"));
+
+    let json_cache = cache.clone();
+    let json_output = tokio::task::spawn_blocking(move || {
+        Command::cargo_bin("augenmass")
+            .expect("binary builds")
+            .args([
+                "--json",
+                "cache",
+                "status",
+                "--api-base",
+                json_cache.as_str(),
+                "--admin-token",
+                "secret",
+            ])
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone()
+    })
+    .await
+    .expect("json status command task");
+    let status: Value = serde_json::from_slice(&json_output).expect("status json");
+    assert_eq!(status["kind"], "augenmass-cache-status");
+    assert_eq!(status["entries"][0]["key"], "schema-metadata");
+    assert_eq!(upstream_state.schema_hits.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
 async fn health_stays_public_when_admin_token_is_configured() {
     let upstream_state = upstream_state();
     let upstream = spawn_upstream(upstream_state).await;

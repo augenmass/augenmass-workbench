@@ -1465,6 +1465,31 @@ cache disposition, body size, item count where known, and SHA-256. Warmed bodies
 must be JSON, and registration warm responses must be arrays whose rows contain
 a `jwt`.
 
+## `cache status`
+
+Read the protected cache inventory from a local or deployed cache server.
+
+```
+Usage: augenmass cache status [OPTIONS]
+```
+
+Options:
+
+- `--api-base <API_BASE>`: cache API base. Default `http://127.0.0.1:8081/api`; env `AUGENMASS_CACHE_API_BASE`.
+- `--admin-token <ADMIN_TOKEN>`: bearer token for the protected status endpoint; env `AUGENMASS_CACHE_ADMIN_TOKEN`.
+- `--timeout-secs <TIMEOUT_SECS>`: HTTP request timeout in seconds. Default `10`; env `AUGENMASS_HTTP_TIMEOUT_SECS`.
+- `-h, --help`.
+
+Example:
+
+```
+augenmass cache status --api-base http://127.0.0.1:8081/api --admin-token <token>
+```
+
+Text output summarizes the upstream, TTL, max entries, RP allowlist, cached keys,
+fetch times, byte sizes, and SHA-256 hashes. Add `--json` to return the server's
+raw `augenmass-cache-status` document for agents, scripts, and deployment checks.
+
 ---
 
 ## Quick end-to-end recipes

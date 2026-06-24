@@ -171,6 +171,7 @@ For a live-wallet debugging report:
 | Run the local registrar-compatible clone store | `$AUGENMASS clone serve [--db --port]` |
 | Run the read-through cached-sandbox mirror | `$AUGENMASS cache serve [--db --host --port --upstream --ttl-secs --timeout-secs --max-entries --admin-token --allowed-rp --allow-any-rp --unsafe-upstream]` |
 | Prewarm the cached-sandbox mirror before a demo | `$AUGENMASS cache warm [--api-base --admin-token --rp --timeout-secs]` |
+| Check what a cache has stored | `$AUGENMASS cache status [--api-base --admin-token --timeout-secs]` |
 
 Artifact inputs accept file paths, inline values, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Commands that render structured output accept `--json`.
 

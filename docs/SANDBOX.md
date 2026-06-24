@@ -259,7 +259,7 @@ In another shell:
 ```
 BASE=http://127.0.0.1:8081/api
 $BIN cache warm --api-base "$BASE" --rp "$RP"
-curl -s "$BASE/cache/status"
+$BIN cache status --api-base "$BASE"
 AUGENMASS_CACHE_API_BASE="$BASE" "$BIN" list --target cached-sandbox --rp "$RP"
 ```
 
@@ -271,6 +271,7 @@ AUGENMASS_CACHE_ALLOWED_RPS="$RP" \
 augenmass cache serve --host 0.0.0.0 --port ${PORT:-8081} --db /data/augenmass-cache.sqlite
 
 augenmass cache warm --api-base https://cache.example/api --admin-token <token> --rp "$RP"
+augenmass cache status --api-base https://cache.example/api --admin-token <token>
 AUGENMASS_CACHE_API_BASE=https://cache.example/api \
   augenmass list --target cached-sandbox --rp "$RP"
 ```

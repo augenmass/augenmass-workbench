@@ -82,8 +82,9 @@ It runs:
 - `just live-cache-smoke`: starts `cache serve`, reaches the public sandbox API,
   proves admin-token protection, proves `MISS` then `HIT`, reads the configured
   relying party through `list --target cached-sandbox`, prewarms with
-  `cache warm`, proves an unlisted RP is blocked with `403`, then restarts the
-  cache with a broken upstream and proves stale fallback.
+  `cache warm`, renders the protected inventory through `cache status`, proves an
+  unlisted RP is blocked with `403`, then restarts the cache with a broken
+  upstream and proves stale fallback.
 - `just public-sandbox-snapshot`: live-data snapshot for presentation prep. It
   fetches public sandbox reads without credentials and prints aggregate counts,
   ETags, latest registrations, and top relying parties without printing JWT/CWT

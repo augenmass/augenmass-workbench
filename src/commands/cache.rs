@@ -31,6 +31,12 @@ pub struct WarmArgs {
     pub timeout_secs: u64,
 }
 
+pub struct StatusArgs {
+    pub api_base: String,
+    pub admin_token: Option<String>,
+    pub timeout_secs: u64,
+}
+
 #[derive(Debug, Serialize)]
 struct WarmEntry {
     route: String,
@@ -105,6 +111,42 @@ pub async fn warm(args: WarmArgs, format: OutputFormat) -> Result<()> {
     emit(format, &json, &text)
 }
 
+pub async fn status(args: StatusArgs, format: OutputFormat) -> Result<()> {
+    let client = Client::builder()
+        .user_agent(concat!("augenmass/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(args.timeout_secs))
+        .build()?;
+    let api_base = trim_base(&args.api_base);
+    let url = reqwest::Url::parse(&format!("{api_base}/cache/status"))
+        .with_context(|| format!("invalid cache API base URL {api_base}"))?;
+    let mut request = client.get(url.clone());
+    if let Some(token) = args
+        .admin_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+    {
+        request = request.bearer_auth(token);
+    }
+    let response = request
+        .send()
+        .await
+        .with_context(|| format!("GET {url} failed"))?;
+    let status = response.status();
+    let body = response
+        .bytes()
+        .await
+        .with_context(|| format!("read GET {url} response"))?;
+    if !status.is_success() {
+        let text = String::from_utf8_lossy(&body);
+        anyhow::bail!("GET {url} returned {status}: {text}");
+    }
+    let json: Value = serde_json::from_slice(&body)
+        .with_context(|| format!("GET {url} response did not return JSON"))?;
+    let text = render_status(&api_base, &json);
+    emit(format, &json, &text)
+}
+
 async fn refresh_route(
     client: &Client,
     api_base: &str,
@@ -153,6 +195,80 @@ async fn refresh_route(
         sha256: header_value(&headers, "x-augenmass-cache-sha256"),
         items,
     })
+}
+
+fn render_status(api_base: &str, value: &Value) -> String {
+    let entries = value
+        .get("entries")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let upstream = value
+        .get("upstream")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let ttl_secs = value
+        .get("ttlSecs")
+        .and_then(Value::as_u64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let max_entries = value
+        .get("maxEntries")
+        .and_then(Value::as_u64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let allow_any_rp = value
+        .get("allowAnyRp")
+        .and_then(Value::as_bool)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let allowed_rps = value
+        .get("allowedRps")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .filter(|items| !items.is_empty())
+        .unwrap_or_else(|| "none".to_string());
+
+    let mut text = format!(
+        "Cache status for {api_base}\n  upstream: {upstream}\n  ttl: {ttl_secs}s\n  max entries: {max_entries}\n  allow any RP: {allow_any_rp}\n  allowed RPs: {allowed_rps}\n  entries: {}\n",
+        entries.len()
+    );
+
+    for entry in entries {
+        let key = entry
+            .get("key")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown-key");
+        let status = entry
+            .get("status")
+            .and_then(Value::as_u64)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let bytes = entry
+            .get("bytes")
+            .and_then(Value::as_u64)
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let fetched_at = entry
+            .get("fetched_at")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown-time");
+        let sha256 = entry
+            .get("sha256")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown-sha256");
+        text.push_str(&format!(
+            "  - {key}: status {status}, {bytes} bytes, fetched {fetched_at}, sha256 {sha256}\n"
+        ));
+    }
+
+    text
 }
 
 fn header_value(headers: &reqwest::header::HeaderMap, name: &'static str) -> Option<String> {

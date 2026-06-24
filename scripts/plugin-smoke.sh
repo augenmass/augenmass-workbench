@@ -153,6 +153,11 @@ grep -q -- '--admin-token' "${OUT}"
 grep -q -- '--rp' "${OUT}"
 grep -q -- '--timeout-secs' "${OUT}"
 
+help_has cache status
+grep -q -- '--api-base' "${OUT}"
+grep -q -- '--admin-token' "${OUT}"
+grep -q -- '--timeout-secs' "${OUT}"
+
 help_has serve
 grep -q -- '--unsafe-debug-artifacts' "${OUT}"
 grep -q -- '--live-status' "${OUT}"

@@ -102,9 +102,11 @@ code="$(curl --max-time 5 -s -o "${BODY}" -w '%{http_code}' "${BASE}/registratio
 test "${code}" = "403"
 echo "blocked RP read-through: ${code}"
 
-curl --max-time 5 -fsS -H "Authorization: Bearer ${ADMIN}" "${BASE}/cache/status" >"${BODY}"
+"${BIN}" cache status --api-base "${BASE}" --admin-token "${ADMIN}" >"${BODY}"
+grep -q "Cache status for" "${BODY}"
 grep -q "schema-metadata" "${BODY}"
 grep -q "registration-certificates" "${BODY}"
+echo "cache status: $(grep -m1 '^  entries:' "${BODY}" | sed 's/^ *//')"
 
 "${BIN}" cache warm --api-base "${BASE}" --admin-token "${ADMIN}" --rp "${RP}" >"${BODY}"
 grep -q "Cache warm complete" "${BODY}"

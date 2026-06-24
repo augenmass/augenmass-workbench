@@ -22,7 +22,8 @@ The strongest presentation path is skill first, CLI underneath:
 4. Verify a real committed PID presentation fixture and hostile variants.
 5. Use `serve` for the live wallet-interaction debugger if the phone/network
    setup is ready.
-6. Use `cache serve` plus `cache warm` to keep sandbox reads stable.
+6. Use `cache serve`, `cache warm`, and `cache status` to keep sandbox reads stable
+   and inspect what is cached.
 
 ## Proven locally
 
@@ -186,7 +187,8 @@ These are good to show on stage or in a recording:
   release binaries.
 - `evidence export`, `evidence verify`, and `evidence replay`: signed,
   projector-safe replay of captured local debug artifacts.
-- `cache serve` and `cache warm`: a small backend for stable cached-sandbox reads.
+- `cache serve`, `cache warm`, and `cache status`: a small backend for stable
+  cached-sandbox reads plus an operator view of the protected cache inventory.
 - `public-sandbox-snapshot`: a no-credentials live-data report for presentation
   and website prep. It prints aggregate sandbox counts, ETags, newest entries,
   and top relying parties without printing JWT/CWT bodies.
@@ -314,6 +316,7 @@ remain Apple Silicon until the plugin bundle grows platform-specific binaries.
 augenmass cache serve --db ./presenter-cache.sqlite --ttl-secs 315360000 \
   --allowed-rp 2af138a8-59ea-4a84-aea3-666cafdb1369
 augenmass cache warm --api-base http://127.0.0.1:8081/api --rp 2af138a8-59ea-4a84-aea3-666cafdb1369
+augenmass cache status --api-base http://127.0.0.1:8081/api
 ```
 
 For the latest public sandbox aggregate before a demo or website update:
@@ -324,7 +327,7 @@ just public-sandbox-snapshot
 
 Last observed snapshot from this checkout:
 
-- Captured at: `2026-06-24T02:24:13Z`
+- Captured at: `2026-06-24T02:34:04Z`
 - Schema metadata: `113804` bytes, ETag
   `W/"1bc8c-WSRXyNo0svH/T001YeId4arFQcA"`
 - Schema vocabularies: `1001` bytes, ETag

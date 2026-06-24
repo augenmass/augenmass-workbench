@@ -397,6 +397,18 @@ enum CacheCmd {
         #[arg(long, env = "AUGENMASS_HTTP_TIMEOUT_SECS", default_value_t = DEFAULT_HTTP_TIMEOUT_SECS)]
         timeout_secs: u64,
     },
+    /// Show cache entries and deployment settings from a cache server.
+    Status {
+        /// Cache API base (env AUGENMASS_CACHE_API_BASE).
+        #[arg(long, env = "AUGENMASS_CACHE_API_BASE", default_value = DEFAULT_CACHE_API_BASE)]
+        api_base: String,
+        /// Admin token for protected status endpoint (env AUGENMASS_CACHE_ADMIN_TOKEN).
+        #[arg(long, env = "AUGENMASS_CACHE_ADMIN_TOKEN")]
+        admin_token: Option<String>,
+        /// HTTP request timeout in seconds (env AUGENMASS_HTTP_TIMEOUT_SECS).
+        #[arg(long, env = "AUGENMASS_HTTP_TIMEOUT_SECS", default_value_t = DEFAULT_HTTP_TIMEOUT_SECS)]
+        timeout_secs: u64,
+    },
 }
 
 pub async fn run() -> Result<()> {
@@ -514,6 +526,21 @@ pub async fn run() -> Result<()> {
                         api_base,
                         admin_token,
                         rp,
+                        timeout_secs,
+                    },
+                    fmt,
+                )
+                .await?
+            }
+            CacheCmd::Status {
+                api_base,
+                admin_token,
+                timeout_secs,
+            } => {
+                cache::status(
+                    cache::StatusArgs {
+                        api_base,
+                        admin_token,
                         timeout_secs,
                     },
                     fmt,

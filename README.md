@@ -236,6 +236,7 @@ WRITE AND TARGETS (guard-railed)
 - `clone serve [--db --port]`: run the registrar-compatible local clone store.
 - `cache serve [--db --host --port --upstream --ttl-secs --timeout-secs --max-entries --admin-token --allowed-rp --allow-any-rp --unsafe-upstream]`: run a bounded read-through cached-sandbox mirror for public sandbox GET routes. Registration reads are RP-allowlisted; the default is the demo RP.
 - `cache warm [--api-base --admin-token --rp --timeout-secs]`: prewarm schema and registration reads before a demo or outage-sensitive rehearsal.
+- `cache status [--api-base --admin-token --timeout-secs]`: show the protected cache inventory, including upstream, TTL, max entries, allowlist, cached keys, fetch time, byte size, and SHA-256.
 
 ## Over-ask and the legal basis
 

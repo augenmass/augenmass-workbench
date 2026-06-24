@@ -103,8 +103,7 @@ TOKEN=<token>
 BASE=https://cache.example/api
 
 augenmass cache warm --api-base "$BASE" --admin-token "$TOKEN" --rp "$RP"
-curl -fsS -H "Authorization: Bearer $TOKEN" \
-  "$BASE/cache/status"
+augenmass cache status --api-base "$BASE" --admin-token "$TOKEN"
 AUGENMASS_CACHE_API_BASE="$BASE" \
   augenmass list --target cached-sandbox --rp "$RP"
 ```
@@ -234,7 +233,7 @@ Without `AUGENMASS_DEPLOYED_CACHE_API_BASE`, the deployed smoke exits cleanly so
 local release gates do not depend on a hosted service. With only the API base,
 `just deployed-cache-smoke` checks health, public cached reads, and the CLI
 `cached-sandbox` path. With the admin token, it also proves `/cache/status` is
-protected, verifies authenticated status access, checks any configured allowlist
+protected, verifies authenticated status access through `cache status`, checks any configured allowlist
 includes the RP under test, runs `cache warm`, and confirms warmed entries are
 visible. Use `just deployed-cache-smoke-required` for current
 hosted-deployment readiness; required mode fails unless
