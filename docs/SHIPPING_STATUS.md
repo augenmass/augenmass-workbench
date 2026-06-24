@@ -153,13 +153,15 @@ its byte-for-byte freshness, and local Claude Code/Codex marketplace installs.
 Current 2026-06-24 status: the shorter `shipping-smoke` passed from a clean
 pushed tree at commit `de06e38`, and the targeted deployed-cache status CLI
 script fix at `d13da9f` passed `deployed-cache-guard-smoke`,
-`deployed-cache-smoke` in skip mode, and `live-cache-smoke`. The native archive
-smoke, Windows zip-layout smoke, platform smoke, and Docker Linux arm64 release
-archive smoke also passed from the clean pushed tree at commit `d13da9f`. Earlier
-local Docker runtime proof covered `linux/amd64`. The Docker Linux amd64
-release-archive provenance rerun was cancelled under local emulation after a
-long compile, so do not count the clean-provenance amd64 release archive as
-proven until `just docker-release-archive-smoke-amd64` completes.
+`deployed-cache-smoke` in skip mode, and `live-cache-smoke`. The latest
+code-bearing checkpoint `435956f` passed `just verify` and `just shipping-smoke`
+before push, including the new `evidence assert-live` command and refreshed
+plugin bundle. Packaging checkpoint `f7e5f5b` then passed native archive smoke,
+Windows zip-layout smoke, platform smoke, and Docker Linux arm64 release archive
+smoke. Earlier local Docker runtime proof covered `linux/amd64`. The Docker
+Linux amd64 release-archive provenance rerun was cancelled under local emulation
+after a long compile, so do not count the clean-provenance amd64 release archive
+as proven until `just docker-release-archive-smoke-amd64` completes.
 
 Latest code-bearing checkpoint: commit `435956f` added
 `evidence assert-live`, the post-capture proof gate for completed encrypted
@@ -180,8 +182,8 @@ new evidence command through CLI tests and plugin help, exercised live public
 sandbox reads, and built the local Docker cache image. GitHub Actions remained
 manual/tag-only; no remote CI run was started by the push.
 
-The most recent clean-provenance local Linux archive proof passed for arm64 on
-2026-06-24:
+The most recent clean-provenance local Linux archive proof passed for arm64 at
+checkpoint `f7e5f5b` on 2026-06-24:
 
 ```sh
 just docker-release-archive-smoke-arm64
@@ -192,10 +194,12 @@ It exported and smoke-tested:
 - `dist/docker-release-archive-smoke/linux-arm64/augenmass-v0.2.0-aarch64-unknown-linux-gnu.tar.gz`
 
 The exported archive directory includes matching `.sha256` and `.manifest.json`
-sidecars. The manifest records commit `d13da9f4de5778f0c61e55dd27213e41c1fa445d`
+sidecars. The manifest records commit `f7e5f5b0c7ee5fc5b2be4310012a83d03f5cf7d6`
 with `gitDirty: false`, `layoutOnly: false`, and `nativeExecution: true`. The
-Docker export script publishes archive directories
-atomically only after archive smoke has passed.
+host macOS archive and Windows layout-only zip manifests from the same packaging
+checkpoint also record `gitDirty: false`; the Windows zip remains
+`layoutOnly: true` and `nativeExecution: false`. The Docker export script
+publishes archive directories atomically only after archive smoke has passed.
 The `dist/` directory is ignored, so these generated archives and sidecars are
 local proof outputs, not committed release artifacts.
 
