@@ -425,23 +425,26 @@ Proven:
   Blacksmith org integration, runner labels, Rust toolchain install, and native
   workspace compilation on all three OS families without enabling push or PR
   triggers.
+- Native release archives for Linux x64, Windows x64, macOS Apple Silicon, and
+  macOS Intel. `Release Binaries` ran manually on commit `5bda20f` as run
+  `28102488586`; all four build jobs compiled, packaged, extracted, executed the
+  packaged binary against the packaged docs/examples/fixtures, verified
+  sidecars, and uploaded workflow artifacts. Windows x64 passed after
+  `release-archive-smoke.sh` was fixed to prefer `augenmass.exe` on Windows
+  filesystems. Timings: macOS arm64 `1m43s`, Linux x64 `3m35s`, Windows x64
+  `5m42s`, macOS Intel `12m19s`.
 
 Not yet fully proven:
 
-- Native Windows execution on Windows. The zip package layout is locally
-  smoke-tested, and Windows now compiles natively on Blacksmith, but the
-  packaged Windows binary still needs an execution smoke.
-- Native Linux release archive outside Docker or a native Linux host runner. The
-  workspace now compiles natively on Blacksmith Linux, but the release archive
-  smoke remains Docker-proven only.
 - Multi-platform plugin bundle; non-macOS-ARM agent users should set
   `AUGENMASS_BIN` to a native CLI binary.
+- macOS release archives are not notarized.
 
-The code is Rust-only, but the shipped plugin binary is currently a macOS
-Apple Silicon artifact. Treat broader platform support as source-build and
-container-capable until native release archives are built and manually tested.
-Runtime smokes can still be reused on those platforms by setting
-`AUGENMASS_BIN` to the native binary, and `demo-run` can use
+The code is Rust-only, and native release archives are now proven for the main
+desktop targets. The shipped plugin binary is still a macOS Apple Silicon
+artifact. Non-macOS-ARM agent users should install a native CLI archive or build
+from source, then set `AUGENMASS_BIN` to that binary. Runtime smokes can still be
+reused on those platforms by setting `AUGENMASS_BIN`, and `demo-run` can use
 `AUGENMASS_DEMO_BIN` for a one-off native demo binary. Plugin-bundle smokes
 remain Apple Silicon until the plugin bundle grows platform-specific binaries.
 
@@ -450,8 +453,6 @@ remain Apple Silicon until the plugin bundle grows platform-specific binaries.
 - Record a live wallet run with `serve --unsafe-debug-artifacts`, export it, and
   run `evidence assert-live` if network/public URL setup cooperates. The
   operator checklist is `docs/PHONE_WALLET_PROOF.md`.
-- Build and manually test native Linux and Windows archives before claiming
-  one-command install on those platforms.
 - Keep GitHub CI manual-only unless runner-minute spending is explicitly
   approved.
 - If the public sandbox is unstable, prewarm the cache with:
