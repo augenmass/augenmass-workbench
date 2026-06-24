@@ -43,6 +43,23 @@ cargo build --release --locked
 That matrix is intentionally native. It checks the OSes users actually run
 instead of pretending that a local cross-check from macOS is equivalent.
 
+## Blacksmith smoke
+
+`.github/workflows/blacksmith-smoke.yml` is a manual-only trial gate for the
+Blacksmith runner account. It does not publish artifacts and does not run on
+normal pushes or pull requests. The current matrix is:
+
+- `linux-x64` on `blacksmith-2vcpu-ubuntu-2404`
+- `windows-x64` on `blacksmith-2vcpu-windows-2025`
+- `macos-arm64` on `blacksmith-6vcpu-macos-15`
+
+Use the default `debug-build` scope first to prove the org integration and basic
+native compilation without spending release-build minutes. The `test` and
+`release-build` scopes are deliberate follow-ups. Blacksmith's macOS runners are
+Apple Silicon, so this gate proves macOS arm64 behavior; keep the Intel macOS
+release target in `.github/workflows/release.yml` until a separate Intel proof is
+chosen.
+
 Run the local guard before changing or pushing workflow files:
 
 ```sh

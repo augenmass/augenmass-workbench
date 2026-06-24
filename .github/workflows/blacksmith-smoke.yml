@@ -1,0 +1,63 @@
+name: Blacksmith Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "How much to prove on Blacksmith runners"
+        required: true
+        default: "debug-build"
+        type: choice
+        options:
+          - debug-build
+          - test
+          - release-build
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blacksmith-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: ${{ matrix.name }} / ${{ inputs.scope }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            runner: blacksmith-2vcpu-ubuntu-2404
+          - name: windows-x64
+            runner: blacksmith-2vcpu-windows-2025
+          - name: macos-arm64
+            runner: blacksmith-6vcpu-macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.92.0 --profile minimal
+          rustup default 1.92.0
+
+      - name: Print toolchain
+        run: |
+          rustc -vV
+          cargo -V
+
+      - name: Debug build
+        if: inputs.scope == 'debug-build'
+        run: cargo build --workspace --locked
+
+      - name: Test
+        if: inputs.scope == 'test'
+        run: cargo test --workspace
+
+      - name: Release build
+        if: inputs.scope == 'release-build'
+        run: cargo build --release --locked
