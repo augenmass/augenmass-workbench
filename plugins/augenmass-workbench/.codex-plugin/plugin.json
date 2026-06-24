@@ -29,10 +29,10 @@
     ],
     "websiteURL": "https://github.com/augenmass/augenmass-workbench",
     "defaultPrompt": [
-      "Explain whether this age-check registration asks for too much data, in plain language.",
-      "Audit this registration for over-asking and tell me the minimal safe request.",
-      "Inspect this OpenID4VP request for wallet failures.",
-      "Prepare a safe live wallet debug run."
+      "Use the augenmass skill: show the purpose baselines, generate a proportionate age-check body, and check it.",
+      "Use the augenmass skill: explain why a full birthdate is too much for an over-18 check, and cite the basis.",
+      "Use the augenmass skill: in plain language, what should an age-check service ask for and what should it avoid?",
+      "Use the augenmass skill: prepare a safe live wallet debug run with redacted traces."
     ],
     "brandColor": "#0F766E"
   }

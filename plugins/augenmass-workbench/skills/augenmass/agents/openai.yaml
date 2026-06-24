@@ -1,0 +1,7 @@
+interface:
+  display_name: "Augenmaß"
+  short_description: "EUDI wallet over-ask and debugger skill"
+  default_prompt: "Use $augenmass to show the purpose baselines, generate a proportionate age-check body, and check it."
+
+policy:
+  allow_implicit_invocation: true

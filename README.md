@@ -10,9 +10,9 @@ One engine, two surfaces. The same proportionality engine that audits the public
 
 The hackathon version was a light tool with six commands (`generate`, `check`, `doctor`, `register`, `list`, `clone`). This version surfaces the entire engine (verification, status, trust, disclosure, crypto) and adds offline decoders for the rest of the ecosystem's artifacts, behind one cohesive skill and CLI.
 
-## Install
+## Install the skill
 
-Install the skill/plugin; it is then available to trigger on EUDI registration and wallet-debugging work in Claude Code or Codex.
+Install the skill/plugin; it is then available to trigger on EUDI registration and wallet-debugging work in Claude Code or Codex. The first experience should be a conversation with the skill, not a terminal manual.
 
 ```
 /plugin marketplace add augenmass/augenmass-workbench
@@ -28,6 +28,21 @@ codex plugin add augenmass-workbench@augenmass
 ```
 
 The Claude Code marketplace path is currently a private preview, so it resolves only for accounts with repository access. The Codex commands above install from the checked-out local repository. Once the repository is published, the same plugin metadata can back a public marketplace install.
+
+## First run in an agent
+
+Start with prompts that do not require a repository checkout:
+
+| Audience | Prompt | Expected outcome |
+| --- | --- | --- |
+| Developer | `Use the augenmass skill: show the purpose baselines, generate a proportionate age-check body, and check it.` | The agent runs no-file commands, explains the generated minimal body, and confirms it passes the over-ask gate. |
+| Auditor | `Use the augenmass skill: explain why a full birthdate is too much for an over-18 check, and cite the basis.` | The agent explains the proportionality concern, cites the data-minimisation basis, and proposes `age_equal_or_over.18`. |
+| Non-technical reviewer | `Use the augenmass skill: in plain language, what should an age-check service ask for and what should it avoid?` | The agent avoids JSON detail, names the unnecessary data, explains the risk, and gives the safer replacement. |
+| Live demo | `Use the augenmass skill: prepare a safe live wallet debug run with redacted traces.` | The agent explains `serve`, `--public-url`, trust/status caveats, and why raw debug artifacts are opt-in only. |
+
+When the plugin was installed from a marketplace without the full repository checkout, use no-file prompts like these. Fixture prompts such as `inspect fixtures/requests/eudiplo-request.jwt` are for full checkouts or release archives that include `fixtures/` and `examples/`.
+
+## CLI fallback
 
 The bundled plugin binary currently supports macOS Apple Silicon only. On other platforms, build from source with `cargo build --release --locked` and set `AUGENMASS_BIN` to the native binary (`./target/release/augenmass` on Unix-like shells, `./target/release/augenmass.exe` from Windows Git Bash), or use the native CLI archives published by the release workflow once a version tag is cut.
 
@@ -53,8 +68,6 @@ cargo install --locked --path . --bin augenmass --root "$HOME/.local"
 ```
 
 The binary that ships inside the plugin is the same one. The skill resolves `AUGENMASS_BIN` first, then the bundled plugin binary on macOS Apple Silicon; use a bare `augenmass` only when your session or shell has a compatible binary on PATH.
-
-When the plugin was installed from a marketplace without the full repository checkout, start with no-file prompts such as "show the purpose baselines, generate a proportionate age-check body, and check it." Fixture prompts like `inspect fixtures/requests/eudiplo-request.jwt` are for full checkouts or release archives that include `fixtures/` and `examples/`.
 
 ## Ask it like this
 

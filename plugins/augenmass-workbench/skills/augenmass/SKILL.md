@@ -46,6 +46,16 @@ set `AUGENMASS_BIN` to the resulting `augenmass` or `augenmass.exe`. Keep the
 answer useful while blocked: explain what you can infer from the artifact shape,
 but mark anything not actually run as unverified.
 
+## First runnable check
+
+On a fresh plugin install, prove the skill works before asking for fixtures. Resolve `$AUGENMASS`, run `$AUGENMASS --version`, then prefer no-file checks:
+
+- `$AUGENMASS baselines`
+- `$AUGENMASS generate regbody --json | $AUGENMASS check -`
+- `$AUGENMASS generate dcql --claim age_equal_or_over.18 | $AUGENMASS validate dcql -`
+
+These commands work without `fixtures/` or `examples/`, so they are the right first answer when a developer, auditor, or non-technical reviewer has installed only the skill. Use fixture paths only when the user is in a full checkout or has attached the file.
+
 ## How to think about it
 
 The central idea is Augenmaß: a sense of proportion. A relying party should ask for exactly the personal data its stated purpose needs, and no more. Most of what people bring you is some variation on that one question.
