@@ -185,6 +185,18 @@ examples, and fixtures. `release-zip-layout-smoke` exercises the Windows-style
 the gate is run on Windows. Together they are the local checks that candidate
 archives are self-contained.
 
+Each archive produced by the shared packager also gets `<archive>.sha256` and
+`<archive>.manifest.json` sidecars. The smoke gate requires and checks those
+sidecars by default. From a directory containing a downloaded archive and
+sidecar, users can run `shasum -a 256 -c <archive>.sha256` or `sha256sum -c
+<archive>.sha256` before extracting. The manifest records the target, archive
+hash, binary hash, actual build host, layout-only/native-execution flags, git
+commit, dirty flag, and Rust compiler version.
+
+macOS release archives are not notarized yet. Verify the `.sha256` sidecar
+before extraction. If Gatekeeper or quarantine blocks the binary, prefer a local
+source build until notarized release signing is added.
+
 The broader local release proof is:
 
 ```sh

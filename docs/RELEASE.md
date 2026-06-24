@@ -66,9 +66,22 @@ runner credits.
 The workflow, local host smoke, and Docker Linux archive smoke all use
 `scripts/package-release-archive.sh` for the package layout.
 
-On a tag push (`v*`), the workflow uploads the archives to a GitHub release.
-Tag pushes spend runner minutes and should happen only after explicit approval.
-On manual dispatch, it publishes workflow artifacts only.
+Every packaged archive now has two sidecars:
+
+- `<archive>.sha256`: a standard SHA-256 checksum line for the archive.
+- `<archive>.manifest.json`: target, package name, archive hash, binary name,
+  binary hash, actual build host, layout-only/native-execution flags, git
+  commit, dirty flag, Rust compiler version/host, and GitHub ref/run id when
+  built in Actions.
+
+`release-archive-smoke` requires and verifies those sidecars by default, then
+extracts the archive and runs the packaged binary against the packaged docs,
+examples, and fixtures. The only escape hatch is
+`AUGENMASS_ALLOW_MISSING_RELEASE_SIDECARS=1`, reserved for legacy archives. On a
+tag push (`v*`), the workflow uploads the archives and both sidecars to a GitHub
+release. Tag pushes spend runner minutes and should happen only after explicit
+approval. On manual dispatch, it publishes workflow artifacts only. Tag builds
+fail unless the tag name matches `v$(Cargo.toml version)`.
 
 ## Cutting a release
 
@@ -136,17 +149,27 @@ bundled plugin binary.
 release gate; it fetches public sandbox reads and prints aggregate counts/ETags
 without credentialed writes.
 `release-archive-smoke` builds the host release archive, extracts it, then runs
-the packaged binary against packaged docs, examples, and fixtures.
+the packaged binary against packaged docs, examples, and fixtures. It also
+requires and checks `<archive>.sha256` and `<archive>.manifest.json`.
 `release-zip-layout-smoke` builds a Windows-style `.zip` package layout from the
 host release binary renamed to `augenmass.exe`, extracts it, and runs the same
 archive smoke. On non-Windows hosts it proves zip packaging and self-contained
-layout only; it is not native Windows execution proof.
+layout only; it is not native Windows execution proof. Its manifest is marked
+`layoutOnly: true`, `nativeExecution: false`, and records the actual host that
+produced the renamed binary.
 `docker-release-archive-smoke-linux` builds Linux arm64 and amd64 archives
 inside Docker, runs the archive smoke inside the matching Linux container, and
 exports the resulting archives to:
 
 - `dist/docker-release-archive-smoke/linux-arm64/augenmass-v<version>-aarch64-unknown-linux-gnu.tar.gz`
 - `dist/docker-release-archive-smoke/linux-amd64/augenmass-v<version>-x86_64-unknown-linux-gnu.tar.gz`
+
+The exported Docker archive directories include the matching `.sha256` and
+`.manifest.json` sidecars. The export is atomic: the script builds into a temp
+directory, requires the archive and both sidecars, verifies the checksum and
+manifest, and then replaces the public
+`dist/docker-release-archive-smoke/<platform>` folder. The executable smoke runs
+inside the matching Linux container before export.
 
 `plugin-only-smoke` copies only the plugin bundle to a temp directory and runs
 no-file commands from outside the checkout, so marketplace-style first-run

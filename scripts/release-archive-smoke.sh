@@ -9,10 +9,66 @@ fi
 ARCHIVE="$1"
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/augenmass-release-archive-smoke.XXXXXX")"
 
+hash_file() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    echo "missing required command for hashing: shasum or sha256sum" >&2
+    exit 1
+  fi
+}
+
+manifest_has() {
+  local key="$1"
+  local value="$2"
+  grep -Fq "\"${key}\": \"${value}\"" "${MANIFEST}"
+}
+
 cleanup() {
   rm -rf "${ROOT}"
 }
 trap cleanup EXIT
+
+ARCHIVE_SHA256="$(hash_file "${ARCHIVE}")"
+SHA_FILE="${ARCHIVE}.sha256"
+MANIFEST="${ARCHIVE}.manifest.json"
+
+if [ ! -f "${SHA_FILE}" ] || [ ! -f "${MANIFEST}" ]; then
+  if [ "${AUGENMASS_ALLOW_MISSING_RELEASE_SIDECARS:-0}" != "1" ]; then
+    echo "release archive is missing required sidecars: ${SHA_FILE} and ${MANIFEST}" >&2
+    echo "set AUGENMASS_ALLOW_MISSING_RELEASE_SIDECARS=1 only for legacy archives" >&2
+    exit 1
+  fi
+fi
+
+if [ -f "${SHA_FILE}" ]; then
+  read -r expected_sha expected_name <"${SHA_FILE}"
+  if [ "${expected_sha}" != "${ARCHIVE_SHA256}" ]; then
+    echo "archive checksum sidecar does not match ${ARCHIVE}" >&2
+    exit 1
+  fi
+  if [ "${expected_name}" != "$(basename "${ARCHIVE}")" ]; then
+    echo "archive checksum sidecar names ${expected_name}, expected $(basename "${ARCHIVE}")" >&2
+    exit 1
+  fi
+fi
+
+if [ -f "${MANIFEST}" ]; then
+  manifest_has schema "augenmass-release-manifest-v1" || {
+    echo "release manifest has an unknown schema" >&2
+    exit 1
+  }
+  manifest_has archive "$(basename "${ARCHIVE}")" || {
+    echo "release manifest names the wrong archive" >&2
+    exit 1
+  }
+  manifest_has archiveSha256 "${ARCHIVE_SHA256}" || {
+    echo "release manifest archiveSha256 does not match ${ARCHIVE}" >&2
+    exit 1
+  }
+fi
 
 case "${ARCHIVE}" in
   *.tar.gz | *.tgz)
@@ -41,6 +97,12 @@ if [ "${#entries[@]}" -ne 1 ] || [ ! -d "${entries[0]}" ]; then
   exit 1
 fi
 PACKAGE="${entries[0]}"
+PACKAGE_NAME="$(basename "${PACKAGE}")"
+
+if [ -f "${MANIFEST}" ] && ! manifest_has packageName "${PACKAGE_NAME}"; then
+  echo "release manifest packageName does not match ${PACKAGE_NAME}" >&2
+  exit 1
+fi
 
 BIN="${PACKAGE}/augenmass"
 if [ ! -f "${BIN}" ]; then
@@ -53,6 +115,18 @@ fi
 if [[ "${BIN}" != *.exe && ! -x "${BIN}" ]]; then
   echo "archive binary is not executable: ${BIN}" >&2
   exit 1
+fi
+BINARY_SHA256="$(hash_file "${BIN}")"
+
+if [ -f "${MANIFEST}" ]; then
+  manifest_has binary "$(basename "${BIN}")" || {
+    echo "release manifest names the wrong binary" >&2
+    exit 1
+  }
+  manifest_has binarySha256 "${BINARY_SHA256}" || {
+    echo "release manifest binarySha256 does not match ${BIN}" >&2
+    exit 1
+  }
 fi
 
 (

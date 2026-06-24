@@ -13,12 +13,12 @@ FROM debian:bookworm-slim AS release-archive-smoke
 RUN apt-get update \
     && apt-get install -y --no-install-recommends bash ca-certificates gzip tar \
     && rm -rf /var/lib/apt/lists/*
-COPY --from=release-archive /dist/*.tar.gz /dist/
+COPY --from=release-archive /dist/ /dist/
 COPY --from=release-archive /app/scripts/release-archive-smoke.sh /usr/local/bin/release-archive-smoke.sh
 RUN bash -lc 'set -euo pipefail; archives=(/dist/*.tar.gz); test "${#archives[@]}" -eq 1; bash /usr/local/bin/release-archive-smoke.sh "${archives[0]}"'
 
 FROM scratch AS release-archive-export
-COPY --from=release-archive-smoke /dist/*.tar.gz /
+COPY --from=release-archive-smoke /dist/ /
 
 FROM debian:bookworm-slim
 

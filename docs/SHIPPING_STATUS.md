@@ -105,8 +105,14 @@ just release-zip-layout-smoke
 
 `release-archive-smoke` builds a host archive, extracts it, and runs the
 packaged binary only against packaged docs, examples, and fixtures.
+It also verifies the generated `.sha256` checksum sidecar and
+`.manifest.json` archive/binary/provenance manifest. Those sidecars are required
+by default; missing sidecars are allowed only with the explicit legacy escape
+hatch `AUGENMASS_ALLOW_MISSING_RELEASE_SIDECARS=1`.
 `release-zip-layout-smoke` exercises the Windows-style `.zip` layout locally
-without claiming native Windows execution unless it is run on Windows.
+without claiming native Windows execution unless it is run on Windows. Its
+manifest is marked `layoutOnly: true` and `nativeExecution: false` on this macOS
+host.
 
 The local platform probe is:
 
@@ -155,6 +161,10 @@ It exported and smoke-tested:
 
 - `dist/docker-release-archive-smoke/linux-arm64/augenmass-v0.2.0-aarch64-unknown-linux-gnu.tar.gz`
 - `dist/docker-release-archive-smoke/linux-amd64/augenmass-v0.2.0-x86_64-unknown-linux-gnu.tar.gz`
+
+Those exported archive directories now include matching `.sha256` and
+`.manifest.json` sidecars, and the Docker export script now publishes them
+atomically only after archive smoke has passed.
 
 ## Presentation-safe surfaces
 
