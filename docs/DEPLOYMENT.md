@@ -264,11 +264,12 @@ AUGENMASS_DEPLOYED_CACHE_ADMIN_TOKEN=<token> \
 
 ## Cloudflare
 
-Cloudflare Containers can run the current Docker image behind a Worker wrapper.
-The repository includes an optional adapter in `deploy/cloudflare-containers/`.
-It routes all requests to one named container instance, passes cache settings
-and the admin token as container environment variables, and typechecks locally
-with:
+Cloudflare Containers is designed to run the current Docker image behind a
+Worker wrapper, but the repository proof today is adapter typecheck only, not a
+deployed Cloudflare smoke. The optional adapter in
+`deploy/cloudflare-containers/` routes all requests to one named container
+instance, passes cache settings and the admin token as container environment
+variables, and typechecks locally with:
 
 ```sh
 just cloudflare-containers-typecheck

@@ -54,7 +54,7 @@ On a fresh plugin install, prove the skill works before asking for fixtures. Res
 - `$AUGENMASS generate regbody --json | $AUGENMASS check -`
 - `$AUGENMASS generate dcql --claim age_equal_or_over.18 | $AUGENMASS validate dcql -`
 
-These commands work without `fixtures/` or `examples/`, so they are the right first answer when a developer, auditor, or non-technical reviewer has installed only the skill. Use fixture paths only when the user is in a full checkout or has attached the file.
+These commands work without `fixtures/` or `examples/`, so they are the right first answer when a developer, auditor, or non-technical reviewer has installed only the skill. Use fixture paths only when the user is in a full checkout or has attached the file. When the user asks which live surface to use, refer to the mode matrix in `docs/SANDBOX.md` before choosing between offline artifacts, `clone`, `cached-sandbox`, `sandbox`, deployed cache, or `serve`.
 
 ## How to think about it
 

@@ -87,7 +87,10 @@ name, address, and nationality. For an over-18 check, that is more information
 than the stated purpose needs. Ask only for `age_equal_or_over.18`; it proves the
 same thing without exposing a birthdate or identity details."
 
-See `docs/ASK-IT-LIKE-THIS.md` for more, and `docs/EXPLAINER.md` for the plain-language version of what over-ask is and why it matters.
+See `docs/ASK-IT-LIKE-THIS.md` for more, `docs/EXPLAINER.md` for the
+plain-language version of what over-ask is and why it matters, and
+`docs/SANDBOX.md` for the mode matrix that explains offline, clone,
+cached-sandbox, live sandbox, deployed cache, and wallet-debugger workflows.
 
 ## Use it as a guardrail
 

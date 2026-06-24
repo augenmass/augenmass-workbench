@@ -92,7 +92,10 @@ Use `plugin-demo-run` for the exact bundled sequence.
 
 ## Source install
 
-Use this on macOS or Linux when you have Rust 1.92 available:
+Use this on macOS or Linux when you have Rust 1.92 available. The current local
+proof is strongest on macOS Apple Silicon and Docker Linux; native Linux source
+install is expected to work, but should be smoke-tested on the target machine
+before you present it as a supported host.
 
 ```sh
 cargo install --locked --path . --bin augenmass --root "$HOME/.local"

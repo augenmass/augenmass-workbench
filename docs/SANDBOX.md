@@ -13,6 +13,22 @@ This guide covers what each mode is, how to drive the clone and cache end to end
 the safety rules that apply to writes, and one ecosystem caveat to confirm at
 sandbox time.
 
+## Which mode should I use?
+
+| Mode | Network | Credentials | Mutates data | Persistence | Proof gate |
+| --- | --- | --- | --- | --- | --- |
+| Offline fixtures and artifacts | No | No | No | None | `just plugin-only-smoke`, `just fixture-command-proofs` |
+| `clone` | Loopback only | No | Yes, local SQLite only | `augenmass-clone.sqlite` | `just clone-smoke` via `just verify` |
+| Local `cached-sandbox` | Public sandbox GETs | No | No | `augenmass-cache.sqlite` | `just live-cache-smoke` |
+| Deployed cache/proxy | Public sandbox GETs through your backend | Admin token for status and refresh | No | Hosted SQLite volume | `just deployed-cache-smoke-required` after deployment |
+| `sandbox` | Real sandbox registrar | Keycloak credentials | Yes, live registrar when explicitly confirmed | Sandbox-owned | `just live-sandbox-smoke` with credentials |
+| `serve` wallet debugger | Loopback plus optional public tunnel | No by default; wallet presents to local verifier | No registrar writes | Redacted in memory; optional local unsafe artifacts | `just serve-smoke` |
+
+Use offline commands for first contact, `clone` for safe write rehearsal,
+`cached-sandbox` for stable public reads, `sandbox` only for credentialed
+off-stage rehearsal, and `serve` when the actual wallet exchange is the thing
+under test.
+
 ## The clone target
 
 The clone is a registrar-compatible local store: an axum HTTP server backed by SQLite, started with `augenmass clone serve`. It speaks the same registration endpoints as the real registrar, so the same `register` and `list` code paths exercise it. It does no signing, no auth, and no x5c. It stores payload-only JWTs: each stored certificate is `header.payload.fixture`, where the header is `{"typ":"rc-wrp+jwt","alg":"none"}`.
