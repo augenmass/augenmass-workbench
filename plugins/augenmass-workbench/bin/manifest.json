@@ -1,0 +1,50 @@
+{
+  "schema": "augenmass-plugin-bundle-v1",
+  "version": "0.2.0",
+  "source": {
+    "kind": "github-release",
+    "repository": "augenmass/augenmass-workbench",
+    "tag": "v0.2.0"
+  },
+  "launchers": [
+    "augenmass",
+    "augenmass.cmd",
+    "augenmass.ps1"
+  ],
+  "targets": [
+    {
+      "target": "aarch64-apple-darwin",
+      "binary": "aarch64-apple-darwin/augenmass",
+      "binarySha256": "ccb2993609ad1339edac6a2b38d231010daece9945ebcf9159857762cb6a60d1",
+      "archive": "augenmass-v0.2.0-aarch64-apple-darwin.tar.gz",
+      "archiveSha256": "2e1a93a91f4c82529ffae640467a7d3db6ee7d07a8d9f534ca13382fedd44298",
+      "sourceManifest": "augenmass-v0.2.0-aarch64-apple-darwin.tar.gz.manifest.json"
+    },
+    {
+      "target": "x86_64-apple-darwin",
+      "binary": "x86_64-apple-darwin/augenmass",
+      "binarySha256": "dba7e12988e4bade28b8219049919229d924557cb82d9f5c49715c7c5f78fef7",
+      "archive": "augenmass-v0.2.0-x86_64-apple-darwin.tar.gz",
+      "archiveSha256": "f1176d62f563f4bc8a05d3cdc5183a04ba8cef82815ce650bbf154d774d5d344",
+      "sourceManifest": "augenmass-v0.2.0-x86_64-apple-darwin.tar.gz.manifest.json"
+    },
+    {
+      "target": "x86_64-unknown-linux-gnu",
+      "binary": "x86_64-unknown-linux-gnu/augenmass",
+      "binarySha256": "28714b66d6d4ad15a9704f47061527c985b3cccbc691c3abe0d11fb4709bcb00",
+      "archive": "augenmass-v0.2.0-x86_64-unknown-linux-gnu.tar.gz",
+      "archiveSha256": "4a92907a0e506295d819f5d5ce70d3a253b4f1ea32aaaef45541506155d489b1",
+      "sourceManifest": "augenmass-v0.2.0-x86_64-unknown-linux-gnu.tar.gz.manifest.json"
+    },
+    {
+      "target": "x86_64-pc-windows-msvc",
+      "binary": "x86_64-pc-windows-msvc/augenmass.exe",
+      "binarySha256": "75c04196be7ba847df68364da905f6f53e86f37c865bc62700720460a0abfdae",
+      "archive": "augenmass-v0.2.0-x86_64-pc-windows-msvc.zip",
+      "archiveSha256": "fca941b6258f6abd413ac21540ea56abeb591889c87a61afb57d203193423269",
+      "sourceManifest": "augenmass-v0.2.0-x86_64-pc-windows-msvc.zip.manifest.json"
+    }
+  ],
+  "unsignedPreview": true,
+  "generatedBy": "scripts/assemble-plugin-bundle.sh"
+}

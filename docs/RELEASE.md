@@ -1,16 +1,17 @@
 # Release and platform support
 
 Augenmaß Workbench ships as one Rust CLI (`augenmass`) and one agent plugin
-bundle with both Claude Code and Codex manifests. The bundle carries the same CLI
-under `plugins/augenmass-workbench/bin`.
+bundle with both Claude Code and Codex manifests. The bundle carries a small
+launcher under `plugins/augenmass-workbench/bin/augenmass` plus per-target
+native binaries under target-triple subdirectories.
 
 ## Current support status
 
 - Source build: intended for the native release targets with Rust 1.92 or newer;
   other Rust platforms are unproven.
 - Plugin bundle in this repository: Claude Code and Codex manifests are present;
-  the committed bundled binary is macOS Apple Silicon only because it is a
-  Mach-O arm64 executable.
+  the committed launcher selects bundled binaries for macOS Apple Silicon,
+  macOS Intel, Linux x64, and Windows x64.
 - Release workflow: builds native archives for Linux x86_64, Windows x86_64,
   macOS Intel, and macOS Apple Silicon when a `v*` tag is pushed or the workflow
   is run manually.
@@ -115,9 +116,9 @@ https://github.com/augenmass/augenmass-workbench/releases/tag/v0.2.0
 It contains native CLI archives plus `.sha256` and `.manifest.json` sidecars for
 Linux x64, Windows x64, macOS Apple Silicon, and macOS Intel. The tag release
 run `28103514119` passed all native build/package/smoke jobs and the publish
-job. The release archive is the cross-platform install path; the committed
-plugin bundle remains the macOS Apple Silicon preview bundle until plugin
-packaging grows platform-specific binaries.
+job. The release archive is the canonical binary source; the committed plugin
+bundle is assembled from those release archives so the skill can run on the
+supported desktop targets without a local source build.
 
 ## Cutting a release
 
@@ -137,20 +138,21 @@ just shipping-smoke
 just platform-smoke
 ```
 
-Refresh the plugin bundle on an Apple Silicon Mac before tagging:
+Refresh the plugin bundle from release archives after the release exists:
 
 ```sh
 just bundle
 git status --short
 ```
 
-`just bundle` refuses to overwrite the committed plugin binary unless the host
-target is `aarch64-apple-darwin`, because the current plugin bundle is a private
-preview artifact for macOS Apple Silicon.
-`just plugin-bundle-freshness` rebuilds the locked release binary on that host
-and fails unless `plugins/augenmass-workbench/bin/augenmass` is byte-for-byte the
-same binary. If it fails, run `just bundle`, review the binary diff, then rerun
-the presenter proof.
+`just bundle` reads the native release archives and sidecars, rejects layout-only
+archives, verifies archive and binary hashes, then writes the target-specific
+plugin binaries plus `bin/manifest.json`.
+`just plugin-bundle-freshness` verifies the bundle manifest version, launcher
+version, and each committed target-binary hash. Set
+`AUGENMASS_STRICT_LOCAL_PLUGIN_BUILD=1` only when you explicitly want to compare
+the current-host target against a local rebuild; release-built binaries may not
+be byte-identical to a local build because build paths can differ.
 
 Then tag from a clean tree:
 
@@ -188,7 +190,7 @@ temporary `HOME`.
 `serve-smoke` proves the verifier-in-a-box runtime over loopback HTTP: session
 minting, JAR fetch, JSON/HTML trace, plaintext rejection, and redaction. It
 honors `AUGENMASS_BIN` for native source/release binaries and otherwise uses the
-bundled plugin binary.
+bundled plugin launcher.
 `public-sandbox-snapshot` is a live-data report for presentation prep, not a
 release gate; it fetches public sandbox reads and prints aggregate counts/ETags
 without credentialed writes.
@@ -245,10 +247,10 @@ where every configured target must be present.
 Runtime smokes that touch a running server or hosted cache (`serve-smoke`,
 `live-cache-smoke`, `deployed-cache-smoke`, `deployed-cache-smoke-required`,
 `live-sandbox-smoke`) resolve the CLI as: script-specific override, then
-`AUGENMASS_BIN`, then the bundled plugin binary. `demo-run` is also portable: it
+`AUGENMASS_BIN`, then the bundled plugin launcher. `demo-run` is also portable: it
 resolves `AUGENMASS_DEMO_BIN`, then
-`AUGENMASS_BIN`, then the bundled binary. Plugin-bundle gates (`plugin-smoke`,
-`plugin-demo-run`) intentionally stay bound to the committed plugin binary.
+`AUGENMASS_BIN`, then the bundled launcher. Plugin-bundle gates (`plugin-smoke`,
+`plugin-demo-run`) intentionally stay bound to the committed plugin artifact.
 
 For the plugin-free local CLI release proof without spending runner credits, run:
 
@@ -270,10 +272,10 @@ For the presenter plugin proof, run:
 just presenter-plugin-proof
 ```
 
-That checks the committed macOS Apple Silicon plugin bundle, the plugin-only
-first-run path, local Claude Code/Codex marketplace installs, and the
-byte-for-byte freshness of the bundled binary against the current locked release
-build. It is intentionally separate from the plugin-free CLI proof.
+That checks the committed platform-aware plugin bundle, the plugin-only
+first-run path, local Claude Code/Codex marketplace installs, and manifest/hash
+freshness of the bundled target binaries. It is intentionally separate from the
+plugin-free CLI proof.
 
 For the strongest presenter-machine proof, run:
 
@@ -291,16 +293,27 @@ For a no-runner-credit Linux archive proof only, run:
 just docker-release-archive-smoke-linux
 ```
 
-## Plugin bundle caveat
+## Plugin bundle layout
 
-The plugin path is:
+The plugin launcher paths are:
 
-```sh
+```text
 plugins/augenmass-workbench/bin/augenmass
+plugins/augenmass-workbench/bin/augenmass.cmd
+plugins/augenmass-workbench/bin/augenmass.ps1
 ```
 
-That binary is committed so the private plugin preview works without a local
-build on the presenter machine. It is not yet a multi-platform bundle. Until
-plugin packaging learns platform-specific binaries, non-macOS-ARM users should
-install the skill for guidance and set `AUGENMASS_BIN` to a CLI built from source
-or downloaded from a release archive.
+The bundled target binaries are:
+
+```text
+plugins/augenmass-workbench/bin/aarch64-apple-darwin/augenmass
+plugins/augenmass-workbench/bin/x86_64-apple-darwin/augenmass
+plugins/augenmass-workbench/bin/x86_64-unknown-linux-gnu/augenmass
+plugins/augenmass-workbench/bin/x86_64-pc-windows-msvc/augenmass.exe
+```
+
+They are unsigned preview binaries. If macOS Gatekeeper or Windows blocks a
+binary, verify the release checksum first, then either approve it manually
+(macOS System Settings -> Privacy & Security -> Open Anyway; Windows Properties
+-> Unblock or PowerShell `Unblock-File`) or build from source and set
+`AUGENMASS_BIN`.

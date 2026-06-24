@@ -53,6 +53,10 @@ CACHE=./presenter-cache.sqlite
 $BIN cache serve --db "$CACHE" --port 8081 --ttl-secs 315360000 --allowed-rp "$RP"
 ```
 
+`./plugins/augenmass-workbench/bin/augenmass` is the bundled launcher. It picks
+the native plugin binary for supported targets unless `AUGENMASS_BIN` points to
+a separately trusted binary.
+
 In another shell:
 
 ```sh

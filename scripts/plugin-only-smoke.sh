@@ -27,6 +27,9 @@ fi
 cp -R "${SOURCE}" "${TMP}/augenmass-workbench"
 PLUGIN_ROOT="${TMP}/augenmass-workbench"
 BIN="${PLUGIN_ROOT}/bin/augenmass"
+BIN_CMD="${PLUGIN_ROOT}/bin/augenmass.cmd"
+BIN_PS1="${PLUGIN_ROOT}/bin/augenmass.ps1"
+PLUGIN_BUNDLE_MANIFEST="${PLUGIN_ROOT}/bin/manifest.json"
 SKILL="${PLUGIN_ROOT}/skills/augenmass/SKILL.md"
 OPENAI_AGENT="${PLUGIN_ROOT}/skills/augenmass/agents/openai.yaml"
 ASK_REF="${PLUGIN_ROOT}/skills/augenmass/reference/ask-it-like-this.md"
@@ -35,7 +38,7 @@ PHONE_REF="${PLUGIN_ROOT}/skills/augenmass/reference/phone-wallet-proof.md"
 RUN_DIR="${TMP}/no-checkout"
 mkdir -p "${RUN_DIR}"
 
-for path in "${BIN}" "${SKILL}" "${OPENAI_AGENT}" "${ASK_REF}" "${EXPLAINER_REF}" "${PHONE_REF}" "${PLUGIN_ROOT}/.claude-plugin/plugin.json" "${PLUGIN_ROOT}/.codex-plugin/plugin.json"; do
+for path in "${BIN}" "${BIN_CMD}" "${BIN_PS1}" "${PLUGIN_BUNDLE_MANIFEST}" "${SKILL}" "${OPENAI_AGENT}" "${ASK_REF}" "${EXPLAINER_REF}" "${PHONE_REF}" "${PLUGIN_ROOT}/.claude-plugin/plugin.json" "${PLUGIN_ROOT}/.codex-plugin/plugin.json"; do
   if [ ! -e "${path}" ]; then
     echo "plugin-only copy is missing: ${path}" >&2
     exit 1
@@ -43,9 +46,18 @@ for path in "${BIN}" "${SKILL}" "${OPENAI_AGENT}" "${ASK_REF}" "${EXPLAINER_REF}
 done
 
 if [ ! -x "${BIN}" ]; then
-  echo "plugin-only binary is not executable: ${BIN}" >&2
+  echo "plugin-only launcher is not executable: ${BIN}" >&2
   exit 1
 fi
+
+jq -e '.schema == "augenmass-plugin-bundle-v1" and (.targets | length) == 4' "${PLUGIN_BUNDLE_MANIFEST}" >/dev/null
+for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu x86_64-pc-windows-msvc; do
+  binary_path="$(jq -r --arg target "${target}" '.targets[] | select(.target == $target) | .binary' "${PLUGIN_BUNDLE_MANIFEST}")"
+  if [ ! -f "${PLUGIN_ROOT}/bin/${binary_path}" ]; then
+    echo "plugin-only target binary is missing: ${PLUGIN_ROOT}/bin/${binary_path}" >&2
+    exit 1
+  fi
+done
 
 cd "${RUN_DIR}"
 
@@ -87,6 +99,7 @@ grep -q -- '--admin-token' "${OUT}"
 grep -q -- '--unsafe-debug-artifacts' "${OUT}"
 
 grep -q 'Do not assume those files exist' "${SKILL}"
+grep -q 'unsigned preview binaries' "${SKILL}"
 grep -q 'Use \$augenmass to show the purpose baselines' "${OPENAI_AGENT}"
 grep -q 'Non-Technical Answer Example' "${ASK_REF}"
 grep -q 'Plain-Language Rule' "${EXPLAINER_REF}"

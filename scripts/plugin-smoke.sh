@@ -3,6 +3,9 @@ set -euo pipefail
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-./plugins/augenmass-workbench}"
 BIN="${PLUGIN_ROOT}/bin/augenmass"
+BIN_CMD="${PLUGIN_ROOT}/bin/augenmass.cmd"
+BIN_PS1="${PLUGIN_ROOT}/bin/augenmass.ps1"
+PLUGIN_BUNDLE_MANIFEST="${PLUGIN_ROOT}/bin/manifest.json"
 SKILL="${PLUGIN_ROOT}/skills/augenmass/SKILL.md"
 OPENAI_AGENT="${PLUGIN_ROOT}/skills/augenmass/agents/openai.yaml"
 PLUGIN_JSON="${PLUGIN_ROOT}/.claude-plugin/plugin.json"
@@ -52,7 +55,7 @@ len_file() {
   wc -c <"$1" | tr -d '[:space:]'
 }
 
-for path in "${BIN}" "${SKILL}" "${OPENAI_AGENT}" "${PLUGIN_JSON}" "${CODEX_PLUGIN_JSON}" "${ASK_REF}" "${EXPLAINER_REF}" "${PHONE_REF}" "${MARKETPLACE_JSON}"; do
+for path in "${BIN}" "${BIN_CMD}" "${BIN_PS1}" "${PLUGIN_BUNDLE_MANIFEST}" "${SKILL}" "${OPENAI_AGENT}" "${PLUGIN_JSON}" "${CODEX_PLUGIN_JSON}" "${ASK_REF}" "${EXPLAINER_REF}" "${PHONE_REF}" "${MARKETPLACE_JSON}"; do
   if [ ! -e "${path}" ]; then
     echo "missing plugin file: ${path}" >&2
     exit 1
@@ -60,9 +63,19 @@ for path in "${BIN}" "${SKILL}" "${OPENAI_AGENT}" "${PLUGIN_JSON}" "${CODEX_PLUG
 done
 
 if [ ! -x "${BIN}" ]; then
-  echo "plugin binary is not executable: ${BIN}" >&2
+  echo "plugin launcher is not executable: ${BIN}" >&2
   exit 1
 fi
+
+jq -e '.schema == "augenmass-plugin-bundle-v1" and .unsignedPreview == true and (.targets | length) == 4' "${PLUGIN_BUNDLE_MANIFEST}" >/dev/null
+for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu x86_64-pc-windows-msvc; do
+  jq -e --arg target "${target}" '.targets[] | select(.target == $target)' "${PLUGIN_BUNDLE_MANIFEST}" >/dev/null
+  binary_path="$(jq -r --arg target "${target}" '.targets[] | select(.target == $target) | .binary' "${PLUGIN_BUNDLE_MANIFEST}")"
+  if [ ! -f "${PLUGIN_ROOT}/bin/${binary_path}" ]; then
+    echo "plugin target binary is missing: ${PLUGIN_ROOT}/bin/${binary_path}" >&2
+    exit 1
+  fi
+done
 
 grep -q '"name": "augenmass-workbench"' "${PLUGIN_JSON}"
 grep -q '"name": "augenmass-workbench"' "${CODEX_PLUGIN_JSON}"
@@ -75,6 +88,7 @@ grep -q '"path": "./plugins/augenmass-workbench"' "${MARKETPLACE_JSON}"
 grep -q 'display_name: "Augenmaß"' "${OPENAI_AGENT}"
 grep -q 'Use \$augenmass to show the purpose baselines' "${OPENAI_AGENT}"
 grep -q 'AUGENMASS_BIN' "${SKILL}"
+grep -q 'unsigned preview binaries' "${SKILL}"
 grep -q '\$AUGENMASS inspect' "${SKILL}"
 grep -q 'cache serve' "${SKILL}"
 grep -q 'Prewarm the cached-sandbox mirror before a demo' "${SKILL}"
@@ -106,7 +120,7 @@ fi
 
 "${BIN}" --version >"${OUT}"
 grep -q "^augenmass ${CARGO_VERSION}$" "${OUT}"
-echo "plugin binary: $(cat "${OUT}")"
+echo "plugin launcher: $(cat "${OUT}")"
 
 help_has inspect
 grep -q '<INPUT>' "${OUT}"

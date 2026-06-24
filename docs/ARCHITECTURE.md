@@ -117,7 +117,7 @@ augenmass-workbench/
   examples/                   min/over/bad-path/bad-request bodies
   tests/cli.rs                integration tests
   docs/                       this document and friends
-  plugins/augenmass-workbench/ Claude Code/Codex plugin: skill + bin
+  plugins/augenmass-workbench/ Claude Code/Codex plugin: skill + launcher + target binaries
   justfile  README.md  AGENTS.md  CHANGELOG.md  LICENSE  .env.example
 ```
 

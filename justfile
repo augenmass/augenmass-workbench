@@ -66,7 +66,7 @@ demo-proof:
 demo-run:
     ./scripts/demo-run.sh
 
-# Print the stable offline presentation sequence from the bundled plugin binary.
+# Print the stable offline presentation sequence from the bundled plugin launcher.
 plugin-demo-run:
     env -u AUGENMASS_DEMO_BIN -u AUGENMASS_BIN ./scripts/demo-run.sh
 
@@ -74,7 +74,7 @@ plugin-demo-run:
 plugin-smoke:
     ./scripts/plugin-smoke.sh
 
-# Verify the committed plugin binary is byte-for-byte the current release build.
+# Verify the committed plugin launcher and target-binary manifest hashes.
 plugin-bundle-freshness:
     ./scripts/plugin-bundle-freshness.sh
 
@@ -203,7 +203,7 @@ presenter-release-preflight:
 local-cli-release-proof: local-cli-release-preflight ci-credit-guard verify release install-smoke release-archive-smoke release-zip-layout-smoke platform-smoke docker-smoke-arm64 docker-smoke-amd64 docker-release-archive-smoke-linux
     ./scripts/local-cli-release-smokes.sh
 
-# Presenter plugin proof for the committed macOS Apple Silicon plugin bundle.
+# Presenter plugin proof for the committed platform-aware plugin bundle.
 presenter-plugin-proof: presenter-release-preflight plugin-bundle-freshness plugin-smoke plugin-only-smoke claude-plugin-smoke codex-plugin-smoke plugin-demo-run
 
 # Local shipping proof that avoids remote GitHub CI runner credits.
@@ -212,9 +212,9 @@ shipping-smoke: ci-credit-guard plugin-bundle-freshness plugin-smoke plugin-only
 # Strongest local release proof; no GitHub Actions, but multiple Linux Docker builds.
 local-release-proof: local-cli-release-proof presenter-plugin-proof
 
-# Bundle the release binary into the plugin (Apple Silicon macOS).
-bundle: release
-    bash -c 'set -euo pipefail; target="$(rustc -vV | sed -n "s/^host: //p")"; test "$target" = "aarch64-apple-darwin" || { echo "bundle writes the committed plugin binary and must run on aarch64-apple-darwin (got ${target})" >&2; exit 1; }; mkdir -p plugins/augenmass-workbench/bin; cp target/release/augenmass plugins/augenmass-workbench/bin/augenmass'
+# Assemble the platform-aware plugin bundle from native release archives.
+bundle:
+    ./scripts/assemble-plugin-bundle.sh
 
 # Demo: run the local clone store.
 demo:

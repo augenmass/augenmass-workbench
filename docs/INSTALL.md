@@ -34,9 +34,11 @@ codex plugin marketplace add augenmass/augenmass-workbench --ref main
 codex plugin add augenmass-workbench@augenmass
 ```
 
-On macOS Apple Silicon, the plugin can use the bundled binary. On Linux,
-Windows, or macOS Intel, install or build the CLI first and set `AUGENMASS_BIN`
-to the platform-native binary before asking the skill to run commands.
+The plugin includes a bundled launcher and native preview binaries for macOS
+Apple Silicon, macOS Intel, Linux x64, and Windows x64. The skill should work
+without a separate source build on those targets. Set `AUGENMASS_BIN` only when
+you want to override the bundled binary, use an unsupported target, or point the
+skill at a binary you built yourself.
 
 ## First run in an agent
 
@@ -60,18 +62,32 @@ prepare a safe live wallet debug run with redacted traces.` The agent should
 explain `serve`, `--public-url`, trust/status caveats, and why
 `--unsafe-debug-artifacts` is opt-in local sensitive capture.
 
-The bundled plugin binary in this repository is currently macOS Apple Silicon.
-Inside the skill, agents should call the bundled binary on macOS Apple Silicon:
+The bundled plugin command is a launcher. On macOS and Linux, agents should call:
 
 ```sh
 "${CLAUDE_PLUGIN_ROOT}/bin/augenmass" --help
 ```
 
+On Windows, agents should call one of the Windows launchers:
+
+```powershell
+& "$env:CLAUDE_PLUGIN_ROOT\bin\augenmass.ps1" --help
+```
+
+The launcher selects the matching bundled binary from:
+
+```text
+plugins/augenmass-workbench/bin/aarch64-apple-darwin/augenmass
+plugins/augenmass-workbench/bin/x86_64-apple-darwin/augenmass
+plugins/augenmass-workbench/bin/x86_64-unknown-linux-gnu/augenmass
+plugins/augenmass-workbench/bin/x86_64-pc-windows-msvc/augenmass.exe
+```
+
 Use bare `augenmass` only when the plugin `bin/` directory, a source install, or
 a release archive has placed it on `PATH`.
 
-On other platforms, or when using Codex with a separately installed binary,
-build or install the CLI first, then tell the agent where it is:
+To override the bundled launcher with a separately installed or source-built
+binary, tell the agent where it is:
 
 ```sh
 export AUGENMASS_BIN="$HOME/.local/bin/augenmass"
@@ -79,15 +95,34 @@ export AUGENMASS_BIN="$HOME/.local/bin/augenmass"
 
 The skill should use `AUGENMASS_BIN` when that variable is set.
 
+## Unsigned preview binaries
+
+The bundled binaries and release archives are preview artifacts. They are
+checksumed and built by the release workflow, but they are not yet
+signed/notarized.
+
+On macOS, the first run may be blocked by Gatekeeper. Verify the release archive
+and checksum first. If you trust the binary, try running it once, then open
+System Settings -> Privacy & Security and choose Open Anyway for Augenmass.
+
+On Windows, the first run may be blocked because `augenmass.exe` is unsigned or
+downloaded from the Internet. Verify the source/checksum first. If you trust the
+binary, right-click `augenmass.exe`, choose Properties, and check Unblock; or
+run `Unblock-File .\augenmass.exe` in PowerShell.
+
+On Linux, if the file is present but not executable, run `chmod +x` on the
+binary. If you do not want to approve unsigned binaries, build from source with
+`cargo build --release --locked` and set `AUGENMASS_BIN`.
+
 The runtime smoke gates follow the same convention. `serve-smoke`,
 `live-cache-smoke`, `deployed-cache-smoke`, and `live-sandbox-smoke` prefer
-`AUGENMASS_BIN` when it is set, then fall back to the bundled macOS Apple
-Silicon plugin binary. The plugin-bundle gates intentionally keep using the
-bundled binary because they prove that exact private-preview artifact.
+`AUGENMASS_BIN` when it is set, then fall back to the bundled plugin launcher.
+The plugin-bundle gates intentionally keep using the launcher because they prove
+the exact private-preview plugin artifact.
 `plugin-only-smoke` copies only the plugin bundle to a temp directory and runs
 no-file commands from outside the checkout, proving marketplace-style first-run
 behavior without `fixtures/` or `examples/`. `demo-run` is portable too: it
-resolves `AUGENMASS_DEMO_BIN`, then `AUGENMASS_BIN`, then the bundled binary.
+resolves `AUGENMASS_DEMO_BIN`, then `AUGENMASS_BIN`, then the bundled launcher.
 Use `plugin-demo-run` for the exact bundled sequence.
 
 ## Source install
@@ -138,15 +173,18 @@ It uses a temporary `CODEX_HOME`, adds this checkout as a local Codex
 marketplace, confirms `augenmass-workbench@augenmass` is available, installs it,
 and confirms it is enabled. It does not modify your real Codex config.
 
-The plugin binary freshness gate is:
+The plugin bundle freshness gate is:
 
 ```sh
 just plugin-bundle-freshness
 ```
 
-It runs only on macOS Apple Silicon, rebuilds the locked release binary, and
-fails unless the committed plugin binary is byte-for-byte identical. When it
-fails, refresh the bundle with `just bundle` and rerun the presenter proof.
+It verifies the plugin bundle manifest version, launcher version, and every
+committed target-binary hash. When it fails, refresh the bundle with
+`just bundle` and rerun the presenter proof. Set
+`AUGENMASS_STRICT_LOCAL_PLUGIN_BUILD=1` only when you explicitly want to compare
+the current-host target against a local rebuild; release-built binaries may not
+be byte-identical to a local build because build paths can differ.
 
 The Claude Code plugin install gate is:
 
@@ -222,7 +260,7 @@ demo, serve, live cache, install, archive, zip-layout, platform, and Docker
 checks. It resolves `./target/release/augenmass` first and falls back to
 `./target/release/augenmass.exe`, so Windows Git Bash does not need a different
 recipe. `local-release-proof` adds the presenter plugin proof for the committed
-macOS Apple Silicon bundle. Both proofs run a fail-fast preflight before the
+platform-aware plugin bundle. Both proofs run a fail-fast preflight before the
 long build/test work starts. Together they cover workspace verification, release
 archive proof, the plugin bundle smoke, `serve` runtime proof, live
 cached-sandbox proof, macOS target probing, explicit Linux arm64 and amd64 Docker

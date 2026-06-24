@@ -1,6 +1,6 @@
 # Ask it like this
 
-The Augenmaß skill is the front door. You describe what you have and what you want in plain language, and the skill picks the right command, runs the bundled `augenmass` binary, and explains the result. You never have to remember a flag.
+The Augenmaß skill is the front door. You describe what you have and what you want in plain language, and the skill picks the right command, runs the bundled `augenmass` launcher or your `AUGENMASS_BIN` override, and explains the result. You never have to remember a flag.
 
 This page collects phrasings that work well, grouped by who is asking. Each one names the command the skill runs underneath, so you can also run it yourself; see `COMMANDS.md` for the full reference. The skill always reasons before it writes and never pastes raw secrets back (see "the one rule that matters" in the skill).
 

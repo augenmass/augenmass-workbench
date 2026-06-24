@@ -48,9 +48,11 @@ Start with prompts that do not require a repository checkout:
 
 When the plugin was installed from a marketplace without the full repository checkout, use no-file prompts like these. Fixture prompts such as `inspect fixtures/requests/eudiplo-request.jwt` are for full checkouts or release archives that include `fixtures/` and `examples/`.
 
-## CLI fallback
+## CLI and bundled launcher
 
-The bundled plugin binary currently supports macOS Apple Silicon only. On other platforms, build from source with `cargo build --release --locked` and set `AUGENMASS_BIN` to the native binary (`./target/release/augenmass` on Unix-like shells, `./target/release/augenmass.exe` from Windows Git Bash), or use the native CLI archives published by the release workflow once a version tag is cut.
+The plugin includes a small launcher plus native preview binaries for macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64. The skill resolves `AUGENMASS_BIN` first; otherwise it uses the bundled launcher and picks the matching target binary. Set `AUGENMASS_BIN` when you want to override the bundled binary, use an unsupported target, or point the skill at a source-built binary.
+
+These preview binaries are not signed/notarized yet. If macOS or Windows blocks a first run, verify the release checksum first, then approve the binary manually through the OS security UI, or build from source with `cargo build --release --locked` and set `AUGENMASS_BIN`.
 
 The skill is a thin layer over a plain CLI you can also build and run on its own, with or without an agent. On Unix-like shells:
 
@@ -73,7 +75,7 @@ cargo install --locked --path . --bin augenmass --root "$HOME/.local"
 "$HOME/.local/bin/augenmass" --help
 ```
 
-The binary that ships inside the plugin is the same one. The skill resolves `AUGENMASS_BIN` first, then the bundled plugin binary on macOS Apple Silicon; use a bare `augenmass` only when your session or shell has a compatible binary on PATH.
+The binaries that ship inside the plugin come from the same release archives as the standalone CLI. Use a bare `augenmass` only when your session or shell has a compatible binary on PATH.
 
 ## Ask it like this
 
@@ -117,7 +119,7 @@ See `docs/GUARDRAILS.md` for hook and pipeline recipes. The point of the skill i
 
 ## The CLI underneath
 
-Everything the skill does, it does by running these commands, so you can run them yourself. Artifact inputs accept file paths, inline values, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Read-only commands accept `--json` where they render machine output. The examples below use committed fixtures under `fixtures/`; run them with the plugin binary or a local build such as `./target/release/augenmass` (`.\target\release\augenmass.exe` on Windows).
+Everything the skill does, it does by running these commands, so you can run them yourself. Artifact inputs accept file paths, inline values, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Read-only commands accept `--json` where they render machine output. The examples below use committed fixtures under `fixtures/`; run them with the plugin launcher, a release archive, or a local build such as `./target/release/augenmass` (`.\target\release\augenmass.exe` on Windows).
 
 Auto-detect any artifact and decode it:
 

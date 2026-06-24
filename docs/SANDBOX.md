@@ -257,6 +257,9 @@ CACHE=./presenter-cache.sqlite
 $BIN cache serve --db "$CACHE" --port 8081 --ttl-secs 315360000 --allowed-rp "$RP"
 ```
 
+The plugin path above is the bundled launcher. It selects the native target
+binary for supported platforms unless `AUGENMASS_BIN` is set.
+
 In another shell:
 
 ```

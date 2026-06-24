@@ -61,11 +61,10 @@ does not touch. It avoids remote GitHub Actions runner minutes.
 It runs:
 
 - `just plugin-smoke`: checks the Claude Code and Codex plugin metadata, the
-  executable bundled binary, the hook, the skill wording for the key command
-  surfaces, and a small fixture-backed command sequence.
-- `just plugin-bundle-freshness`: on macOS Apple Silicon, rebuilds the locked
-  release binary and fails unless the committed plugin binary is byte-for-byte
-  identical.
+  executable bundled launcher, the platform bundle manifest, the skill wording
+  for the key command surfaces, and a small fixture-backed command sequence.
+- `just plugin-bundle-freshness`: verifies the plugin bundle manifest, launcher
+  version, and committed target-binary hashes.
 - `just plugin-only-smoke`: copies only the plugin bundle to a temporary
   directory and proves generated/stdin first-run commands without a full checkout
   or `fixtures/` / `examples/`.
@@ -77,7 +76,7 @@ It runs:
 - `just serve-smoke`: starts the resolved `augenmass serve` runtime over
   loopback HTTP, checks health, session minting, JAR fetch, JSON trace, HTML
   trace, plaintext `direct_post` rejection, and trace redaction. It defaults to
-  the bundled plugin binary and honors `AUGENMASS_BIN` for native source or
+  the bundled plugin launcher and honors `AUGENMASS_BIN` for native source or
   release binaries.
 - `augenmass evidence assert-live <bundle.json>` or
   `just wallet-evidence-proof <bundle.json>`: post-capture proof for a real
@@ -160,7 +159,7 @@ require a running Docker daemon. None of these gates starts remote GitHub CI.
 
 `just demo-run` runs the offline presentation sequence from the resolved CLI
 binary: `AUGENMASS_DEMO_BIN`, then `AUGENMASS_BIN`, then the bundled plugin
-binary. Use `just plugin-demo-run` when you specifically want to prove the
+launcher. Use `just plugin-demo-run` when you specifically want to prove the
 private-preview plugin artifact. The sequence uses only committed fixtures and
 treats the intentional findings as successful proof points, so no sandbox
 credentials or phone wallet are needed.
