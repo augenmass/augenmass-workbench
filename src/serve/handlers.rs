@@ -1020,14 +1020,28 @@ impl IntoResponse for AppError {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::fs;
+    use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
+    use base64::prelude::*;
+    use p256::pkcs8::DecodePrivateKey;
+    use serde::{Deserialize, Serialize};
+    use ssi::claims::jws::JwsPayload;
+    use ssi::claims::jwt::ClaimSet;
+    use ssi::claims::sd_jwt::{ConcealJwtClaims, KbJwtPayload, SdAlg};
+    use ssi::claims::{JWTClaims, ValidateClaims};
+    use ssi::json_pointer;
+    use ssi::jwk::{Algorithm, JWK};
     use url::Url;
 
     use super::*;
+    use crate::commands::evidence::{ExportArgs, VerifyArgs};
+    use crate::output::OutputFormat;
     use crate::serve::state::{CertSource, StatusFetcher};
+    use augenmass_core::crypto::encrypt_jwe;
     use augenmass_core::TrustAnchors;
 
     const NOW: i64 = 1780435200;
@@ -1093,6 +1107,116 @@ mod tests {
 
     fn plaintext_body() -> String {
         "vp_token=%7B%22pid%22%3A%5B%22secret-claim%22%5D%7D&state=abc".to_string()
+    }
+
+    async fn age_only_state_for_runtime_proof(root: PathBuf) -> Arc<AppState> {
+        let state = AppState::new(
+            Url::parse("http://127.0.0.1:0/").unwrap(),
+            Url::parse("http://127.0.0.1:0/").unwrap(),
+            CertSource::Ephemeral,
+            "age_gate_18",
+            None,
+            false,
+            None,
+            None,
+            Some(root),
+            false,
+        )
+        .await
+        .expect("build app state")
+        .with_request_query(
+            "age-only German PID query (age_equal_or_over.18)",
+            pid::pid_query(&[&["age_equal_or_over", "18"]]),
+        );
+        Arc::new(state)
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct RuntimePidClaims {
+        vct: String,
+        cnf: Value,
+        given_name: Option<String>,
+        family_name: Option<String>,
+        age_equal_or_over: Option<BTreeMap<String, bool>>,
+    }
+
+    impl ClaimSet for RuntimePidClaims {}
+    impl<E, P> ValidateClaims<E, P> for RuntimePidClaims {}
+
+    fn runtime_issuer_jwk() -> JWK {
+        let key_pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256)
+            .expect("generate issuer key");
+        let mut params = rcgen::CertificateParams::default();
+        params.distinguished_name.push(
+            rcgen::DnType::CommonName,
+            "augenmass runtime test PID issuer",
+        );
+        let cert = params
+            .self_signed(&key_pair)
+            .expect("self-sign issuer cert");
+        let secret_key = p256::SecretKey::from_pkcs8_der(&key_pair.serialize_der())
+            .expect("issuer private key from PKCS#8");
+        let mut jwk: JWK = serde_json::from_str(&secret_key.to_jwk_string()).expect("issuer JWK");
+        jwk.public_key_use = Some("sig".to_string());
+        jwk.key_id = Some("augenmass-runtime-test-issuer".to_string());
+        jwk.algorithm = Some(Algorithm::ES256);
+        jwk.x509_certificate_chain = Some(vec![BASE64_STANDARD.encode(cert.der().as_ref())]);
+        jwk
+    }
+
+    async fn synthetic_runtime_presentation(nonce: &str, aud: &str) -> String {
+        let issuer_jwk = runtime_issuer_jwk();
+        let mut holder_jwk = JWK::generate_p256();
+        holder_jwk.public_key_use = Some("sig".to_string());
+        holder_jwk.key_id = Some("augenmass-runtime-test-holder".to_string());
+        holder_jwk.algorithm = Some(Algorithm::ES256);
+
+        let now = now_unix();
+        let claims = JWTClaims::builder()
+            .iss("https://issuer.example.test")
+            .sub("runtime-no-phone-proof")
+            .iat(now)
+            .exp(now + 3600)
+            .with_private_claims(RuntimePidClaims {
+                vct: PID_VCT.to_string(),
+                cnf: json!({ "jwk": holder_jwk.to_public() }),
+                given_name: Some("Runtime Secret Given".to_string()),
+                family_name: Some("Runtime Secret Family".to_string()),
+                age_equal_or_over: Some(BTreeMap::from([
+                    ("12".to_string(), true),
+                    ("14".to_string(), true),
+                    ("16".to_string(), true),
+                    ("18".to_string(), true),
+                    ("21".to_string(), false),
+                    ("65".to_string(), false),
+                ])),
+            })
+            .expect("build runtime PID claims");
+
+        let concealed = claims
+            .conceal_and_sign(
+                SdAlg::Sha256,
+                &[
+                    json_pointer!("/given_name"),
+                    json_pointer!("/family_name"),
+                    json_pointer!("/age_equal_or_over"),
+                ],
+                &issuer_jwk,
+            )
+            .await
+            .expect("sign runtime SD-JWT");
+        let revealed = concealed
+            .decode_reveal::<RuntimePidClaims>()
+            .expect("decode runtime SD-JWT");
+        let mut sd_jwt = revealed
+            .retaining(&[json_pointer!("/age_equal_or_over")])
+            .into_encoded();
+        let kb_jwt = KbJwtPayload::new(aud.to_string(), nonce.to_string(), SdAlg::Sha256, &sd_jwt)
+            .sign(&holder_jwk)
+            .await
+            .expect("sign runtime KB-JWT");
+        sd_jwt.set_kb(&kb_jwt);
+        sd_jwt.into_string()
     }
 
     #[tokio::test]
@@ -1266,6 +1390,108 @@ mod tests {
             assert_eq!(dir_mode, 0o700);
             assert_eq!(file_mode, 0o600);
         }
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn encrypted_direct_post_runtime_exports_strict_live_evidence() {
+        let root = std::env::temp_dir().join(format!("augenmass-runtime-{}", Uuid::new_v4()));
+        let state = age_only_state_for_runtime_proof(root.clone()).await;
+        let (sid, _) = create_request(&state).await.expect("request");
+        let _ = get_request_object(State(state.clone()), Path(sid.to_string()))
+            .await
+            .expect("request object");
+
+        let jar = state
+            .verifier
+            .retrieve_authorization_request(sid)
+            .await
+            .expect("request jar");
+        let payload = crate::jose::decode_compact(&jar)
+            .expect("decode request jar")
+            .payload;
+        let nonce = payload["nonce"].as_str().expect("request nonce");
+        let aud = payload["client_id"].as_str().expect("request client_id");
+        let mut enc_jwk_value = payload["client_metadata"]["jwks"]["keys"][0].clone();
+        if let Value::Object(map) = &mut enc_jwk_value {
+            // The wallet-facing JWK advertises JWE alg metadata (`ECDH-ES`),
+            // but ssi::JWK's alg enum is JWS-oriented. The key material is what
+            // the local no-phone encrypter needs.
+            map.remove("alg");
+        }
+        let enc_jwk: JWK =
+            serde_json::from_value(enc_jwk_value).expect("response encryption public JWK");
+        let presentation = synthetic_runtime_presentation(nonce, aud).await;
+        let encrypted = encrypt_jwe(
+            &json!({
+                "vp_token": presentation,
+                "state": sid.to_string(),
+            }),
+            &enc_jwk,
+        )
+        .expect("encrypt direct_post.jwt response");
+        let body = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("response", &encrypted)
+            .append_pair("state", &sid.to_string())
+            .finish();
+
+        let (status, Json(value)) =
+            receive_response(State(state.clone()), Path(sid.to_string()), body)
+                .await
+                .expect("encrypted response accepted");
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(value["status"], "verified");
+        assert!(!state.encryption_keys.lock().await.contains_key(&sid));
+
+        let trace = state.trace.get(sid).await.expect("trace");
+        let codes: Vec<&str> = trace.events.iter().map(|event| event.code).collect();
+        for expected in [
+            "REQUEST_OBJECT_FETCHED",
+            "RESPONSE_RECEIVED",
+            "RESPONSE_DECRYPTED",
+            "VERIFIED",
+            "OVER_ASK_ANALYZED",
+        ] {
+            assert!(codes.contains(&expected), "codes: {codes:?}");
+        }
+        let trace_text = serde_json::to_string(&trace).expect("trace JSON");
+        assert!(!trace_text.contains("Runtime Secret"));
+        assert!(!trace_text.contains(&encrypted));
+
+        let session_dir = root.join(sid.to_string());
+        for filename in [
+            "session-enc-key.jwk",
+            "request.jwt",
+            "request.payload.json",
+            "direct-post.body",
+            "verification-context.json",
+            "auth-response.json",
+            "debug-manifest.json",
+        ] {
+            assert!(session_dir.join(filename).exists(), "missing {filename}");
+        }
+
+        let bundle = root.join(format!("{sid}.bundle.json"));
+        crate::commands::evidence::export(
+            ExportArgs {
+                session_dir: session_dir.clone(),
+                out: bundle.clone(),
+                signing_key: None,
+            },
+            OutputFormat::Text,
+        )
+        .expect("export runtime evidence bundle");
+        let proven = crate::commands::evidence::assert_live(
+            VerifyArgs {
+                bundle,
+                verify_key: None,
+            },
+            OutputFormat::Text,
+        )
+        .expect("assert strict live evidence");
+        assert!(proven);
 
         let _ = fs::remove_dir_all(root);
     }

@@ -171,3 +171,20 @@ Needs a phone before promotion:
   still forwards only wallet-facing paths, refuses public trace/inspect access,
   rejects plaintext `direct_post`, keeps the local trace redacted, and emits
   redacted relay logs.
+- 2026-06-25: Added a Rust-only no-phone encrypted serve-runtime proof. The
+  unit test mints a fresh `augenmass serve` request, builds a fresh synthetic
+  SD-JWT+KB presentation bound to that session's nonce and `x509_hash`
+  audience, encrypts it as `direct_post.jwt` to the session response key, posts
+  it through the real response handler, exports the resulting unsafe-debug
+  artifacts, and runs strict `evidence assert-live` on the exported bundle. This
+  closes the automated proof gap between request-side serve tests and manually
+  captured iOS/Android phone evidence. It does not claim provider issuer trust
+  or live revocation; those remain covered by the explicit
+  `evidence prove-trust-status` and Bundesdruckerei wrapper proofs.
+- 2026-06-25: Wired the new runtime proof into `just auditor-no-phone-proof`.
+  While re-running the full gate, `relay-smoke` exposed a Bash guard edge case:
+  a randomly generated relay run ID can begin with `-`, and BSD `grep` treated
+  the forbidden-value pattern as flags. The guard now uses `grep -F --` for
+  variable patterns, preserving the leak check while making it robust to
+  leading hyphens. Verified with direct `relay-smoke` and a full `just verify`
+  pass after the fix.

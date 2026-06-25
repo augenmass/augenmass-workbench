@@ -74,6 +74,7 @@ demo-proof:
 auditor-no-phone-proof:
     cargo test --test cli evidence_
     cargo test --lib commands::evidence
+    cargo test --lib encrypted_direct_post_runtime_exports_strict_live_evidence
     cargo test --test serve request_side_and_trace_flow
     ./scripts/serve-smoke.sh
     cargo run --quiet -- evidence assert-live --help > /dev/null

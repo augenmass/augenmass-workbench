@@ -175,7 +175,7 @@ echo "plaintext direct_post rejected through relay: ${code}"
 curl --max-time 10 -fsS "${LOCAL_BASE}/api/trace/${SID}" >"${TRACE}"
 grep -q '"code":"RESPONSE_RECEIVED"' "${TRACE}"
 grep -q '"code":"REJECTED"' "${TRACE}"
-if grep -q "${BODY_SENTINEL}" "${TRACE}"; then
+if grep -Fq -- "${BODY_SENTINEL}" "${TRACE}"; then
   echo "trace leaked plaintext wallet sentinel" >&2
   exit 1
 fi
@@ -199,7 +199,7 @@ for forbidden in \
   "Cookie" \
   "X-Forwarded" \
   "/r/${RUN_ID}/"; do
-  if grep -q "${forbidden}" "${RELAY_LOG}"; then
+  if grep -Fq -- "${forbidden}" "${RELAY_LOG}"; then
     echo "relay log leaked forbidden value: ${forbidden}" >&2
     cat "${RELAY_LOG}" >&2
     exit 1
