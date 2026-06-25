@@ -1040,7 +1040,7 @@ fn issuer_header_profile(header: Option<&Value>) -> IssuerHeaderProfile {
 fn disclosed_claim_keys(presentation: &str) -> Vec<String> {
     let Some(view) = SdJwt::new(presentation)
         .ok()
-        .and_then(|sd_jwt| revealed_claims(&sd_jwt).ok())
+        .and_then(|sd_jwt| revealed_claims(sd_jwt).ok())
     else {
         return Vec::new();
     };

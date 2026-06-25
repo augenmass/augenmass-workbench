@@ -77,3 +77,8 @@ Needs a phone before promotion:
   `augenmass verify status` returned `VALID` using the issuer leaf carried in
   the credential. This proves live status mechanics and reachability, but not
   external PID issuer trust anchoring.
+- 2026-06-25: Ran the local gates after the experiment changes:
+  `just demo-proof` and `just verify` both pass. The full gate covers
+  formatting, Clippy with `-D warnings`, workspace unit/integration tests,
+  fixture crypto/trust/status checks, request/audit checks, mdoc/DCQL decoding,
+  relay source guard, and the local relay smoke.
