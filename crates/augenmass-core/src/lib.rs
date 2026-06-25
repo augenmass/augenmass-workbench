@@ -43,4 +43,5 @@ pub use trust::{issuer_trusted, issuer_trusted_at, TrustAnchors};
 pub use verify::{
     verify_pid_presentation, verify_pid_presentation_at, verify_pid_presentation_full,
     verify_pid_presentation_with_age, RequestBinding, StatusInput, TrustOptions, VerifiedPid,
+    DEFAULT_FUTURE_SKEW_SECS, DEFAULT_MAX_AGE_SECS,
 };

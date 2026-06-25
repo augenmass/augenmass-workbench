@@ -32,7 +32,8 @@ use uuid::Uuid;
 use augenmass_core::crypto::decrypt_jwe;
 use augenmass_core::{
     check_status_list_token, inspector, pid, verify_pid_presentation_full, CredentialStatus,
-    RequestBinding, StatusInput, TrustOptions, VerifiedPid, PID_VCT,
+    RequestBinding, StatusInput, TrustOptions, VerifiedPid, DEFAULT_FUTURE_SKEW_SECS,
+    DEFAULT_MAX_AGE_SECS, PID_VCT,
 };
 
 use crate::serve::artifacts::sha256_hex;
@@ -43,9 +44,6 @@ use crate::serve::state::{
 use crate::serve::trace::{TraceKind, TraceLevel};
 use crate::serve::view;
 
-/// Verifier freshness window for a presentation's KB-JWT (matches the core's
-/// `verify::DEFAULT_MAX_AGE_SECS`, which is not re-exported at the crate root).
-const DEFAULT_MAX_AGE_SECS: i64 = 300;
 const REQUEST_OBJECT_TTL_SECS: i64 = 600;
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -322,6 +320,7 @@ async fn verify_any(
                 "aud": &binding.aud,
                 "nowUnix": now_unix,
                 "maxAgeSecs": DEFAULT_MAX_AGE_SECS,
+                "futureSkewSecs": DEFAULT_FUTURE_SKEW_SECS,
                 "vct": PID_VCT,
             }),
         ) {

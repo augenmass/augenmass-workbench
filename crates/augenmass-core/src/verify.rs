@@ -59,6 +59,12 @@ pub struct VerifiedPid {
 
 /// Default freshness window for the KB-JWT `iat` (verifier policy).
 pub const DEFAULT_MAX_AGE_SECS: i64 = 300;
+/// Small verifier clock-skew allowance for freshly minted KB-JWTs.
+///
+/// Real wallets can sign the holder-binding JWT and post it within the same
+/// second that the verifier records its wall-clock time. A one-second future
+/// `iat` is not a replay risk; the max-age window below still bounds freshness.
+pub const DEFAULT_FUTURE_SKEW_SECS: i64 = 5;
 
 /// Verify a German PID presentation with the default freshness window.
 pub fn verify_pid_presentation(
@@ -210,12 +216,13 @@ pub fn verify_pid_presentation_at(
     }
 
     // 7. Time claims + freshness.
-    kb.validate_claims(&FixedTime(now_unix), &()).map_err(|e| {
-        reject(
-            RejectKind::KbTimeInvalid,
-            format!("KB-JWT time invalid: {e}"),
-        )
-    })?;
+    kb.validate_claims(&FixedTime(now_unix + DEFAULT_FUTURE_SKEW_SECS), &())
+        .map_err(|e| {
+            reject(
+                RejectKind::KbTimeInvalid,
+                format!("KB-JWT time invalid: {e}"),
+            )
+        })?;
     let iat = kb.iat.0.as_seconds();
     if iat < now_unix as f64 - max_age_secs as f64 {
         return Err(reject(
@@ -358,5 +365,58 @@ struct FixedTime(i64);
 impl DateTimeProvider for FixedTime {
     fn date_time(&self) -> chrono::DateTime<chrono::Utc> {
         chrono::DateTime::<chrono::Utc>::from_timestamp(self.0, 0).unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{RejectKind, PID_VCT};
+
+    const NONCE: &str = "b4ba2623-76a2-486b-a1f6-f1656025d07b";
+    const AUD: &str = "https://self-issued.me/v2";
+    const KB_IAT: i64 = 1_780_435_200;
+
+    fn synthetic_pid_with_status() -> &'static str {
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/presentations/synthetic-pid-with-status.sdjwt"
+        ))
+        .trim()
+    }
+
+    fn binding() -> RequestBinding {
+        RequestBinding {
+            nonce: NONCE.to_string(),
+            aud: AUD.to_string(),
+        }
+    }
+
+    #[test]
+    fn kb_jwt_accepts_small_future_iat_skew() {
+        let verified = verify_pid_presentation_at(
+            synthetic_pid_with_status(),
+            &binding(),
+            PID_VCT,
+            DEFAULT_MAX_AGE_SECS,
+            KB_IAT - 1,
+        )
+        .expect("one-second wallet clock skew is accepted");
+
+        assert!(verified.holder_bound);
+    }
+
+    #[test]
+    fn kb_jwt_rejects_iat_beyond_future_skew() {
+        let err = verify_pid_presentation_at(
+            synthetic_pid_with_status(),
+            &binding(),
+            PID_VCT,
+            DEFAULT_MAX_AGE_SECS,
+            KB_IAT - DEFAULT_FUTURE_SKEW_SECS - 1,
+        )
+        .expect_err("larger future iat is still rejected");
+
+        assert_eq!(err.kind, RejectKind::KbTimeInvalid);
     }
 }
