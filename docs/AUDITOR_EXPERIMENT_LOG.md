@@ -208,7 +208,7 @@ Needs a phone before promotion:
   `OVER_ASK_ANALYZED` event is a warning with `overDisclosedCount: 5`.
 - 2026-06-25: Extended evidence replay with the same safe nested-disclosure
   accounting when the captured request contains explicit DCQL claim paths. The
-  signed evidence bundle now includes a redacted `OVER_ASK_ANALYZED` replay
+  exported evidence bundle now includes a redacted `OVER_ASK_ANALYZED` replay
   event for the synthetic age-only wallet proof: `requestedCount: 1` and
   `overDisclosedCount: 5`. Skeletal or non-parseable historical DCQL fixtures
   are skipped instead of failing export, so this remains an opportunistic
