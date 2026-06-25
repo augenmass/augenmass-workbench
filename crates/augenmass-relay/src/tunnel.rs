@@ -184,8 +184,13 @@ async fn reader_loop(
     state: Arc<RelayState>,
 ) {
     while let Some(message) = stream.next().await {
-        let Ok(Message::Text(text)) = message else {
+        let Ok(message) = message else {
             break;
+        };
+        let text = match message {
+            Message::Text(text) => text,
+            Message::Ping(_) | Message::Pong(_) | Message::Binary(_) => continue,
+            Message::Close(_) => break,
         };
         let frame = match serde_json::from_str::<ClientFrame>(&text) {
             Ok(frame) => frame,
