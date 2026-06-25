@@ -21,6 +21,7 @@ use ssi::jwk::JWK;
 
 use augenmass_core::crypto::decrypt_jwe;
 use augenmass_core::disclosure::revealed_claims;
+use augenmass_core::trust::TrustAnchors;
 use augenmass_core::{
     verify_pid_presentation_full, RequestBinding, StatusInput, TrustOptions, PID_VCT,
 };
@@ -28,6 +29,7 @@ use augenmass_core::{
 use crate::jose;
 use crate::output::{emit, OutputFormat};
 use crate::serve::artifacts::sha256_hex;
+use crate::x509util::signer_jwk_from_pem;
 
 const BUNDLE_KIND: &str = "augenmass-evidence-bundle";
 const SOURCE_KIND: &str = "serve-unsafe-debug-artifacts";
@@ -44,6 +46,15 @@ pub struct ExportArgs {
 pub struct VerifyArgs {
     pub bundle: PathBuf,
     pub verify_key: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TrustStatusArgs {
+    pub bundle: PathBuf,
+    pub verify_key: Option<PathBuf>,
+    pub trust_anchor: String,
+    pub status_token: String,
+    pub status_key: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -171,6 +182,31 @@ struct ProfileReadiness {
     notes: Vec<String>,
 }
 
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct TrustStatusProof {
+    valid: bool,
+    session: String,
+    signature: String,
+    payload_sha256: String,
+    presentations: Vec<TrustStatusPresentationProof>,
+    redacted: bool,
+    notes: Vec<String>,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct TrustStatusPresentationProof {
+    presentation_sha256: String,
+    vct: String,
+    holder_bound: bool,
+    trust_anchored: bool,
+    status_checked: bool,
+    status_list_ref_present: bool,
+    disclosed_claim_keys: Vec<String>,
+    redacted: bool,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SourceManifest {
@@ -289,6 +325,120 @@ pub fn assert_live(args: VerifyArgs, format: OutputFormat) -> Result<bool> {
             "overAskAnalyzed": false
         }
     });
+    emit(format, &value, &text)?;
+    Ok(true)
+}
+
+pub fn prove_trust_status(args: TrustStatusArgs, format: OutputFormat) -> Result<bool> {
+    let check = check_bundle(&args.bundle, args.verify_key.as_deref())?;
+
+    let trust_anchor_pem = read_text_arg(&args.trust_anchor)?;
+    let status_token = read_text_arg(&args.status_token)?;
+    let status_key_pem = read_text_arg(&args.status_key)?;
+    let anchors = TrustAnchors::from_pem(&trust_anchor_pem).context("load trust anchor PEM")?;
+    let status_signer = signer_jwk_from_pem(&status_key_pem).context("load status signer PEM")?;
+    let context = verification_context(&check.bundle.payload.entries)?;
+    let decrypted = decrypted_response(&check.bundle.payload.entries)?
+        .context("evidence bundle does not contain a decrypted authorization response")?;
+    let presentations = presentations_from_decrypted(&decrypted);
+    if presentations.is_empty() {
+        bail!("evidence bundle does not contain an SD-JWT VC presentation");
+    }
+
+    let mut proofs = Vec::new();
+    let mut last_rejection = None;
+    for presentation in presentations {
+        let binding = RequestBinding {
+            nonce: context.nonce.clone(),
+            aud: context.aud.clone(),
+        };
+        let options = TrustOptions {
+            anchors: Some(&anchors),
+            status: StatusInput::Token {
+                jws: status_token.trim().to_string(),
+                signer: status_signer.clone(),
+            },
+        };
+        match verify_pid_presentation_full(
+            presentation,
+            &binding,
+            &context.vct,
+            context.max_age_secs,
+            context.now_unix,
+            &options,
+        ) {
+            Ok(pid) => {
+                if pid.status_ref.is_none() {
+                    last_rejection =
+                        Some("presentation has no token-status-list reference".to_string());
+                    continue;
+                }
+                let mut disclosed_claim_keys = pid
+                    .view
+                    .disclosed
+                    .iter()
+                    .map(|claim| claim.key())
+                    .collect::<Vec<_>>();
+                disclosed_claim_keys.sort();
+                disclosed_claim_keys.dedup();
+                proofs.push(TrustStatusPresentationProof {
+                    presentation_sha256: sha256_hex(presentation.as_bytes()),
+                    vct: pid.vct,
+                    holder_bound: pid.holder_bound,
+                    trust_anchored: true,
+                    status_checked: true,
+                    status_list_ref_present: true,
+                    disclosed_claim_keys,
+                    redacted: true,
+                });
+            }
+            Err(reason) => {
+                last_rejection = Some(format!("{:?}: {}", reason.kind, reason.reason));
+            }
+        }
+    }
+
+    if proofs.is_empty() {
+        let reason = last_rejection.unwrap_or_else(|| "no presentation verified".to_string());
+        let session = check.bundle.payload.session.clone();
+        let payload_sha256 = check.payload_sha256.clone();
+        let signature = check.signature_status.clone();
+        let value = json!({
+            "valid": false,
+            "session": session.clone(),
+            "payloadSha256": payload_sha256.clone(),
+            "signature": signature.clone(),
+            "reason": reason.clone(),
+            "redacted": true,
+        });
+        let text = format!("EVIDENCE TRUST/STATUS REJECTED\nsession: {}\nreason: {}\npayloadSha256: {}\nsignature: {}\nredacted: true\n",
+            session,
+            reason,
+            payload_sha256,
+            signature,
+        );
+        emit(format, &value, &text)?;
+        return Ok(false);
+    }
+
+    let proof = TrustStatusProof {
+        valid: true,
+        session: check.bundle.payload.session,
+        signature: check.signature_status,
+        payload_sha256: check.payload_sha256,
+        presentations: proofs,
+        redacted: true,
+        notes: vec![
+            "bundle hashes, replay determinism, issuer trust, and supplied status-list token all verified"
+                .to_string(),
+            "pair this with evidence assert-live when the claim also needs a completed encrypted phone-wallet exchange"
+                .to_string(),
+            "output is redacted; disclosed claim values and raw wallet material stay inside the local evidence bundle"
+                .to_string(),
+        ],
+    };
+    let text = render_trust_status_proof(&proof);
+    let value = serde_json::to_value(&proof).context("serialize trust/status proof")?;
     emit(format, &value, &text)?;
     Ok(true)
 }
@@ -800,6 +950,14 @@ struct OfflineVerify {
     detail: Value,
 }
 
+struct VerificationContext {
+    nonce: String,
+    aud: String,
+    now_unix: i64,
+    max_age_secs: i64,
+    vct: String,
+}
+
 fn offline_verify_detail(
     entries: &[EvidenceEntry],
     decrypted: &Value,
@@ -900,6 +1058,36 @@ fn offline_verify_detail(
         }
     }
     Ok(last_detail)
+}
+
+fn verification_context(entries: &[EvidenceEntry]) -> Result<VerificationContext> {
+    let context = json_entry(entries, "verification-context.json")?
+        .context("evidence bundle does not contain verification-context.json")?;
+    Ok(VerificationContext {
+        nonce: context
+            .get("nonce")
+            .and_then(Value::as_str)
+            .context("verification-context.json missing nonce")?
+            .to_string(),
+        aud: context
+            .get("aud")
+            .and_then(Value::as_str)
+            .context("verification-context.json missing aud")?
+            .to_string(),
+        now_unix: context
+            .get("nowUnix")
+            .and_then(Value::as_i64)
+            .context("verification-context.json missing nowUnix")?,
+        max_age_secs: context
+            .get("maxAgeSecs")
+            .and_then(Value::as_i64)
+            .unwrap_or(300),
+        vct: context
+            .get("vct")
+            .and_then(Value::as_str)
+            .unwrap_or(PID_VCT)
+            .to_string(),
+    })
 }
 
 fn presentations_from_decrypted(value: &Value) -> Vec<&str> {
@@ -1261,6 +1449,15 @@ fn safe_artifact_label(filename: &str) -> &'static str {
     }
 }
 
+fn read_text_arg(arg: &str) -> Result<String> {
+    let path = Path::new(arg);
+    if path.is_file() {
+        fs::read_to_string(path).with_context(|| format!("read {arg}"))
+    } else {
+        Ok(arg.to_string())
+    }
+}
+
 fn json_entry(entries: &[EvidenceEntry], filename: &str) -> Result<Option<Value>> {
     let Some(entry) = find_entry(entries, filename) else {
         return Ok(None);
@@ -1291,6 +1488,34 @@ fn render_replay(replay: &ReplayTrace, signature_status: &str) -> String {
             "{:02} {:<22} {:<5} {}\n",
             event.seq, event.code, event.level, event.summary
         ));
+    }
+    out
+}
+
+fn render_trust_status_proof(proof: &TrustStatusProof) -> String {
+    let mut out = format!(
+        "EVIDENCE TRUST/STATUS PROVEN\nsession: {}\npayloadSha256: {}\nsignature: {}\npresentations: {}\nredacted: true\n",
+        proof.session,
+        proof.payload_sha256,
+        proof.signature,
+        proof.presentations.len(),
+    );
+    for (idx, presentation) in proof.presentations.iter().enumerate() {
+        out.push_str(&format!(
+            "\npresentation #{}\n  sha256: {}\n  vct: {}\n  holder binding: {}\n  trust anchored: {}\n  status checked: {}\n  status-list ref: {}\n  disclosed keys: {}\n",
+            idx + 1,
+            presentation.presentation_sha256,
+            presentation.vct,
+            presentation.holder_bound,
+            presentation.trust_anchored,
+            presentation.status_checked,
+            presentation.status_list_ref_present,
+            list_or_dash(&presentation.disclosed_claim_keys),
+        ));
+    }
+    out.push_str("\nnotes:\n");
+    for note in &proof.notes {
+        out.push_str(&format!("  - {note}\n"));
     }
     out
 }
@@ -1404,6 +1629,15 @@ mod tests {
         format!("{}.{}.", b64_json(header), b64_json(payload))
     }
 
+    fn fixture(path: &str) -> String {
+        fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("fixtures")
+                .join(path),
+        )
+        .unwrap_or_else(|err| panic!("read fixture {path}: {err}"))
+    }
+
     fn source_session() -> PathBuf {
         let root = unique_temp("augenmass-evidence-source");
         fs::create_dir_all(&root).expect("create temp source");
@@ -1412,7 +1646,7 @@ mod tests {
                 &root,
                 "request.payload.json",
                 "decoded authorization request payload",
-                r#"{"client_id":"https://self-issued.me/v2","nonce":"n","client_metadata":{"jwks":{"keys":[{"kid":"enc-1"}]}},"dcql_query":{"credentials":[{"id":"pid"}]}}"#,
+                r#"{"client_id":"https://self-issued.me/v2","nonce":"b4ba2623-76a2-486b-a1f6-f1656025d07b","client_metadata":{"jwks":{"keys":[{"kid":"enc-1"}]}},"dcql_query":{"credentials":[{"id":"pid"}]}}"#,
             ),
             write_source_artifact(
                 &root,
@@ -1424,7 +1658,7 @@ mod tests {
                 &root,
                 "verification-context.json",
                 "verification replay context",
-                r#"{"nonce":"n","aud":"https://self-issued.me/v2","nowUnix":1780435200,"maxAgeSecs":300,"vct":"urn:eudi:pid:de:1"}"#,
+                r#"{"nonce":"b4ba2623-76a2-486b-a1f6-f1656025d07b","aud":"https://self-issued.me/v2","nowUnix":1780435200,"maxAgeSecs":300,"vct":"urn:eudi:pid:de:1"}"#,
             ),
         ];
         let manifest = json!({
@@ -1561,6 +1795,74 @@ mod tests {
         assert!(!rendered.contains("https://status.example.test/list.jwt"));
 
         let _ = fs::remove_dir_all(source);
+    }
+
+    #[test]
+    fn prove_trust_status_accepts_fixture_bundle() {
+        let presentation = fixture("presentations/synthetic-pid-with-status.sdjwt")
+            .trim()
+            .to_string();
+        let auth_response = serde_json::to_string(&json!({
+            "vp_token": presentation,
+            "state": "abc",
+        }))
+        .unwrap();
+        let source = source_session_with_auth_response(&auth_response);
+        let bundle = build_bundle(&source, None).expect("build bundle");
+        let out = unique_temp("augenmass-evidence-trust-status").join("bundle.json");
+        write_bundle(&out, &bundle).expect("write bundle");
+
+        let ok = prove_trust_status(
+            TrustStatusArgs {
+                bundle: out.clone(),
+                verify_key: None,
+                trust_anchor: "fixtures/certs/synthetic-pid-anchor.pem".to_string(),
+                status_token: "fixtures/status/status-list-CLEAR.jwt".to_string(),
+                status_key: "fixtures/status/status-list-verify-key.pub.pem".to_string(),
+            },
+            OutputFormat::Json,
+        )
+        .expect("trust/status proof runs");
+
+        assert!(ok);
+
+        let check = check_bundle(&out, None).expect("bundle still verifies");
+        let trust_anchor = fixture("certs/synthetic-pid-anchor.pem");
+        let status_token = fixture("status/status-list-CLEAR.jwt");
+        let status_key = fixture("status/status-list-verify-key.pub.pem");
+        let anchors = TrustAnchors::from_pem(&trust_anchor).expect("anchor");
+        let signer = signer_jwk_from_pem(&status_key).expect("status signer");
+        let context = verification_context(&check.bundle.payload.entries).expect("context");
+        let decrypted = decrypted_response(&check.bundle.payload.entries)
+            .expect("decrypted")
+            .expect("auth response");
+        let binding = RequestBinding {
+            nonce: context.nonce,
+            aud: context.aud,
+        };
+        let pid = verify_pid_presentation_full(
+            presentations_from_decrypted(&decrypted)[0],
+            &binding,
+            &context.vct,
+            context.max_age_secs,
+            context.now_unix,
+            &TrustOptions {
+                anchors: Some(&anchors),
+                status: StatusInput::Token {
+                    jws: status_token,
+                    signer,
+                },
+            },
+        )
+        .expect("fixture verifies with trust/status");
+        assert!(pid.status_ref.is_some());
+
+        let profile = profile_from_bundle(&check.bundle, "absent").expect("profile");
+        let rendered = serde_json::to_string(&profile).unwrap();
+        assert!(!rendered.contains("Alice Example"));
+
+        let _ = fs::remove_dir_all(source);
+        let _ = fs::remove_file(out);
     }
 
     #[test]

@@ -242,6 +242,24 @@ enum EvidenceCmd {
         #[arg(long)]
         verify_key: Option<PathBuf>,
     },
+    /// Re-verify a captured bundle with explicit issuer trust and status inputs.
+    #[command(name = "prove-trust-status")]
+    ProveTrustStatus {
+        /// Evidence bundle JSON.
+        bundle: PathBuf,
+        /// Optional P-256 public key PEM for signature verification.
+        #[arg(long)]
+        verify_key: Option<PathBuf>,
+        /// PID issuer trust anchor PEM, as a file path or inline PEM.
+        #[arg(long)]
+        trust_anchor: String,
+        /// Status-list token (statuslist+jwt), as a file path or inline compact JWT.
+        #[arg(long)]
+        status_token: String,
+        /// Status-signer public key or certificate PEM, as a file path or inline PEM.
+        #[arg(long)]
+        status_key: String,
+    },
 }
 
 #[derive(Args)]
@@ -608,6 +626,22 @@ fn run_evidence(what: EvidenceCmd, fmt: OutputFormat) -> Result<bool> {
         EvidenceCmd::AssertLive { bundle, verify_key } => {
             evidence::assert_live(evidence::VerifyArgs { bundle, verify_key }, fmt)
         }
+        EvidenceCmd::ProveTrustStatus {
+            bundle,
+            verify_key,
+            trust_anchor,
+            status_token,
+            status_key,
+        } => evidence::prove_trust_status(
+            evidence::TrustStatusArgs {
+                bundle,
+                verify_key,
+                trust_anchor,
+                status_token,
+                status_key,
+            },
+            fmt,
+        ),
     }
 }
 

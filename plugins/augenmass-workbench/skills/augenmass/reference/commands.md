@@ -13,7 +13,7 @@ age_gate_18`.
 
 Input ergonomics: artifact arguments such as `<INPUT>`, `<BODY>`, and `<REQUEST>` accept a file path, an inline value, or `-` for stdin. So `... check examples/min.json`, `... check '{"rpId":...}'`, and `cat body.json | ... check -` are all equivalent. `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`; `--cert` is a file path.
 
-The `--json` flag: available on read-only commands that render machine output. It emits JSON instead of the text rendering, for agents and CI. Add it to `inspect`, `decode`, `check`, `audit`, `baselines`, `verify`, `x509-hash`, `generate`, `doctor`, `evidence verify`, `evidence replay`, `evidence assert-live`, or `list` invocations.
+The `--json` flag: available on read-only commands that render machine output. It emits JSON instead of the text rendering, for agents and CI. Add it to `inspect`, `decode`, `check`, `audit`, `baselines`, `verify`, `x509-hash`, `generate`, `doctor`, `evidence verify`, `evidence replay`, `evidence assert-live`, `evidence prove-trust-status`, or `list` invocations.
 
 Exit codes: commands exit non-zero on the "bad" outcome so they gate cleanly in CI. The clean outcome is exit 0. See the exit-code column on each command and the summary table at the end.
 
@@ -198,8 +198,9 @@ $AUGENMASS serve
 | Verify against a supplied public key. | `$AUGENMASS evidence verify <bundle.json> --verify-key <pem>` | 1 on mismatch |
 | Render the projector-safe replay timeline. | `$AUGENMASS evidence replay <bundle.json>` | 1 on invalid bundle |
 | Prove a completed encrypted phone-wallet run after capture. | `$AUGENMASS evidence assert-live <bundle.json>` | 1 unless request fetch, encrypted response receipt, decryption, and offline presentation verification are proven |
+| Prove the captured presentation under explicit issuer trust and status inputs. | `$AUGENMASS evidence prove-trust-status <bundle.json> --trust-anchor <pem> --status-token <jwt> --status-key <pem>` | 1 unless the captured presentation verifies with the supplied trust/status material |
 
-`evidence export` writes a JSON bundle with `kind: "augenmass-evidence-bundle"`, `schemaVersion: 1`, `payloadSha256`, `sensitive: true`, raw artifacts as base64url-no-pad entries, a deterministic redacted `replayTrace`, and a machine-readable `caveats` list of handling restrictions. `evidence verify` checks each entry length and SHA-256, regenerates the replay trace, checks the canonical payload hash, and verifies the optional ES256 signature. `evidence replay` performs the same verification first, then prints only the redacted timeline. `evidence assert-live` is stricter: it fails unless the redacted replay contains the completed live-wallet spine (`REQUEST_OBJECT_FETCHED`, `RESPONSE_RECEIVED`, `RESPONSE_DECRYPTED`, `VERIFIED`) with no terminal failure. It does not claim trust/status/over-ask.
+`evidence export` writes a JSON bundle with `kind: "augenmass-evidence-bundle"`, `schemaVersion: 1`, `payloadSha256`, `sensitive: true`, raw artifacts as base64url-no-pad entries, a deterministic redacted `replayTrace`, and a machine-readable `caveats` list of handling restrictions. `evidence verify` checks each entry length and SHA-256, regenerates the replay trace, checks the canonical payload hash, and verifies the optional ES256 signature. `evidence replay` performs the same verification first, then prints only the redacted timeline. `evidence assert-live` is stricter: it fails unless the redacted replay contains the completed live-wallet spine (`REQUEST_OBJECT_FETCHED`, `RESPONSE_RECEIVED`, `RESPONSE_DECRYPTED`, `VERIFIED`) with no terminal failure. It does not claim trust/status/over-ask. `evidence prove-trust-status` uses the captured verification context and authorization response, plus explicit `--trust-anchor`, `--status-token`, and `--status-key`, to prove issuer trust and status without printing wallet claim values.
 
 When the capture contains `direct-post.body`, `session-enc-key.jwk`, `verification-context.json`, and an encrypted response, replay decrypts and verifies the SD-JWT VC offline against the captured nonce, audience, vct, clock, and freshness window. It does not claim trust anchoring or live-status replay.
 
@@ -210,6 +211,10 @@ $AUGENMASS evidence export ./debug-out/<session> --out evidence.json
 $AUGENMASS evidence verify evidence.json
 $AUGENMASS evidence replay evidence.json
 $AUGENMASS evidence assert-live evidence.json
+$AUGENMASS evidence prove-trust-status evidence.json \
+  --trust-anchor pid-issuer-anchor.pem \
+  --status-token status-list.jwt \
+  --status-key pid-status-signer.pem
 ```
 
 ## WRITE AND TARGETS: register under guardrails, read back, run local target servers
@@ -262,6 +267,7 @@ $AUGENMASS list
 | `doctor` | no findings | findings |
 | `evidence verify`, `evidence replay` | bundle valid | hash, replay, or signature mismatch |
 | `evidence assert-live` | bundle proves live-wallet event spine | invalid bundle, terminal failure, or missing required live-wallet event |
+| `evidence prove-trust-status` | captured presentation verifies with trust/status inputs | invalid bundle, untrusted issuer, status verification error, revoked, or suspended |
 | `serve` | runs until Ctrl-C | (server; no gating) |
 | `register` | dry-run or write succeeds | over-ask without `--force`, or a blocking format error |
 | `list`, `generate`, `clone serve`, `cache serve` | success | (no gating) |

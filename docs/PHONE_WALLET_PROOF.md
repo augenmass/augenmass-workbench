@@ -244,6 +244,23 @@ proves a completed encrypted phone-wallet presentation to the workbench
 verifier." Add separate wording for trust/status/over-ask only if those steps
 were explicitly configured and observed.
 
+If you have the PID issuer anchor, the status-list token referenced by the
+credential, and the status signer certificate/public key, re-run the captured
+presentation through the explicit trust/status gate:
+
+```sh
+$BIN evidence prove-trust-status "$BUNDLE" \
+  --trust-anchor pid-issuer-anchor.pem \
+  --status-token status-list.jwt \
+  --status-key pid-status-signer.pem
+```
+
+That command uses the captured nonce, audience, vct, timestamp, and decrypted
+authorization response from the bundle. It prints only redacted proof metadata
+and disclosed claim keys, not wallet claim values. Use it together with
+`evidence assert-live`: one proves the phone exchange, the other proves the
+captured presentation under explicit trust/status inputs.
+
 ## Known-good demo result
 
 On 2026-06-25, the staged phone flow was proven with the hosted wallet-only

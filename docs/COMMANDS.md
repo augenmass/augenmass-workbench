@@ -54,6 +54,7 @@ Commands exit non-zero on the "bad" outcome so they slot into CI without extra p
 | `doctor` | any blocking finding | no findings |
 | `evidence verify` / `evidence replay` | bundle hashes, replay determinism, or signature verification fails | bundle is valid |
 | `evidence assert-live` | bundle invalid, terminal failure, or missing live-wallet event spine | bundle proves encrypted response receipt, decryption, and offline presentation verification |
+| `evidence prove-trust-status` | bundle invalid, issuer untrusted, status token invalid, or credential revoked/suspended | captured presentation verifies with explicit issuer trust and status inputs |
 | `register` | over-ask without `--force`, or a blocking format error | clean (dry-run or written) |
 
 Commands that purely read and render (`inspect`, `decode`, `baselines`, `generate`, `list`) exit 0 on success. `evidence export` exits non-zero when the source manifest or artifacts are invalid.
@@ -1205,6 +1206,7 @@ Subcommands:
 - `verify`: verify bundle hashes, replay determinism, and optional signature.
 - `replay`: render the bundle's projector-safe replay timeline.
 - `assert-live`: require a bundle to prove a completed encrypted phone-wallet run.
+- `prove-trust-status`: re-verify a captured bundle with explicit issuer trust and status inputs.
 
 All subcommands accept `--json`.
 
@@ -1308,6 +1310,54 @@ redacted: true
 notes: trust/status/over-ask are not claimed by evidence assert-live; use the live trace and explicit gates for those.
 ```
 
+## `evidence prove-trust-status`
+
+```
+Usage: augenmass evidence prove-trust-status [OPTIONS] --trust-anchor <TRUST_ANCHOR> --status-token <STATUS_TOKEN> --status-key <STATUS_KEY> <BUNDLE>
+```
+
+Arguments:
+
+- `<BUNDLE>`: evidence bundle JSON.
+
+Options:
+
+- `--verify-key <VERIFY_KEY>`: optional P-256 public key PEM for signature verification.
+- `--trust-anchor <TRUST_ANCHOR>`: PID issuer trust anchor PEM, as a file path or inline PEM.
+- `--status-token <STATUS_TOKEN>`: status-list token (`statuslist+jwt`), as a file path or inline compact JWT.
+- `--status-key <STATUS_KEY>`: status-signer public key or certificate PEM, as a file path or inline PEM.
+
+`prove-trust-status` first performs the same bundle verification, then uses the
+captured verification context (`nonce`, `aud`, `vct`, timestamp, freshness
+window) and captured authorization response to re-run presentation verification
+with explicit issuer trust and token-status-list inputs. It prints only safe
+metadata: bundle hash, presentation hash, booleans, and disclosed claim keys.
+It does not print disclosed claim values or raw wallet material.
+
+Use it alongside `evidence assert-live`: `assert-live` proves the completed
+encrypted phone-wallet exchange, while `prove-trust-status` proves the captured
+presentation also verifies under the supplied trust/status material.
+
+Text output:
+
+```text
+EVIDENCE TRUST/STATUS PROVEN
+session: <session>
+payloadSha256: <sha256>
+signature: absent|valid with embedded key|valid with supplied key
+presentations: <n>
+redacted: true
+
+presentation #1
+  sha256: <sha256>
+  vct: urn:eudi:pid:de:1
+  holder binding: true
+  trust anchored: true
+  status checked: true
+  status-list ref: true
+  disclosed keys: <keys>
+```
+
 Example:
 
 ```
@@ -1317,6 +1367,10 @@ augenmass evidence export ./debug-out/<session> --out evidence.json
 augenmass evidence verify evidence.json
 augenmass evidence replay evidence.json
 augenmass evidence assert-live evidence.json
+augenmass evidence prove-trust-status evidence.json \
+  --trust-anchor pid-issuer-anchor.pem \
+  --status-token status-list.jwt \
+  --status-key pid-status-signer.pem
 ```
 
 ---

@@ -174,6 +174,90 @@ fn live_evidence_source_session() -> PathBuf {
     dir
 }
 
+fn status_evidence_source_session() -> PathBuf {
+    let dir = test_temp_dir("augenmass-cli-status-evidence-source");
+    fs::create_dir_all(&dir).expect("create status evidence source dir");
+    let request_jwt =
+        fs::read_to_string("fixtures/requests/eudiplo-request.jwt").expect("read request fixture");
+    let presentation = fs::read_to_string("fixtures/presentations/synthetic-pid-with-status.sdjwt")
+        .expect("read presentation fixture");
+    let auth_response = serde_json::to_string(&json!({
+        "vp_token": presentation.trim(),
+        "state": "abc",
+    }))
+    .expect("auth response json");
+    let request_payload = serde_json::to_string(&json!({
+        "client_id": AUD,
+        "nonce": NONCE,
+        "client_metadata": {
+            "jwks": {
+                "keys": [
+                    {"kid": "enc-1"}
+                ]
+            }
+        },
+        "dcql_query": {
+            "credentials": [
+                {"id": "pid"}
+            ]
+        }
+    }))
+    .expect("request payload json");
+    let verification_context = serde_json::to_string(&json!({
+        "nonce": NONCE,
+        "aud": AUD,
+        "nowUnix": NOW.parse::<i64>().expect("now"),
+        "maxAgeSecs": 300,
+        "vct": "urn:eudi:pid:de:1",
+    }))
+    .expect("verification context json");
+    let entries = vec![
+        write_evidence_source_artifact(
+            &dir,
+            "request.payload.json",
+            "decoded authorization request payload",
+            &request_payload,
+        ),
+        write_evidence_source_artifact(
+            &dir,
+            "request.jwt",
+            "signed authorization request JAR",
+            request_jwt.trim(),
+        ),
+        write_evidence_source_artifact(
+            &dir,
+            "direct-post.body",
+            "raw direct_post form body",
+            "response=not-a-real-jwe&state=abc",
+        ),
+        write_evidence_source_artifact(
+            &dir,
+            "auth-response.json",
+            "decrypted authorization response",
+            &auth_response,
+        ),
+        write_evidence_source_artifact(
+            &dir,
+            "verification-context.json",
+            "verification replay context",
+            &verification_context,
+        ),
+    ];
+    let manifest = json!({
+        "schemaVersion": 1,
+        "kind": "serve-unsafe-debug-artifacts",
+        "session": "33333333-3333-4333-8333-333333333333",
+        "sensitive": true,
+        "entries": entries,
+    });
+    fs::write(
+        dir.join("debug-manifest.json"),
+        serde_json::to_string_pretty(&manifest).expect("manifest json"),
+    )
+    .expect("write status evidence source manifest");
+    dir
+}
+
 // --- inspect / detection ---------------------------------------------------
 
 #[test]
@@ -882,6 +966,70 @@ fn evidence_profile_reports_redacted_readiness() {
     assert_eq!(value["redacted"], true);
     assert_eq!(value["presentations"].as_array().unwrap().len(), 1);
     assert_eq!(value["readiness"]["issuerX5cPresent"], true);
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
+}
+
+#[test]
+fn evidence_prove_trust_status_accepts_redacted_bundle() {
+    let source = status_evidence_source_session();
+    let bundle_dir = test_temp_dir("augenmass-cli-status-evidence-bundle");
+    let bundle = bundle_dir.join("bundle.json");
+
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    bin()
+        .args([
+            "evidence",
+            "prove-trust-status",
+            bundle.to_str().unwrap(),
+            "--trust-anchor",
+            "fixtures/certs/synthetic-pid-anchor.pem",
+            "--status-token",
+            "fixtures/status/status-list-CLEAR.jwt",
+            "--status-key",
+            STATUS_KEY,
+        ])
+        .assert()
+        .success()
+        .stdout(contains("EVIDENCE TRUST/STATUS PROVEN"))
+        .stdout(contains("trust anchored: true"))
+        .stdout(contains("status checked: true"))
+        .stdout(contains("output is redacted"));
+
+    let out = bin()
+        .args([
+            "--json",
+            "evidence",
+            "prove-trust-status",
+            bundle.to_str().unwrap(),
+            "--trust-anchor",
+            "fixtures/certs/synthetic-pid-anchor.pem",
+            "--status-token",
+            "fixtures/status/status-list-CLEAR.jwt",
+            "--status-key",
+            STATUS_KEY,
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("valid JSON");
+    assert_eq!(value["valid"], true);
+    assert_eq!(value["redacted"], true);
+    assert_eq!(value["presentations"][0]["trustAnchored"], true);
+    assert_eq!(value["presentations"][0]["statusChecked"], true);
 
     let _ = fs::remove_dir_all(source);
     let _ = fs::remove_dir_all(bundle_dir);

@@ -112,3 +112,11 @@ Needs a phone before promotion:
   prints only safe hashes and aggregate counts. This proves reachability and
   parseability of public trust/status material, not a completed wallet
   presentation.
+- 2026-06-25: Added `augenmass evidence prove-trust-status`, a redacted bundle
+  proof that re-verifies a captured presentation with explicit
+  `--trust-anchor`, `--status-token`, and `--status-key` inputs. This removes
+  manual nonce/audience/timestamp retyping because it uses the captured
+  verification context from the evidence bundle. It complements
+  `evidence assert-live`: `assert-live` proves the encrypted phone-wallet spine,
+  while `prove-trust-status` proves issuer trust and supplied status-list
+  validity for the captured authorization response.
