@@ -214,7 +214,7 @@ For the exact capture/export/proof checklist, use
 
 ```sh
 export AUGENMASS_RELAY_TOKEN=<relay-token>
-augenmass serve --relay augenmass
+augenmass serve --relay augenmass --age-only
 # augenmass serve: wallet-interaction debugger
 #   open      : http://127.0.0.1:8080/
 #   public    : https://wallet.augenmass.tech/r/<run-id>/
@@ -223,7 +223,7 @@ augenmass serve --relay augenmass
 #   artifacts : off (set --unsafe-debug-artifacts <dir> to capture raw wallet material locally; UNSAFE)
 #
 #   23:20:51.551  29bbb9a0  SESSION_CREATED         new presentation session created
-#   23:20:51.551  29bbb9a0  REQUEST_BUILT           built the authorization request (minimal German PID query)
+#   23:20:51.551  29bbb9a0  REQUEST_BUILT           built the authorization request (age-only German PID query (age_equal_or_over.18))
 #   23:20:51.608  29bbb9a0  REQUEST_OBJECT_FETCHED  wallet fetched the signed request object (JAR)
 #   # The remaining events appear when a real encrypted wallet response completes:
 #   ...           ...       RESPONSE_RECEIVED       wallet posted its response (direct_post.jwt)
@@ -301,7 +301,7 @@ The curated purpose baselines (`age_gate_18`, `event_checkin`, `car_rental`, `ba
 
 ## Debug the wallet interaction
 
-`augenmass serve` is a verifier-in-a-box for debugging the actual wallet exchange, not just static artifacts. It runs a local OpenID4VP verifier for the German PID profile (x509_hash client_id, signed request object by reference, `direct_post.jwt` encrypted response, the registration certificate embedded as `verifier_info`), and records the whole flow as a per-session trace:
+`augenmass serve` is a verifier-in-a-box for debugging the actual wallet exchange, not just static artifacts. It runs a local OpenID4VP verifier for the German PID profile (x509_hash client_id, signed request object by reference, `direct_post.jwt` encrypted response, the registration certificate embedded as array-shaped `verifier_info` plus `verifier_attestations`), and records the whole flow as a per-session trace:
 
 1. `SESSION_CREATED` and `REQUEST_BUILT`: a fresh session and the minimal-disclosure authorization request (carrying the nonce, client_id, and DCQL).
 2. `REQUEST_OBJECT_FETCHED`: the wallet pulls the signed request object (the JAR); the trace shows the decoded header and payload it received.

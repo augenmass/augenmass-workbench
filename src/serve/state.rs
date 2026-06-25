@@ -21,12 +21,13 @@ use openid4vp::core::authorization_request::parameters::{
 use openid4vp::core::credential_format::{
     ClaimFormatDesignation, ClaimFormatMap, ClaimFormatPayload,
 };
+use openid4vp::core::dcql_query::DcqlQuery;
 use openid4vp::core::metadata::parameters::verifier::{EncryptedResponseEncValuesSupported, JWKs};
 use openid4vp::core::metadata::parameters::wallet::{
     AuthorizationEndpoint, ClientIdPrefixesSupported, VpFormatsSupported,
 };
 use openid4vp::core::metadata::WalletMetadata;
-use openid4vp::core::object::UntypedObject;
+use openid4vp::core::object::{TypedParameter, UntypedObject};
 use openid4vp::verifier::client::{Client, X509HashClient};
 use openid4vp::verifier::request_signer::P256Signer;
 use openid4vp::verifier::session::MemoryStore;
@@ -39,6 +40,7 @@ use url::{Host, Url};
 use x509_cert::{der::Decode, Certificate};
 
 use augenmass_core::inspector::{self, PurposeBaseline};
+use augenmass_core::pid;
 use augenmass_core::regcert::{self, RegisteredScope};
 use augenmass_core::trust::TrustAnchors;
 use augenmass_core::VerifiedPid;
@@ -88,6 +90,9 @@ pub struct AppState {
     /// The per-session wallet-interaction trace (the debugger's event log).
     pub trace: TraceStore,
     pub(crate) status_fetcher: StatusFetcher,
+    /// The DCQL request used for newly minted live wallet sessions.
+    pub(crate) dcql_query: DcqlQuery,
+    pub(crate) request_profile: String,
     /// Explicit opt-in path for private replay artifacts. Never served over the
     /// trace API; used only for local end-to-end debugging.
     pub(crate) unsafe_debug_artifacts: Option<PathBuf>,
@@ -275,15 +280,21 @@ impl AppState {
             .with_default_request_parameter(ResponseType::VpToken)
             .with_default_request_parameter(ResponseMode::DirectPostJwt);
 
-        // Embed our registration certificate as `verifier_info` in every emitted
-        // request object: a German PID presentation requires it, and its absence
-        // is the one warning ERICA raises against this verifier.
+        // Embed our registration certificate in the request object. Current
+        // Android sandbox wallet builds require `verifier_info` to stay an array,
+        // while EUDIPLO-style stacks look for `verifier_attestations`.
         if let Some(rc_jwt) = bundled_rc_jwt() {
             builder =
                 builder.with_default_request_parameter(VerifierInfo(vec![serde_json::json!({
-                    "format": "jwt",
+                    "format": "registration_cert",
                     "data": rc_jwt,
                 })]));
+            builder = builder.with_default_request_parameter(VerifierAttestations(vec![
+                serde_json::json!({
+                    "format": "jwt",
+                    "data": rc_jwt,
+                }),
+            ]));
         }
 
         let verifier = builder.build().await?;
@@ -309,8 +320,16 @@ impl AppState {
             anchor_pem,
             trace: TraceStore::new(console_trace),
             status_fetcher: StatusFetcher::Http,
+            dcql_query: pid::pid_dcql_minimal(),
+            request_profile: "minimal German PID query".to_string(),
             unsafe_debug_artifacts,
         })
+    }
+
+    pub fn with_request_query(mut self, profile: impl Into<String>, dcql_query: DcqlQuery) -> Self {
+        self.request_profile = profile.into();
+        self.dcql_query = dcql_query;
+        self
     }
 }
 
@@ -318,6 +337,27 @@ impl AppState {
 fn bundled_rc_jwt() -> Option<String> {
     let v: serde_json::Value = serde_json::from_str(BUNDLED_RC).ok()?;
     Some(v.get("jwt")?.as_str()?.to_string())
+}
+
+#[derive(Clone, Debug)]
+struct VerifierAttestations(Vec<serde_json::Value>);
+
+impl TypedParameter for VerifierAttestations {
+    const KEY: &'static str = "verifier_attestations";
+}
+
+impl TryFrom<serde_json::Value> for VerifierAttestations {
+    type Error = anyhow::Error;
+
+    fn try_from(value: serde_json::Value) -> Result<Self, Self::Error> {
+        Ok(serde_json::from_value(value).map(Self)?)
+    }
+}
+
+impl From<VerifierAttestations> for serde_json::Value {
+    fn from(value: VerifierAttestations) -> Self {
+        serde_json::json!(value.0)
+    }
 }
 
 /// Derive the trusted status-signer JWK from the trust-anchor PEM (the sandbox

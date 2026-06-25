@@ -11,13 +11,17 @@
 //! - `GET  /health`         health check
 
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use openid4vp::core::authorization_request::parameters::Nonce;
+use openid4vp::core::authorization_request::parameters::{
+    Nonce, RequestUriMethod, State as AuthorizationState,
+};
+use openid4vp::core::object::TypedParameter;
 use openid4vp::core::response::AuthorizationResponse;
 use openid4vp::verifier::session::{Outcome, Session};
 use serde_json::{json, Value};
@@ -42,6 +46,7 @@ use crate::serve::view;
 /// Verifier freshness window for a presentation's KB-JWT (matches the core's
 /// `verify::DEFAULT_MAX_AGE_SECS`, which is not re-exported at the crate root).
 const DEFAULT_MAX_AGE_SECS: i64 = 300;
+const REQUEST_OBJECT_TTL_SECS: i64 = 600;
 
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
@@ -651,7 +656,7 @@ async fn verify_vp_token(
 async fn record_over_ask(st: &AppState, sid: Uuid, disclosed: &[String]) {
     let report = inspector::analyze(
         PID_VCT,
-        &pid::pid_dcql_minimal(),
+        &st.dcql_query,
         st.registered_scope.as_ref(),
         st.baseline.as_ref(),
         disclosed,
@@ -855,6 +860,8 @@ async fn sessions_json(State(state): State<Arc<AppState>>) -> Json<Value> {
 async fn create_request(state: &AppState) -> Result<(Uuid, String), AppError> {
     let nonce = Uuid::new_v4().to_string();
     let session_id = Uuid::new_v4();
+    let now = unix_timestamp()
+        .map_err(|e| AppError::internal(format!("failed to read system time: {e}")))?;
     let key_id = format!("enc-{session_id}");
     let (private_jwk, public_jwk) = generate_encryption_key(&key_id)
         .map_err(|e| AppError::internal(format!("failed to create response key: {e}")))?;
@@ -862,8 +869,12 @@ async fn create_request(state: &AppState) -> Result<(Uuid, String), AppError> {
     let url = state
         .verifier
         .build_authorization_request()
-        .with_dcql_query(pid::pid_dcql_minimal())
+        .with_dcql_query(state.dcql_query.clone())
         .with_request_parameter(Nonce::from(nonce.clone()))
+        .with_request_parameter(AuthorizationState(session_id.to_string()))
+        .with_request_parameter(RequestUriMethod::Get)
+        .with_request_parameter(IssuedAt(now))
+        .with_request_parameter(ExpiresAt(now + REQUEST_OBJECT_TTL_SECS))
         .with_request_parameter(client_metadata)
         .build_with_session_id(session_id, state.wallet_metadata.clone())
         .await
@@ -922,16 +933,67 @@ async fn create_request(state: &AppState) -> Result<(Uuid, String), AppError> {
         .record(
             session_id,
             TraceKind::RequestBuilt,
-            "built the authorization request (minimal German PID query)",
+            format!(
+                "built the authorization request ({})",
+                state.request_profile
+            ),
             Some(json!({
                 "authorizationRequest": auth_url,
                 "nonce": nonce,
+                "state": session_id.to_string(),
+                "requestProfile": state.request_profile,
                 "clientId": state.client_id,
                 "responseEncryptionKeyId": key_id,
             })),
         )
         .await;
     Ok((session_id, auth_url))
+}
+
+fn unix_timestamp() -> Result<i64, std::time::SystemTimeError> {
+    Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as i64)
+}
+
+#[derive(Clone, Debug)]
+struct IssuedAt(i64);
+
+impl TypedParameter for IssuedAt {
+    const KEY: &'static str = "iat";
+}
+
+impl TryFrom<Value> for IssuedAt {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        Ok(Self(serde_json::from_value(value)?))
+    }
+}
+
+impl From<IssuedAt> for Value {
+    fn from(value: IssuedAt) -> Self {
+        json!(value.0)
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ExpiresAt(i64);
+
+impl TypedParameter for ExpiresAt {
+    const KEY: &'static str = "exp";
+}
+
+impl TryFrom<Value> for ExpiresAt {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        Ok(Self(serde_json::from_value(value)?))
+    }
+}
+
+impl From<ExpiresAt> for Value {
+    fn from(value: ExpiresAt) -> Self {
+        json!(value.0)
+    }
 }
 
 #[derive(Debug)]

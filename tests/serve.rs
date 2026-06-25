@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use augenmass_workbench::serve::handlers::router;
 use augenmass_workbench::serve::state::{AppState, CertSource};
+use base64::prelude::*;
 
 async fn spawn_server() -> (String, reqwest::Client) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -90,6 +91,27 @@ async fn request_side_and_trace_flow() {
     );
     let jar = req.text().await.unwrap();
     assert_eq!(jar.split('.').count(), 3, "JAR is a compact JWS");
+    let payload = decode_jws_payload(&jar);
+    assert!(
+        payload["verifier_info"].is_array(),
+        "Android sandbox wallet expects verifier_info as an array"
+    );
+    assert_eq!(
+        payload["verifier_info"][0]["format"], "registration_cert",
+        "German sandbox wallet expects the registration certificate in verifier_info"
+    );
+    assert!(payload["verifier_info"][0]["data"].is_string());
+    assert!(
+        payload["verifier_attestations"].is_array(),
+        "newer stacks consume verifier_attestations"
+    );
+    assert_eq!(payload["verifier_attestations"][0]["format"], "jwt");
+    assert!(payload["verifier_attestations"][0]["data"].is_string());
+    assert_eq!(payload["request_uri_method"], "get");
+    assert_eq!(payload["state"], sid);
+    assert!(payload["iat"].is_i64());
+    assert!(payload["exp"].is_i64());
+    assert!(payload["exp"].as_i64().unwrap() > payload["iat"].as_i64().unwrap());
 
     // The trace captured the request-side steps in order.
     let trace: serde_json::Value = client
@@ -133,4 +155,12 @@ async fn request_side_and_trace_flow() {
         .await
         .unwrap();
     assert_eq!(unknown.status(), reqwest::StatusCode::NOT_FOUND);
+}
+
+fn decode_jws_payload(jar: &str) -> serde_json::Value {
+    let payload = jar.split('.').nth(1).expect("compact JWS payload segment");
+    let bytes = BASE64_URL_SAFE_NO_PAD
+        .decode(payload)
+        .expect("base64url payload");
+    serde_json::from_slice(&bytes).expect("payload json")
 }

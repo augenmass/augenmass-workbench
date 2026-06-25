@@ -1043,7 +1043,7 @@ DCQL INVALID: at least one blocking error above.
 
 ## `serve`
 
-Run a live wallet-interaction debugger: a local OpenID4VP verifier (a verifier-in-a-box) for the German PID profile, so a real EUDI wallet can present to it (scan the QR, follow the deep link), and trace the whole exchange end to end. Unlike the other commands, which read static artifacts, `serve` debugs the actual wallet-to-verifier flow. The German PID profile it speaks: `vct urn:eudi:pid:de:1`, format `dc+sd-jwt`, response_mode `direct_post.jwt`, response encryption ECDH-ES (A128GCM or A256GCM), and the registration certificate embedded as `verifier_info`.
+Run a live wallet-interaction debugger: a local OpenID4VP verifier (a verifier-in-a-box) for the German PID profile, so a real EUDI wallet can present to it (scan the QR, follow the deep link), and trace the whole exchange end to end. Unlike the other commands, which read static artifacts, `serve` debugs the actual wallet-to-verifier flow. The German PID profile it speaks: `vct urn:eudi:pid:de:1`, format `dc+sd-jwt`, response_mode `direct_post.jwt`, response encryption ECDH-ES (A128GCM or A256GCM), and the registration certificate embedded as array-shaped `verifier_info` plus `verifier_attestations` for newer stacks.
 
 This command runs until interrupted (Ctrl-C). It is zero-config: with no flags it mints a throwaway development certificate, so the verifier runs without a registrar-issued leaf. The `client_id` is then not the registered identity; pass `--key` and `--leaf` together to sign with the real registrar leaf so the `client_id` matches the registered identity.
 
@@ -1069,6 +1069,7 @@ Options (all optional):
 - `--relay-token <RELAY_TOKEN>` (env `AUGENMASS_RELAY_TOKEN`): bearer token for the hosted relay control connection. Prefer the environment variable so the token does not appear in shell history.
 - `--relay-ttl <RELAY_TTL>` (env `AUGENMASS_RELAY_TTL`): requested relay run lifetime in seconds. The relay clamps it to its configured maximum.
 - `--relay-optional` (env `AUGENMASS_RELAY_OPTIONAL`): continue local-only if relay setup fails. Use this only when fallback is acceptable; for a real phone demo, let relay failure fail fast.
+- `--age-only` (env `AUGENMASS_SERVE_AGE_ONLY`): request only `age_equal_or_over.18`. This is the safest live-demo profile when a sandbox wallet cannot satisfy the named event-check-in query (`given_name`, `family_name`, and age).
 
 Runtime behavior: this command does not exit on its own and does not use `--json`. It binds the listener and serves until Ctrl-C. On startup it prints the open URL, the computed `client_id`, whether the cert is throwaway or the registrar leaf, whether issuer trust is enforced, whether status checks are live, where the trace is served, and whether unsafe local debug artifacts are enabled.
 
@@ -1094,6 +1095,12 @@ public URL for the wallet endpoints only:
 
 ```
 AUGENMASS_RELAY_TOKEN=<token> augenmass serve --relay augenmass
+```
+
+For the smallest phone-wallet demo request, add `--age-only`:
+
+```
+AUGENMASS_RELAY_TOKEN=<token> augenmass serve --relay augenmass --age-only
 ```
 
 ```

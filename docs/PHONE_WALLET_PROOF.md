@@ -82,9 +82,20 @@ On the same Wi-Fi network, use the laptop's LAN IP:
 PUBLIC_URL=http://192.0.2.10:8080/
 ```
 
-For a venue network where the phone cannot reach the laptop directly, use an
-HTTPS tunnel and set `PUBLIC_URL` to the tunnel base URL. It must end in `/`.
-Do not put secrets in the URL.
+For a venue network where the phone cannot reach the laptop directly, prefer
+the hosted wallet-only relay:
+
+```sh
+export AUGENMASS_RELAY_TOKEN=<relay-token>
+```
+
+`augenmass serve --relay augenmass` then prints a temporary
+`https://wallet.augenmass.tech/r/<run-id>/` public URL. That public URL forwards
+only `GET /request/<session>` and `POST /response/<session>`; trace, inspect,
+evidence, and unsafe debug artifacts stay on localhost.
+
+If you use a different HTTPS tunnel, set `PUBLIC_URL` to that tunnel base URL.
+It must end in `/`. Do not put secrets in the URL.
 
 ## Start the verifier
 
@@ -104,8 +115,18 @@ RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)
 DEBUG_DIR=./debug-out/$RUN_ID
 
 $BIN serve \
-  --host 0.0.0.0 \
-  --public-url "$PUBLIC_URL" \
+  --relay augenmass \
+  --unsafe-debug-artifacts "$DEBUG_DIR"
+```
+
+For the smallest stage-safe request, add `--age-only`. It asks only for the
+German PID predicate `age_equal_or_over.18` and is the preferred presentation
+profile when a sandbox wallet cannot satisfy the named event-check-in request:
+
+```sh
+$BIN serve \
+  --relay augenmass \
+  --age-only \
   --unsafe-debug-artifacts "$DEBUG_DIR"
 ```
 
@@ -119,10 +140,10 @@ the real relying-party key and leaf certificate:
 
 ```sh
 $BIN serve \
-  --host 0.0.0.0 \
-  --public-url "$PUBLIC_URL" \
+  --relay augenmass \
   --key rp-private.pem.key \
   --leaf rp-leaf.pem \
+  --age-only \
   --unsafe-debug-artifacts "$DEBUG_DIR"
 ```
 

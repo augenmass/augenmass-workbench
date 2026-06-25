@@ -28,6 +28,8 @@ use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 use url::Url;
 
+use augenmass_core::pid;
+
 use state::{AppState, CertSource};
 
 /// Arguments for `augenmass serve`.
@@ -80,6 +82,10 @@ pub struct ServeArgs {
     /// Continue local-only if relay setup fails.
     #[arg(long, env = "AUGENMASS_RELAY_OPTIONAL", default_value_t = false)]
     pub relay_optional: bool,
+    /// Ask only for the German PID over-18 predicate. Useful for live phone demos
+    /// where the sandbox wallet profile cannot satisfy the named event-check-in set.
+    #[arg(long, env = "AUGENMASS_SERVE_AGE_ONLY", default_value_t = false)]
+    pub age_only: bool,
 }
 
 pub async fn run(args: ServeArgs) -> Result<()> {
@@ -181,20 +187,25 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         && relay_target.is_none()
         && (advertised_host != args.host || advertised_port != Some(args.port));
 
-    let state = std::sync::Arc::new(
-        AppState::new(
-            public_url,
-            operator_url,
-            source,
-            &args.purpose,
-            trust_anchors,
-            args.live_status,
-            anchor_pem,
-            args.unsafe_debug_artifacts.clone(),
-            console_trace,
-        )
-        .await?,
-    );
+    let mut app_state = AppState::new(
+        public_url,
+        operator_url,
+        source,
+        &args.purpose,
+        trust_anchors,
+        args.live_status,
+        anchor_pem,
+        args.unsafe_debug_artifacts.clone(),
+        console_trace,
+    )
+    .await?;
+    if args.age_only {
+        app_state = app_state.with_request_query(
+            "age-only German PID query (age_equal_or_over.18)",
+            pid::pid_query(&[&["age_equal_or_over", "18"]]),
+        );
+    }
+    let state = std::sync::Arc::new(app_state);
 
     let relay_summary = relay_connection.as_ref().map(|conn| {
         (

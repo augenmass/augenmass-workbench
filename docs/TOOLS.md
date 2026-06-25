@@ -381,13 +381,15 @@ augenmass x509-hash fixtures/requests/eudiplo-request.jwt \
 
 ## Debug a live wallet interaction
 
-The commands above read static artifacts. When you need to debug the actual wallet-to-verifier exchange, `augenmass serve` is a verifier-in-a-box: a local OpenID4VP verifier for the German PID profile (`vct urn:eudi:pid:de:1`, format `dc+sd-jwt`, response_mode `direct_post.jwt`, response encryption ECDH-ES, the registration certificate embedded as `verifier_info`) that a real EUDI wallet presents to. It records the whole exchange as a per-session trace.
+The commands above read static artifacts. When you need to debug the actual wallet-to-verifier exchange, `augenmass serve` is a verifier-in-a-box: a local OpenID4VP verifier for the German PID profile (`vct urn:eudi:pid:de:1`, format `dc+sd-jwt`, response_mode `direct_post.jwt`, response encryption ECDH-ES, the registration certificate embedded as array-shaped `verifier_info` plus `verifier_attestations`) that a real EUDI wallet presents to. It records the whole exchange as a per-session trace.
 
 Run it (zero-config; it runs until Ctrl-C):
 
 ```
 augenmass serve
 ```
+
+For the smallest phone-wallet demo request, use `augenmass serve --relay augenmass --age-only`: the phone sees only the wallet request/response endpoints over HTTPS, and the DCQL request asks only for `age_equal_or_over.18`.
 
 Open the printed URL, scan the QR with a wallet, and watch the trace. The trace is available three ways: live on the console (color-coded; suppress it with `--quiet`), as a browser timeline at `/trace/<session>` (it auto-refreshes while the exchange is in flight), and as JSON at `/api/trace/<session>` for programmatic debugging. `/api/sessions` lists every session this run. The session endpoints are `GET /` (landing page and QR), `GET /request/:id` (the signed JAR the wallet fetches, content-type `application/oauth-authz-req+jwt`), `POST /response/:id` (the wallet's `direct_post.jwt`, returning JSON `{ status: "verified" | "rejected", reason?, inspect, trace }`), `GET /inspect/:id` (the over-ask inspector, with a `?demo=overask` variant), and `GET /health`.
 
