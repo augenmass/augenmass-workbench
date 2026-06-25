@@ -176,7 +176,7 @@ starts remote GitHub CI.
 `just demo-run` runs the offline presentation sequence from the resolved CLI
 binary: `AUGENMASS_DEMO_BIN`, then `AUGENMASS_BIN`, then the bundled plugin
 launcher. Use `just plugin-demo-run` when you specifically want to prove the
-private-preview plugin artifact. The sequence uses only committed fixtures and
+committed plugin artifact. The sequence uses only committed fixtures and
 treats the intentional findings as successful proof points, so no sandbox
 credentials or phone wallet are needed.
 

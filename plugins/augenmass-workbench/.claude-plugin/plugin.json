@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "augenmass-workbench",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A Claude Code skill for developers, auditors, privacy reviewers, and product teams in the EUDI Wallet ecosystem: ask in plain language to audit registrations for over-ask, explain privacy findings, decode and verify wallet artifacts, debug live wallet flows, and get concrete fixes. Backed by the bundled Rust CLI when platform-compatible, or by AUGENMASS_BIN on other platforms.",
   "author": {
     "name": "Augenmaß"

@@ -1,6 +1,6 @@
 # Augenmaß Workbench: Command Reference
 
-This is the complete reference for the `augenmass` CLI. Every command, subcommand, flag, exit code, and example here is verified against the built binary (`augenmass 0.2.0`) and the committed fixtures under `fixtures/`. Every example runs as written from the repository root.
+This is the complete reference for the `augenmass` CLI. Every command, subcommand, flag, exit code, and example here is verified against the built binary (`augenmass 0.3.0`) and the committed fixtures under `fixtures/`. Every example runs as written from the repository root.
 
 Augenmaß Workbench is a developer and auditor toolkit for the EUDI Wallet ecosystem. It decodes and inspects every common artifact (SD-JWT VC, ISO 18013-5 mdoc, registration certificate, authorization request/JAR, credential offer, status list, DCQL), audits requests for over-asking against curated purpose baselines and a cited legal basis, verifies presentations cryptographically, writes registrations under guardrails, and live-debugs the wallet-to-verifier exchange. Static artifact commands run fully offline; live surfaces are explicit: registrar targets (`clone`, `cached-sandbox`, `sandbox`), the cache server, and the live wallet-interaction debugger (`serve`).
 

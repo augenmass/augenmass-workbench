@@ -9,7 +9,7 @@ print_unsigned_help() {
 
 Augenmass could not run the selected binary.
 
-These preview binaries are not signed/notarized yet. Do not bypass OS security
+These bundled binaries may not be signed/notarized yet. Do not bypass OS security
 blindly: verify the release/checksum first, then either approve the binary
 manually or build from source and set AUGENMASS_BIN.
 EOF

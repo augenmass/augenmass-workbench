@@ -1,6 +1,6 @@
 # Augenmaß Workbench: command reference
 
-Natural-language intents mapped to exact `augenmass` commands. Every command below was verified against the real binary (`augenmass 0.2.0`). Examples use `$AUGENMASS`, the resolved binary path from the main skill. In a repo checkout, a local debug build is `./target/debug/augenmass`.
+Natural-language intents mapped to exact `augenmass` commands. Every command below was verified against the real binary (`augenmass 0.3.0`). Examples use `$AUGENMASS`, the resolved binary path from the main skill. In a repo checkout, a local debug build is `./target/debug/augenmass`.
 
 Many examples below use committed `fixtures/` and `examples/` paths. Those paths
 exist in a full checkout and in release archives, but not necessarily in a
@@ -272,4 +272,4 @@ $AUGENMASS list
 | `register` | dry-run or write succeeds | over-ask without `--force`, or a blocking format error |
 | `list`, `generate`, `clone serve`, `cache serve` | success | (no gating) |
 
-Read-only commands that render machine output accept `--json`. Verified against `augenmass 0.2.0`.
+Read-only commands that render machine output accept `--json`. Verified against `augenmass 0.3.0`.

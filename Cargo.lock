@@ -211,7 +211,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "augenmass-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
@@ -233,7 +233,7 @@ dependencies = [
 
 [[package]]
 name = "augenmass-relay"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "augenmass-relay-proto",
@@ -250,7 +250,7 @@ dependencies = [
 
 [[package]]
 name = "augenmass-relay-proto"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base64 0.21.7",
  "serde",
@@ -259,7 +259,7 @@ dependencies = [
 
 [[package]]
 name = "augenmass-workbench"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "assert_cmd",

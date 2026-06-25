@@ -8,7 +8,82 @@ and the project aims to follow [Semantic Versioning](https://semver.org/spec/v2.
 House style note: this file does not carry release dates. The project does not
 imply wall-clock timing for releases.
 
-## [Unreleased] / [0.2.0]
+## [Unreleased]
+
+- Nothing yet.
+
+## [0.3.0]
+
+This is the live-wallet proof release. It promotes Augenmaß from an offline
+artifact and registrar guardrail toolkit into a demonstrable EUDI Wallet
+workbench: a real phone wallet can scan a QR, fetch the signed OpenID4VP request,
+post an encrypted response through the hosted relay, and leave behind a redacted
+evidence bundle that can be verified later. The macOS plugin binaries are
+refreshed from this branch; Linux and Windows plugin binaries still point at the
+published `v0.2.0` release until the next full multi-platform rebuild.
+
+### Added
+
+- Hosted wallet-only relay support (`serve --relay augenmass`) for real phone
+  demos through `wallet.augenmass.tech`. The relay forwards only the OpenID4VP
+  phone endpoints and keeps trace, inspect, evidence, session APIs, and unsafe
+  debug artifacts on localhost.
+- Real iOS and Android sandbox-wallet proof. Both wallets completed the
+  OpenID4VP flow against `serve --relay augenmass --age-only` with the
+  registrar-issued leaf; exported bundles passed `evidence verify` and
+  `evidence assert-live`.
+- Strict live evidence proof: `evidence assert-live` now proves the request
+  object fetch, encrypted response receipt, JWE decryption, and offline
+  presentation verification before a phone-wallet run can be claimed as proven.
+- Wallet over-disclosure replay signal. When a captured request contains
+  explicit DCQL claim paths, evidence replay can compare requested keys to
+  disclosed keys and reports `walletOverDisclosureAnalyzed` separately from
+  issuer trust, live status, and legal over-ask proof.
+- Post-capture trust/status proof path with `evidence prove-trust-status` and
+  the Bundesdruckerei preprod helper wrapper for the current sandbox PID
+  material.
+- Hosted and local sandbox cache proof: the cache backend can be warmed and used
+  as a stable read-through mirror for public sandbox reads, with Railway
+  deployment proof and a protected status surface.
+- Plugin/skill documentation for the new phone-proof workflow, including
+  plugin-only references so marketplace installs can guide an agent without the
+  full repository checkout.
+
+### Changed
+
+- The macOS plugin bundle binaries are refreshed from the current release branch
+  and now print `augenmass 0.3.0`.
+- Documentation now treats `0.3.0` as the presentation/demo release line and
+  keeps `v0.2.0` as the published cross-platform binary baseline for Linux and
+  Windows until a full rebuild happens.
+- `serve --unsafe-debug-artifacts` keeps the first canonical artifact when a
+  wallet retries the response after success, and writes later captures with a
+  suffix such as `direct-post-2.body`.
+
+### Fixed
+
+- iOS wallet KB-JWT clock-skew tolerance for small future `iat` values.
+- Evidence replay mismatch after duplicate wallet POSTs by preserving the first
+  canonical unsafe artifact.
+- Stale macOS plugin binary behavior: the committed macOS plugin launcher now
+  accepts the newest phone proof bundle and reports `walletOverDisclosureAnalyzed`.
+
+### Security
+
+- The hosted relay uses an operator token for run creation and is wallet-only by
+  default, reducing the public attack surface.
+- Trace and evidence docs now explicitly separate projector-safe redacted output
+  from sensitive local bundles and raw unsafe artifacts.
+
+### Known Caveats
+
+- Linux and Windows plugin target binaries remain `v0.2.0` release binaries in
+  this mixed bundle.
+- The hosted relay is suitable for controlled demos and operator use; a broader
+  public service needs operational policy, monitoring, and abuse controls.
+- The proof bundles are sensitive and intentionally not committed.
+
+## [0.2.0]
 
 Version 2 grows the workbench from an audit, debug, and repair helper into a
 single cohesive command-line toolkit over the whole EUDI Wallet artifact surface,
@@ -264,3 +339,24 @@ cached-sandbox mirror, and the live wallet-interaction debugger.
   Cryptographic mdoc verification (COSE_Sign1 plus value-digest matching plus
   device binding) is later work, mirrored on the SD-JWT side by `verify`. The
   curated baselines are deliberate taste judgments, not Rulebook derivations.
+
+## [0.1.0]
+
+Initial hackathon release. This was the seed workbench: a Claude Code oriented
+skill and Rust CLI around the registrar workflow and over-ask guardrail.
+
+### Added
+
+- `generate`: create a proportionate registration body.
+- `check`: catch over-asking and registrar body shape mistakes before writes.
+- `doctor`: diagnose signed request and JAR gotchas.
+- `register`: guarded registrar write path with dry-run by default.
+- `list`: read registrations back for a relying party.
+- `clone`: run a local registrar-compatible store for offline rehearsal.
+
+### Notes
+
+- Focused on the winning hackathon story: an agent can explain why a relying
+  party is asking for too much data and produce the smaller, safer version.
+- The deeper verifier engine, live wallet debugger, hosted relay, evidence
+  replay, cache backend, and cross-platform plugin bundle arrived later.

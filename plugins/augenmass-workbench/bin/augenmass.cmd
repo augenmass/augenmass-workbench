@@ -20,7 +20,7 @@ set "STATUS=%ERRORLEVEL%"
 
 if "%STATUS%"=="126" (
   echo Augenmass could not run the selected binary. 1>&2
-  echo These preview binaries are not code-signed yet. Verify the release/checksum first. 1>&2
+  echo These bundled binaries may not be code-signed yet. Verify the release/checksum first. 1>&2
   echo Then right-click augenmass.exe -^> Properties -^> Unblock, or run: Unblock-File .\augenmass.exe 1>&2
 )
 

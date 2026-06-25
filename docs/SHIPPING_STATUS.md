@@ -59,7 +59,7 @@ That proves:
 - `just plugin-bundle-freshness` verifies the plugin bundle manifest, version,
   launcher, and every committed target-binary hash.
 - On this experiment branch, the macOS plugin target binaries have been
-  refreshed from commit `790951b` and expose the latest evidence replay,
+  refreshed for `v0.3.0` and expose the latest evidence replay,
   `walletOverDisclosureAnalyzed`, and append-only unsafe artifact behavior.
   Linux and Windows bundle targets remain from the `v0.2.0` release until a
   full multi-platform release rebuild is cut.
@@ -580,7 +580,7 @@ The code is Rust-only, and native release archives are now proven for the main
 desktop targets. The shipped plugin bundle now carries a launcher plus target
 binaries for the supported desktop targets. Runtime smokes still allow
 `AUGENMASS_BIN` for source-built or separately trusted binaries, and `demo-run`
-can use `AUGENMASS_DEMO_BIN` for a one-off native demo binary. Unsigned preview
+can use `AUGENMASS_DEMO_BIN` for a one-off native demo binary. Unsigned
 binaries may require manual OS approval after checksum verification.
 
 ## Remaining polish
@@ -595,7 +595,8 @@ binaries may require manual OS approval after checksum verification.
   parseable.
 - Full release rebuild: before presenting cross-platform plugin install as
   current for Linux or Windows, rebuild and reassemble all platform archives so
-  every bundled target exposes the same evidence commands as the macOS preview.
+  every bundled target exposes the same evidence commands as the refreshed
+  macOS `v0.3.0` bundle.
 - PR caveat: the branch is ready for source review with local macOS plugin proof,
   but a public cross-platform marketplace release still needs the full release
   rebuild above.

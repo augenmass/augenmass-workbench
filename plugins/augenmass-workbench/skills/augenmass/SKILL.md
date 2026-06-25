@@ -38,11 +38,11 @@ Resolve the binary once before running commands:
 
 For the rest of this skill, call the resolved path `$AUGENMASS`. That is a convention for the agent's own reasoning and examples, not a variable the user has to set. Do not lead with shell commands unless the user asks for them or needs a reproducible hook; lead with the answer, the evidence, the caveat, and the fix.
 
-The bundled plugin includes preview binaries for macOS Apple Silicon, macOS
+The bundled plugin includes target binaries for macOS Apple Silicon, macOS
 Intel, Linux x64, and Windows x64. Some macOS release ZIP artifacts may be
 Developer ID signed and notarized, but the agent must check the release notes or
 sidecar proof before claiming that. If no compatible binary is available, or if
-the OS blocks the preview binary, do not pretend the skill can run checks. Say
+the OS blocks the bundled binary, do not pretend the skill can run checks. Say
 the platform or signing caveat plainly. On macOS, tell the user to verify the
 release/checksum, then use System Settings -> Privacy & Security -> Open Anyway
 if they trust the binary. On Windows, tell them to verify the file, then use

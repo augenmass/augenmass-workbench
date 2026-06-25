@@ -1,11 +1,11 @@
 {
   "schema": "augenmass-plugin-bundle-v1",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "source": {
-    "kind": "mixed-local-preview",
-    "note": "macOS target binaries refreshed from the current auditor-proof experiment branch; Linux and Windows targets remain from the v0.2.0 release until the next multi-platform release build",
+    "kind": "mixed-local-release",
+    "note": "macOS target binaries refreshed from the v0.3.0 auditor-proof experiment branch; Linux and Windows targets remain from the v0.2.0 release until the next multi-platform release build",
     "baseRelease": "v0.2.0",
-    "localCommit": "790951b"
+    "localCommit": "v0.3.0-local-build"
   },
   "launchers": [
     "augenmass",
@@ -16,7 +16,7 @@
     {
       "target": "aarch64-apple-darwin",
       "binary": "aarch64-apple-darwin/augenmass",
-      "binarySha256": "2b0442b1eef17143af963464ec169d39434f128f8bf25eb98522393d9e4822e5",
+      "binarySha256": "18a9f936cbedd40993269fa67d879abdada731b97e0a7e93f19356d54b3c5e5d",
       "archive": "local-aarch64-apple-darwin-release-build",
       "archiveSha256": "",
       "sourceManifest": "local-build"
@@ -24,7 +24,7 @@
     {
       "target": "x86_64-apple-darwin",
       "binary": "x86_64-apple-darwin/augenmass",
-      "binarySha256": "3ffafabf7b8c0288dd1fee7b2239c2d1731cebc477950fecebb1e6ad6224ed3a",
+      "binarySha256": "93445024ebfa64ce1804a5e30fff49683b4f2b29cb0745a53c9c8b4e1f8b136a",
       "archive": "local-x86_64-apple-darwin-release-build",
       "archiveSha256": "",
       "sourceManifest": "local-build"

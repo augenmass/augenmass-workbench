@@ -5,7 +5,7 @@ engine/shell split, the engine module set, the CLI source map, the universal
 `inspect` dispatch, the offline-vs-networked boundary, the agent/CI contracts
 (`--json` and exit codes), what is reused versus net-new, and an honest scope
 note. Every command shown here works as written against the built binary
-(`augenmass` version 0.2.0). Identifiers use the slug `augenmass`; the display
+(`augenmass` version 0.3.0). Identifiers use the slug `augenmass`; the display
 name "Augenmaß" appears only in prose.
 
 ## The design: pure engine, thin shell

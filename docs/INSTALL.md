@@ -9,7 +9,7 @@ Both surfaces call the same binary.
 
 ## Claude Code skill
 
-Private preview install:
+Private/local install:
 
 ```text
 /plugin marketplace add augenmass/augenmass-workbench
@@ -34,7 +34,7 @@ codex plugin marketplace add augenmass/augenmass-workbench --ref main
 codex plugin add augenmass-workbench@augenmass
 ```
 
-The plugin includes a bundled launcher and native preview binaries for macOS
+The plugin includes a bundled launcher and native target binaries for macOS
 Apple Silicon, macOS Intel, Linux x64, and Windows x64. The skill should work
 without a separate source build on those targets. Set `AUGENMASS_BIN` only when
 you want to override the bundled binary, use an unsupported target, or point the
@@ -120,7 +120,7 @@ The runtime smoke gates follow the same convention. `serve-smoke`,
 `live-cache-smoke`, `deployed-cache-smoke`, and `live-sandbox-smoke` prefer
 `AUGENMASS_BIN` when it is set, then fall back to the bundled plugin launcher.
 The plugin-bundle gates intentionally keep using the launcher because they prove
-the exact private-preview plugin artifact.
+the exact committed plugin artifact.
 `plugin-only-smoke` copies only the plugin bundle to a temp directory and runs
 no-file commands from outside the checkout, proving marketplace-style first-run
 behavior without `fixtures/` or `examples/`. `demo-run` is portable too: it

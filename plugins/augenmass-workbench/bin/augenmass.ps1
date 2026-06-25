@@ -19,7 +19,7 @@ if ($status -eq 126) {
     Write-Error @"
 Augenmass could not run the selected binary.
 
-These preview binaries are not code-signed yet. Verify the release/checksum
+These bundled binaries may not be code-signed yet. Verify the release/checksum
 first. Then right-click augenmass.exe -> Properties -> Unblock, or run:
 
   Unblock-File .\augenmass.exe

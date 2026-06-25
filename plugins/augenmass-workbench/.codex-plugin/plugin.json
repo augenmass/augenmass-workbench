@@ -1,6 +1,6 @@
 {
   "name": "augenmass-workbench",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A Codex skill and Rust CLI for developers, auditors, privacy reviewers, and product teams working in the EUDI Wallet ecosystem: audit registrations for over-ask, decode and verify wallet artifacts, debug live wallet flows, explain findings plainly, and produce concrete fixes.",
   "author": {
     "name": "Augenmaß"

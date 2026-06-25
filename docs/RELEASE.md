@@ -450,7 +450,7 @@ plugins/augenmass-workbench/bin/x86_64-unknown-linux-gnu/augenmass
 plugins/augenmass-workbench/bin/x86_64-pc-windows-msvc/augenmass.exe
 ```
 
-They are unsigned preview binaries. If macOS Gatekeeper or Windows blocks a
+They are unsigned bundled binaries. If macOS Gatekeeper or Windows blocks a
 binary, verify the release checksum first, then either approve it manually
 (macOS System Settings -> Privacy & Security -> Open Anyway; Windows Properties
 -> Unblock or PowerShell `Unblock-File`) or build from source and set

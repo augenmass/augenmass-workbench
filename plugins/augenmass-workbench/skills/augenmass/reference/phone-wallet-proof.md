@@ -35,7 +35,7 @@ just serve-smoke
 Resolve the binary. In plugin-only installs, use the bundled launcher; it picks
 the native target binary for macOS Apple Silicon, macOS Intel, Linux x64, or
 Windows x64. If the platform is unsupported or the user does not want to approve
-an unsigned preview binary, ask them to set `AUGENMASS_BIN` to a native build or
+an unsigned bundled binary, ask them to set `AUGENMASS_BIN` to a native build or
 release archive:
 
 ```sh
