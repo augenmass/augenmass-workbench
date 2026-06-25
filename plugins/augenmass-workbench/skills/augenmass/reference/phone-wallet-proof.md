@@ -17,10 +17,12 @@ the checklist to follow.
 - `RESPONSE_DECRYPTED`: the verifier decrypted the JWE response
 - `VERIFIED`: the SD-JWT VC presentation verified offline
 
-It does not prove issuer trust, live revocation status, or over-ask analysis.
-Claim those only when the trace shows the explicit steps and the run used the
-required inputs, such as `--trust-anchor`, `--status-signer`, and
-`--live-status`.
+It does not prove issuer trust, live revocation status, or legal over-ask
+analysis. When the captured request contains explicit DCQL claim paths, replay
+can separately report wallet over-disclosure as a redacted auditor signal.
+Claim stronger trust/status/over-ask results only when the trace shows the
+explicit steps and the run used the required inputs, such as `--trust-anchor`,
+`--status-signer`, and `--live-status`.
 
 ## Preflight
 
@@ -132,6 +134,11 @@ Only after `evidence assert-live` succeeds should the answer say the captured
 bundle proves a completed encrypted phone-wallet presentation. If the trace ends
 in `REJECTED` or `ERROR`, keep it as a debugging artifact, not as proof of a
 successful demo.
+
+If a wallet retries the response after a successful POST, unsafe artifacts keep
+the first canonical capture and write later duplicates with a suffix such as
+`direct-post-2.body`. Export the session normally; the proof path uses the first
+canonical capture.
 
 If you also have the PID issuer anchor and the status signer certificate/public
 key, run the explicit trust/status gate. The tool can safely fetch the

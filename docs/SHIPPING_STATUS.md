@@ -59,7 +59,8 @@ That proves:
 - `just plugin-bundle-freshness` verifies the plugin bundle manifest, version,
   launcher, and every committed target-binary hash.
 - On this experiment branch, the macOS plugin target binaries have been
-  refreshed from the local branch and expose `evidence prove-trust-status`.
+  refreshed from commit `790951b` and expose the latest evidence replay,
+  `walletOverDisclosureAnalyzed`, and append-only unsafe artifact behavior.
   Linux and Windows bundle targets remain from the `v0.2.0` release until a
   full multi-platform release rebuild is cut.
 - The repo-local Claude Code marketplace validates with `--strict`, installs
@@ -352,7 +353,8 @@ These are good to show on stage or in a recording:
 - `evidence export`, `evidence verify`, `evidence replay`, and
   `evidence assert-live`: signed, projector-safe replay of captured local debug
   artifacts, plus a post-capture gate that proves a completed encrypted
-  phone-wallet run before we claim one.
+  phone-wallet run before we claim one. Replay can now report wallet
+  over-disclosure separately when explicit request keys are present.
 - Real phone-wallet proof: on 2026-06-25, `serve --relay augenmass --age-only`
   with the registrar-issued leaf completed against the sandbox iOS and Android
   wallets. The workbench traces reached `REQUEST_OBJECT_FETCHED`,
@@ -594,6 +596,9 @@ binaries may require manual OS approval after checksum verification.
 - Full release rebuild: before presenting cross-platform plugin install as
   current for Linux or Windows, rebuild and reassemble all platform archives so
   every bundled target exposes the same evidence commands as the macOS preview.
+- PR caveat: the branch is ready for source review with local macOS plugin proof,
+  but a public cross-platform marketplace release still needs the full release
+  rebuild above.
 - Keep the known-good phone-wallet proof local or in a private evidence store.
   The exported bundles and raw debug artifacts are sensitive and intentionally
   ignored by git.

@@ -1275,7 +1275,7 @@ Usage: augenmass evidence replay [OPTIONS] <BUNDLE>
 
 Arguments and options match `evidence verify`.
 
-Replay first performs the same bundle verification, then prints the redacted timeline. It never writes raw wallet material to stdout. It uses only shape, lengths, SHA-256 digests, field names, artifact labels, and verification outcomes. If the bundle contains `direct-post.body`, `session-enc-key.jwk`, `verification-context.json`, and an encrypted response, replay decrypts the `direct_post.jwt` locally and verifies the SD-JWT VC presentation offline with the captured nonce, audience, vct, clock, and freshness window. Trust anchoring and live status are not claimed by evidence replay unless a later command adds explicit offline inputs for those checks.
+Replay first performs the same bundle verification, then prints the redacted timeline. It never writes raw wallet material to stdout. It uses only shape, lengths, SHA-256 digests, field names, artifact labels, and verification outcomes. If the bundle contains `direct-post.body`, `session-enc-key.jwk`, `verification-context.json`, and an encrypted response, replay decrypts the `direct_post.jwt` locally and verifies the SD-JWT VC presentation offline with the captured nonce, audience, vct, clock, and freshness window. When the captured request contains explicit DCQL claim paths, replay also emits a redacted wallet over-disclosure analysis comparing requested keys to disclosed keys. Trust anchoring and live status are not claimed by evidence replay unless a later command adds explicit offline inputs for those checks.
 
 ## `evidence assert-live`
 
@@ -1294,8 +1294,10 @@ phone-wallet session captured with `serve --unsafe-debug-artifacts`.
 
 This command proves the encrypted wallet response was received, decrypted, and
 the presentation verified offline against the captured nonce/audience/vct. It
-does not claim issuer trust anchoring, live status, or over-ask analysis; use
-the live trace and explicit trust/status/over-ask gates for those.
+reports `walletOverDisclosureAnalyzed` when replay could compare explicit
+request keys to disclosed keys. It does not claim issuer trust anchoring, live
+status, or legal over-ask analysis; use the live trace and explicit
+trust/status/over-ask gates for those.
 
 Text output:
 
@@ -1304,10 +1306,11 @@ LIVE WALLET EVIDENCE PROVEN
 session: <session>
 requiredEvents: SESSION_CREATED, REQUEST_BUILT, REQUEST_OBJECT_FETCHED, RESPONSE_RECEIVED, RESPONSE_DECRYPTED, VERIFIED
 replayEvents: <n>
+walletOverDisclosureAnalyzed: true|false
 payloadSha256: <sha256>
 signature: absent|valid with embedded key|valid with supplied key
 redacted: true
-notes: trust/status/over-ask are not claimed by evidence assert-live; use the live trace and explicit gates for those.
+notes: trust/status/over-ask are not claimed by evidence assert-live; wallet over-disclosure is replayed when explicit request keys are present. Use the live trace and explicit gates for trust/status.
 ```
 
 ## `evidence prove-trust-status`

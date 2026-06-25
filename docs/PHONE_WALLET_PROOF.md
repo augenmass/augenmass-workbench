@@ -24,8 +24,11 @@ phone-wallet spine:
 - the SD-JWT VC presentation verified offline: `VERIFIED`
 
 It does not prove issuer trust anchoring, live status, or that the wallet
-disclosed no more than the purpose allowed. Use the live trace, `--trust-anchor`,
-`--status-signer`, `--live-status`, and the over-ask inspector for those claims.
+disclosed no more than the purpose allowed. When the captured request contains
+explicit DCQL claim paths, replay can separately report wallet over-disclosure
+as a redacted auditor signal. Use the live trace, `--trust-anchor`,
+`--status-signer`, `--live-status`, and the over-ask inspector for stronger
+trust/status/legal over-ask claims.
 
 ## Before the phone scan
 
@@ -244,6 +247,11 @@ proves a completed encrypted phone-wallet presentation to the workbench
 verifier." Add separate wording for trust/status/over-ask only if those steps
 were explicitly configured and observed.
 
+If a wallet retries the response after a successful POST, unsafe artifacts keep
+the first canonical capture and write later duplicates with a suffix such as
+`direct-post-2.body`. Export the session normally; the proof path uses the first
+canonical capture.
+
 If you have the PID issuer anchor and the status signer certificate/public key,
 re-run the captured presentation through the explicit trust/status gate. The
 tool can safely fetch the referenced status-list token from the captured
@@ -314,9 +322,10 @@ OVER_ASK_ANALYZED
 
 The exported bundles passed `evidence verify`, `evidence assert-live`, and the
 Bundesdruckerei preprod `wallet-trust-status` proof wrapper with a freshly
-fetched status-list token. Those bundles are intentionally not committed because
-they are marked `sensitive: true`; keep them local or in a private evidence
-store only.
+fetched status-list token. The latest replay also reports
+`walletOverDisclosureAnalyzed` when explicit request keys are present. Those
+bundles are intentionally not committed because they are marked sensitive; keep
+them local or in a private evidence store only.
 
 This known-good proof supports the stage claim that a real phone wallet
 completed an encrypted OpenID4VP presentation to the workbench verifier through
