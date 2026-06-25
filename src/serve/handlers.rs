@@ -635,6 +635,20 @@ async fn verify_vp_token(
                         return Err(reason);
                     }
                 }
+            } else {
+                let reason =
+                    "live status is enabled but the credential has no token-status-list reference"
+                        .to_string();
+                st.trace
+                    .record_at(
+                        sid,
+                        TraceKind::Rejected,
+                        TraceLevel::Bad,
+                        &reason,
+                        Some(json!({ "reason": reason })),
+                    )
+                    .await;
+                return Err(reason);
             }
         }
 
@@ -1730,6 +1744,51 @@ mod tests {
         let trace_text = serde_json::to_string(&trace).expect("trace JSON");
         assert!(!trace_text.contains("Runtime Secret"));
         assert!(!trace_text.contains(&encrypted));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn encrypted_direct_post_runtime_rejects_missing_live_status_ref() {
+        let root = std::env::temp_dir().join(format!("augenmass-runtime-{}", Uuid::new_v4()));
+        let (issuer_jwk, anchor_pem) = runtime_issuer_jwk_signed_by_anchor();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let state = age_only_state_for_trust_status_runtime_proof(
+            root.clone(),
+            anchor_pem,
+            counter.clone(),
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/fixtures/status/status-list-CLEAR.jwt"
+            )),
+        )
+        .await;
+        let (sid, _) = create_request(&state).await.expect("request");
+        let _ = get_request_object(State(state.clone()), Path(sid.to_string()))
+            .await
+            .expect("request object");
+        let (body, _) = encrypted_runtime_direct_post_body(&state, sid, &issuer_jwk, None).await;
+
+        let (status, Json(value)) =
+            receive_response(State(state.clone()), Path(sid.to_string()), body)
+                .await
+                .expect("missing status ref rejected cleanly");
+
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(value["status"], "rejected");
+        assert!(value["reason"]
+            .as_str()
+            .unwrap()
+            .contains("no token-status-list reference"));
+        assert_eq!(counter.load(Ordering::SeqCst), 0);
+
+        let trace = state.trace.get(sid).await.expect("trace");
+        let rejected = trace
+            .events
+            .iter()
+            .find(|event| event.code == "REJECTED")
+            .expect("rejected event");
+        assert!(rejected.summary.contains("no token-status-list reference"));
 
         let _ = fs::remove_dir_all(root);
     }

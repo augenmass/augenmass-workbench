@@ -82,13 +82,6 @@ fn collect_disclosed_leaves(
                 collect_disclosed_leaves(disclosed, child, value);
             }
         }
-        Value::Array(items) if !items.is_empty() => {
-            for (idx, value) in items.into_iter().enumerate() {
-                let mut child = path.clone();
-                child.push(idx.to_string());
-                collect_disclosed_leaves(disclosed, child, value);
-            }
-        }
         other => {
             disclosed.insert(path, other);
         }
@@ -134,6 +127,23 @@ mod tests {
                 "age_equal_or_over.21",
                 "age_equal_or_over.65",
             ]
+        );
+    }
+
+    #[test]
+    fn disclosed_array_is_accounted_as_parent_claim() {
+        let mut disclosed = BTreeMap::new();
+        collect_disclosed_leaves(
+            &mut disclosed,
+            vec!["nationalities".to_string()],
+            serde_json::json!(["DE", "FR"]),
+        );
+
+        let keys: Vec<String> = disclosed.keys().map(|path| path.join(".")).collect();
+        assert_eq!(keys, vec!["nationalities"]);
+        assert_eq!(
+            disclosed[&vec!["nationalities".to_string()]],
+            serde_json::json!(["DE", "FR"])
         );
     }
 }

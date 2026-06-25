@@ -414,4 +414,21 @@ mod tests {
         assert!(age_18.requested);
         assert!(age_18.disclosed);
     }
+
+    #[test]
+    fn array_claim_disclosure_matches_parent_model_key() {
+        let query = pid::pid_query(&[&["nationalities"]]);
+        let disclosed = vec!["nationalities".to_string()];
+
+        let report = analyze(PID_VCT, &query, None, None, &disclosed);
+
+        assert!(report.over_disclosed.is_empty());
+        let nationalities = report
+            .claim_rows
+            .iter()
+            .find(|row| row.key == "nationalities")
+            .expect("nationalities row");
+        assert!(nationalities.requested);
+        assert!(nationalities.disclosed);
+    }
 }

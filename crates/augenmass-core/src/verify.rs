@@ -286,9 +286,10 @@ pub struct TrustOptions<'a> {
 /// Steps, after the Slice-1 verification in [`verify_pid_presentation_at`]:
 /// - if `trust.anchors` is set, the issuer leaf must chain to one of them, else
 ///   [`RejectKind::UntrustedIssuer`];
-/// - if `trust.status` carries a token and the credential references a status
-///   list, the referenced bit must read `VALID`, else [`RejectKind::Revoked`]
-///   (a suspended credential also rejects: there is no `Suspended` reject kind,
+/// - if `trust.status` carries a token, the credential must reference a status
+///   list and the referenced bit must read `VALID`, else
+///   [`RejectKind::StatusListUnavailable`] or [`RejectKind::Revoked`] (a
+///   suspended credential also rejects: there is no `Suspended` reject kind,
 ///   and fail-closed means a non-`VALID` credential is not accepted);
 /// - the verifier-internal `status` pointer is stripped from the returned view,
 ///   so it never appears as a disclosed claim (it is plumbing, not over-ask).
@@ -315,21 +316,25 @@ pub fn verify_pid_presentation_full(
 
     // Token-status-list (revocation) check.
     if let StatusInput::Token { jws, signer } = &trust.status {
-        if let Some(sref) = verified.status_ref.as_ref() {
-            match check_status_list_token(jws, signer, sref)? {
-                CredentialStatus::Valid => {}
-                CredentialStatus::Revoked => {
-                    return Err(reject(
-                        RejectKind::Revoked,
-                        "credential is revoked (status-list entry is INVALID)",
-                    ));
-                }
-                CredentialStatus::Suspended => {
-                    return Err(reject(
-                        RejectKind::Revoked,
-                        "credential is suspended (status-list entry is SUSPENDED); rejecting fail-closed",
-                    ));
-                }
+        let sref = verified.status_ref.as_ref().ok_or_else(|| {
+            reject(
+                RejectKind::StatusListUnavailable,
+                "credential has no token-status-list reference",
+            )
+        })?;
+        match check_status_list_token(jws, signer, sref)? {
+            CredentialStatus::Valid => {}
+            CredentialStatus::Revoked => {
+                return Err(reject(
+                    RejectKind::Revoked,
+                    "credential is revoked (status-list entry is INVALID)",
+                ));
+            }
+            CredentialStatus::Suspended => {
+                return Err(reject(
+                    RejectKind::Revoked,
+                    "credential is suspended (status-list entry is SUSPENDED); rejecting fail-closed",
+                ));
             }
         }
     }

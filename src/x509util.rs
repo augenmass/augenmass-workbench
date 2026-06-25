@@ -75,7 +75,13 @@ fn hex_upper(bytes: &[u8]) -> String {
 /// (`-----BEGIN PUBLIC KEY-----`) or a certificate PEM (`BEGIN CERTIFICATE`),
 /// from which the leaf SubjectPublicKeyInfo key is taken.
 pub fn signer_jwk_from_pem(pem: &str) -> Result<ssi::jwk::JWK> {
-    if pem.contains("BEGIN CERTIFICATE") {
+    let cert_count = pem.matches("BEGIN CERTIFICATE").count();
+    if cert_count > 1 {
+        anyhow::bail!(
+            "expected a single signer certificate or public key PEM, but the PEM contains {cert_count} certificates"
+        );
+    }
+    if cert_count == 1 {
         let der = pem_to_der(pem)?;
         return augenmass_core::crypto::public_key_from_cert_der(&der)
             .context("derive verification key from certificate");
@@ -85,4 +91,21 @@ pub fn signer_jwk_from_pem(pem: &str) -> Result<ssi::jwk::JWK> {
         p256::PublicKey::from_public_key_pem(pem.trim()).context("parse SPKI public-key PEM")?;
     let jwk_str = pk.to_jwk_string();
     serde_json::from_str(jwk_str.trim()).context("convert public key to JWK")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signer_jwk_from_pem_rejects_multi_certificate_pem() {
+        let cert = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/fixtures/certs/synthetic-pid-anchor.pem"
+        ));
+        let err = signer_jwk_from_pem(&format!("{cert}\n{cert}"))
+            .expect_err("multi-certificate signer PEM must fail closed");
+
+        assert!(err.to_string().contains("single signer certificate"));
+    }
 }

@@ -226,14 +226,18 @@ fn artifact_only_live_evidence_source_session() -> PathBuf {
 }
 
 fn status_evidence_source_session() -> PathBuf {
+    let presentation = fs::read_to_string("fixtures/presentations/synthetic-pid-with-status.sdjwt")
+        .expect("read presentation fixture");
+    status_evidence_source_session_with_vp_token(json!(presentation.trim()))
+}
+
+fn status_evidence_source_session_with_vp_token(vp_token: serde_json::Value) -> PathBuf {
     let dir = test_temp_dir("augenmass-cli-status-evidence-source");
     fs::create_dir_all(&dir).expect("create status evidence source dir");
     let request_jwt =
         fs::read_to_string("fixtures/requests/eudiplo-request.jwt").expect("read request fixture");
-    let presentation = fs::read_to_string("fixtures/presentations/synthetic-pid-with-status.sdjwt")
-        .expect("read presentation fixture");
     let auth_response = serde_json::to_string(&json!({
-        "vp_token": presentation.trim(),
+        "vp_token": vp_token,
         "state": "abc",
     }))
     .expect("auth response json");
@@ -1124,6 +1128,51 @@ fn evidence_prove_trust_status_accepts_redacted_bundle() {
 }
 
 #[test]
+fn evidence_prove_trust_status_rejects_mixed_presentations() {
+    let valid = fs::read_to_string("fixtures/presentations/synthetic-pid-with-status.sdjwt")
+        .expect("read status presentation fixture");
+    let missing_status_ref = fs::read_to_string("fixtures/presentations/erica-vp-VALID.sdjwt")
+        .expect("read erica presentation fixture");
+    let source = status_evidence_source_session_with_vp_token(json!([
+        valid.trim(),
+        missing_status_ref.trim()
+    ]));
+    let bundle_dir = test_temp_dir("augenmass-cli-status-mixed-evidence-bundle");
+    let bundle = bundle_dir.join("bundle.json");
+
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    bin()
+        .args([
+            "evidence",
+            "prove-trust-status",
+            bundle.to_str().unwrap(),
+            "--trust-anchor",
+            "fixtures/certs/synthetic-pid-anchor.pem",
+            "--status-token",
+            "fixtures/status/status-list-CLEAR.jwt",
+            "--status-key",
+            STATUS_KEY,
+        ])
+        .assert()
+        .failure()
+        .stdout(contains("EVIDENCE TRUST/STATUS REJECTED"))
+        .stdout(contains("reason:"));
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
+}
+
+#[test]
 fn evidence_prove_trust_status_rejects_revoked_status() {
     let source = status_evidence_source_session();
     let bundle_dir = test_temp_dir("augenmass-cli-status-revoked-evidence-bundle");
@@ -1156,6 +1205,45 @@ fn evidence_prove_trust_status_rejects_revoked_status() {
         .failure()
         .stdout(contains("EVIDENCE TRUST/STATUS REJECTED"))
         .stdout(contains("reason:"));
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
+}
+
+#[test]
+fn evidence_prove_trust_status_rejects_missing_status_key_path() {
+    let source = status_evidence_source_session();
+    let bundle_dir = test_temp_dir("augenmass-cli-status-missing-key-path-bundle");
+    let bundle = bundle_dir.join("bundle.json");
+
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    bin()
+        .args([
+            "evidence",
+            "prove-trust-status",
+            bundle.to_str().unwrap(),
+            "--trust-anchor",
+            "fixtures/certs/synthetic-pid-anchor.pem",
+            "--status-token",
+            "fixtures/status/status-list-CLEAR.jwt",
+            "--status-key",
+            "fixtures/status/does-not-exist.pem",
+        ])
+        .assert()
+        .failure()
+        .stderr(contains(
+            "input file not found: fixtures/status/does-not-exist.pem",
+        ));
 
     let _ = fs::remove_dir_all(source);
     let _ = fs::remove_dir_all(bundle_dir);

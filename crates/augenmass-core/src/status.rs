@@ -175,12 +175,9 @@ fn normalize_status_list_encoding(status_list: &mut Value) {
     let Some(raw) = lst.as_str() else {
         return;
     };
-    let mut padded = raw.replace('-', "+").replace('_', "/");
+    let mut padded = raw.to_string();
     let remainder = padded.len() % 4;
     if remainder == 0 || remainder == 1 {
-        if padded != raw {
-            *lst = Value::String(padded);
-        }
         return;
     }
     for _ in 0..(4 - remainder) {
@@ -209,13 +206,44 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_url_safe_status_list_encoding() {
+    fn preserves_url_safe_status_list_alphabet() {
         let mut value = json!({
             "bits": 1,
             "lst": "ab-_"
         });
         normalize_status_list_encoding(&mut value);
-        assert_eq!(value["lst"], "ab+/");
+        assert_eq!(value["lst"], "ab-_");
+    }
+
+    #[test]
+    fn normalized_url_safe_status_list_still_decodes() {
+        use ssi::status::token_status_list::json::JsonStatusList;
+        use ssi::status::token_status_list::StatusSize;
+
+        let status_size = StatusSize::try_from(1).expect("valid status size");
+        for len in 2..2048 {
+            let bit_string =
+                BitString::new_with(status_size, len, |idx| u8::from((idx * 37 + len) % 11 == 0))
+                    .expect("bit string");
+            let encoded = JsonStatusList::encode(&bit_string, Default::default());
+            let mut value = serde_json::to_value(&encoded).expect("serialize status list");
+            let raw = value["lst"].as_str().expect("lst").to_string();
+            if !raw.contains('-') && !raw.contains('_') {
+                continue;
+            }
+            value["lst"] = Value::String(raw.trim_end_matches('=').to_string());
+            normalize_status_list_encoding(&mut value);
+            let decoded: JsonStatusList =
+                serde_json::from_value(value).expect("deserialize status list");
+            let bits = decoded
+                .decode(Some(BitString::DEFAULT_LIMIT))
+                .expect("decode");
+            assert_eq!(bits.get(0), bit_string.get(0));
+            assert_eq!(bits.get(len - 1), bit_string.get(len - 1));
+            return;
+        }
+
+        panic!("test generator did not produce a URL-safe encoded status list");
     }
 
     #[test]

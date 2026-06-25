@@ -377,7 +377,6 @@ async fn prove_trust_status_with_fetcher(
     }
 
     let mut proofs = Vec::new();
-    let mut last_rejection = None;
     for presentation in presentations {
         let binding = RequestBinding {
             nonce: context.nonce.clone(),
@@ -386,14 +385,18 @@ async fn prove_trust_status_with_fetcher(
         let status_token = match supplied_status_token.as_ref() {
             Some(token) => token.trim().to_string(),
             None => {
-                fetch_status_token_for_presentation(
+                match fetch_status_token_for_presentation(
                     presentation,
                     &binding,
                     &context,
                     &anchors,
                     fetcher,
                 )
-                .await?
+                .await
+                {
+                    Ok(token) => token,
+                    Err(e) => return emit_trust_status_rejection(format, &check, e.to_string()),
+                }
             }
         };
         let options = TrustOptions {
@@ -413,9 +416,11 @@ async fn prove_trust_status_with_fetcher(
         ) {
             Ok(pid) => {
                 if pid.status_ref.is_none() {
-                    last_rejection =
-                        Some("presentation has no token-status-list reference".to_string());
-                    continue;
+                    return emit_trust_status_rejection(
+                        format,
+                        &check,
+                        "presentation has no token-status-list reference",
+                    );
                 }
                 let mut disclosed_claim_keys = pid
                     .view
@@ -441,32 +446,17 @@ async fn prove_trust_status_with_fetcher(
                 });
             }
             Err(reason) => {
-                last_rejection = Some(format!("{:?}: {}", reason.kind, reason.reason));
+                return emit_trust_status_rejection(
+                    format,
+                    &check,
+                    format!("{:?}: {}", reason.kind, reason.reason),
+                );
             }
         }
     }
 
     if proofs.is_empty() {
-        let reason = last_rejection.unwrap_or_else(|| "no presentation verified".to_string());
-        let session = check.bundle.payload.session.clone();
-        let payload_sha256 = check.payload_sha256.clone();
-        let signature = check.signature_status.clone();
-        let value = json!({
-            "valid": false,
-            "session": session.clone(),
-            "payloadSha256": payload_sha256.clone(),
-            "signature": signature.clone(),
-            "reason": reason.clone(),
-            "redacted": true,
-        });
-        let text = format!("EVIDENCE TRUST/STATUS REJECTED\nsession: {}\nreason: {}\npayloadSha256: {}\nsignature: {}\nredacted: true\n",
-            session,
-            reason,
-            payload_sha256,
-            signature,
-        );
-        emit(format, &value, &text)?;
-        return Ok(false);
+        return emit_trust_status_rejection(format, &check, "no presentation verified");
     }
 
     let proof = TrustStatusProof {
@@ -490,6 +480,33 @@ async fn prove_trust_status_with_fetcher(
     let value = serde_json::to_value(&proof).context("serialize trust/status proof")?;
     emit(format, &value, &text)?;
     Ok(true)
+}
+
+fn emit_trust_status_rejection(
+    format: OutputFormat,
+    check: &BundleCheck,
+    reason: impl Into<String>,
+) -> Result<bool> {
+    let reason = reason.into();
+    let session = check.bundle.payload.session.clone();
+    let payload_sha256 = check.payload_sha256.clone();
+    let signature = check.signature_status.clone();
+    let value = json!({
+        "valid": false,
+        "session": session.clone(),
+        "payloadSha256": payload_sha256.clone(),
+        "signature": signature.clone(),
+        "reason": reason.clone(),
+        "redacted": true,
+    });
+    let text = format!("EVIDENCE TRUST/STATUS REJECTED\nsession: {}\nreason: {}\npayloadSha256: {}\nsignature: {}\nredacted: true\n",
+        session,
+        reason,
+        payload_sha256,
+        signature,
+    );
+    emit(format, &value, &text)?;
+    Ok(false)
 }
 
 async fn fetch_status_token_for_presentation(
@@ -780,6 +797,23 @@ fn assert_live_wallet_trace(replay: &ReplayTrace) -> Result<LiveEvidenceProof> {
             bail!("evidence replay does not contain required event {code}");
         }
     }
+    let explicit_request_keys = replay.events.iter().any(|event| {
+        event.code == "REQUEST_BUILT"
+            && event
+                .detail
+                .as_ref()
+                .and_then(|detail| detail.get("requestedCount"))
+                .and_then(Value::as_u64)
+                .unwrap_or(0)
+                > 0
+    });
+    let wallet_over_disclosure_analyzed = replay
+        .events
+        .iter()
+        .any(|event| event.code == "OVER_ASK_ANALYZED");
+    if explicit_request_keys && !wallet_over_disclosure_analyzed {
+        bail!("evidence replay does not contain wallet over-disclosure analysis");
+    }
     let verified = replay
         .events
         .iter()
@@ -791,10 +825,7 @@ fn assert_live_wallet_trace(replay: &ReplayTrace) -> Result<LiveEvidenceProof> {
 
     Ok(LiveEvidenceProof {
         required_events: required.iter().map(|code| (*code).to_string()).collect(),
-        wallet_over_disclosure_analyzed: replay
-            .events
-            .iter()
-            .any(|event| event.code == "OVER_ASK_ANALYZED"),
+        wallet_over_disclosure_analyzed,
     })
 }
 
@@ -1491,11 +1522,18 @@ fn request_context_detail(payload: &Value) -> Value {
         .map(|map| map.keys().cloned().collect::<Vec<_>>())
         .unwrap_or_default();
     keys.sort();
+    let request_payload = serde_json::to_string(payload).unwrap_or_default();
+    let requested_keys = dcql::parse_dcql(&request_payload)
+        .map(|query| inspector::requested_keys(&query))
+        .unwrap_or_default();
+    let requested_count = requested_keys.len();
     json!({
         "clientId": payload.get("client_id").and_then(Value::as_str),
         "nonce": payload.get("nonce").and_then(Value::as_str),
         "responseEncryptionKeyId": key_id,
         "dcqlCredentialCount": dcql_count,
+        "requestedKeys": requested_keys,
+        "requestedCount": requested_count,
         "payloadFields": keys,
         "redacted": true,
     })
@@ -1640,9 +1678,23 @@ fn read_text_arg(arg: &str) -> Result<String> {
     let path = Path::new(arg);
     if path.is_file() {
         fs::read_to_string(path).with_context(|| format!("read {arg}"))
+    } else if looks_like_missing_path(arg) {
+        bail!("input file not found: {arg}")
     } else {
         Ok(arg.to_string())
     }
+}
+
+fn looks_like_missing_path(arg: &str) -> bool {
+    arg.contains('/')
+        || arg.contains('\\')
+        || arg.starts_with('.')
+        || arg.ends_with(".pem")
+        || arg.ends_with(".crt")
+        || arg.ends_with(".cer")
+        || arg.ends_with(".jwk")
+        || arg.ends_with(".jwt")
+        || arg.ends_with(".json")
 }
 
 fn json_entry(entries: &[EvidenceEntry], filename: &str) -> Result<Option<Value>> {
