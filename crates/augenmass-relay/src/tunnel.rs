@@ -146,7 +146,7 @@ async fn writer_loop(
     mut rx: mpsc::Receiver<ServerFrame>,
     run: Arc<Run>,
 ) {
-    let mut ping = tokio::time::interval(Duration::from_secs(25));
+    let mut ping = tokio::time::interval(Duration::from_secs(10));
     loop {
         tokio::select! {
             Some(frame) = rx.recv() => {
@@ -161,7 +161,7 @@ async fn writer_loop(
                 }
             }
             _ = ping.tick() => {
-                if run.age_since_pong().await > Duration::from_secs(75) {
+                if run.age_since_pong().await > Duration::from_secs(35) {
                     let _ = sink.send(Message::Text(close_json(CloseCode::ProtocolError, "pong timeout"))).await;
                     break;
                 }
