@@ -155,6 +155,15 @@ In a full repository checkout, the combined wrapper is:
 just wallet-trust-status-proof "$BUNDLE" pid-issuer-anchor.pem pid-status-signer.pem
 ```
 
+For a bundle captured from the current Bundesdruckerei preprod sandbox PID
+issuer, the repository also has a provider-specific wrapper. It fetches the
+current provider root CA and status-list signer, then runs the completed-wallet
+and trust/status gates:
+
+```sh
+just bundesdruckerei-wallet-trust-status-proof "$BUNDLE"
+```
+
 ## Handling sensitive material
 
 `--unsafe-debug-artifacts` writes raw wallet material, decrypted response

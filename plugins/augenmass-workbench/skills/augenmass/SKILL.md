@@ -86,7 +86,7 @@ The central idea is Augenmaß: a sense of proportion. A relying party should ask
 - Diagnose a verifier signed request / JAR: x5c shape, client_id x509_hash, content type.
 - Debug a live wallet interaction: run a verifier-in-a-box (`serve`) so a real EUDI wallet presents to it, and trace every step of the exchange (request built, JAR fetched, response decrypted, verified, trust, revocation, over-ask) on the console, in a browser timeline, and as JSON. The trace is redacted by default (no raw bodies, no claim values), each session uses a fresh ephemeral encryption key, and a plaintext `direct_post` is rejected; `--unsafe-debug-artifacts <dir>` opts in to full-fidelity local capture, never served over HTTP.
 - Export and replay local evidence: turn one `serve --unsafe-debug-artifacts` session directory into a sensitive bundle, verify its hashes and optional ES256 signature, render a redacted replay timeline, and use `evidence assert-live` to prove a completed encrypted phone-wallet run after capture. Do not use `assert-live` to claim trust/status/over-ask; it proves request fetch, encrypted response receipt, decryption, and offline presentation verification.
-- When the user wants to prove an actual phone-wallet demo, follow `docs/PHONE_WALLET_PROOF.md` if the repository checkout is available, or `reference/phone-wallet-proof.md` from plugin-only installs. The sequence is: `serve --host 0.0.0.0 --public-url <reachable-url>/ --unsafe-debug-artifacts <dir>`, scan the QR, export the verified session, then run `evidence verify`, `evidence replay`, and `evidence assert-live`.
+- When the user wants to prove an actual phone-wallet demo, follow `docs/PHONE_WALLET_PROOF.md` if the repository checkout is available, or `reference/phone-wallet-proof.md` from plugin-only installs. The sequence is: `serve --host 0.0.0.0 --public-url <reachable-url>/ --unsafe-debug-artifacts <dir>`, scan the QR, export the verified session, then run `evidence verify`, `evidence replay`, and `evidence assert-live`. For Bundesdruckerei preprod PID captures in a full checkout, `just bundesdruckerei-wallet-trust-status-proof <bundle.json>` adds the explicit trust/status proof with the current provider material.
 - Write a registration to the local clone or the sandbox registrar, read it back, or run the local clone store.
 
 ## The one rule that matters
@@ -176,6 +176,7 @@ For a live-wallet debugging report:
 | Verify a local evidence bundle | `$AUGENMASS evidence verify <bundle.json> [--verify-key <pem>]` |
 | Replay a projector-safe timeline | `$AUGENMASS evidence replay <bundle.json> [--verify-key <pem>]` |
 | Prove a completed encrypted phone-wallet run | `$AUGENMASS evidence assert-live <bundle.json> [--verify-key <pem>]` |
+| Prove trust/status for a captured bundle | `$AUGENMASS evidence prove-trust-status <bundle.json> --trust-anchor <pem> --fetch-status-token --status-key <pem>` |
 | Write a registration (dry-run by default) | `$AUGENMASS register <body> --target {clone\|cached-sandbox\|sandbox} [--yes --force]` |
 | Read registrations back for one relying party | `$AUGENMASS list --target {clone\|cached-sandbox\|sandbox} [--rp <id>]` |
 | Run the local registrar-compatible clone store | `$AUGENMASS clone serve [--db --port]` |
@@ -199,6 +200,6 @@ The read-only commands exit non-zero on the bad outcome so they slot into CI: `c
 - `reference/commands.md`: full command reference, flags, and worked examples.
 - `reference/gotchas.md`: the registrar and JAR traps this tool catches, and ecosystem pitfalls.
 - `reference/use-cases.md`: end-to-end workflows (audit over-ask, fix a registration, verify a presentation, diagnose a JAR).
-- `reference/phone-wallet-proof.md`: the plugin-local checklist for proving a captured real phone-wallet run with `evidence assert-live`.
+- `reference/phone-wallet-proof.md`: the plugin-local checklist for proving a captured real phone-wallet run with `evidence assert-live`, and for adding trust/status proof when the required issuer material is available.
 - `reference/ask-it-like-this.md`: plain-language prompts for developers, auditors, live demos, and non-technical reviewers.
 - `reference/explainer.md`: the non-technical explanation of over-ask, why it matters, and who the tool helps.

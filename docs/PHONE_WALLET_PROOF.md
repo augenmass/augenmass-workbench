@@ -269,6 +269,19 @@ The combined just wrapper runs both gates in order:
 just wallet-trust-status-proof "$BUNDLE" pid-issuer-anchor.pem pid-status-signer.pem
 ```
 
+For the current Bundesdruckerei preprod sandbox PID provider, the repository
+also ships a provider-specific wrapper. It fetches the current root CA and
+status-list signer from the provider, then runs `evidence assert-live` and
+`evidence prove-trust-status --fetch-status-token`:
+
+```sh
+just bundesdruckerei-wallet-trust-status-proof "$BUNDLE"
+```
+
+Use the Bundesdruckerei wrapper only when the captured bundle came from that
+preprod PID issuer. It is an operator convenience around the same explicit
+proof gates, not a generic trust anchor.
+
 ## Known-good demo result
 
 On 2026-06-25, the staged phone flow was proven with the hosted wallet-only

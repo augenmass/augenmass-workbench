@@ -126,3 +126,9 @@ Needs a phone before promotion:
   public-address fetch path used by `serve --live-status`. This removes the
   manual status-token copy/paste step for live evidence while keeping
   `--status-token` available for fully offline proof.
+- 2026-06-25: Added `bundesdruckerei-wallet-trust-status-proof`, a
+  provider-specific proof wrapper for Bundesdruckerei preprod PID captures. It
+  fetches the current provider root CA and status-list signer over bounded
+  HTTPS, then runs `evidence assert-live` plus
+  `evidence prove-trust-status --fetch-status-token`. This removes the manual
+  cert-fetch step from the demo while keeping the proof gates explicit.

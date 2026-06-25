@@ -206,6 +206,10 @@ wallet-trust-status-proof bundle trust_anchor status_key:
     cargo run --quiet -- evidence assert-live "{{bundle}}"
     cargo run --quiet -- evidence prove-trust-status "{{bundle}}" --trust-anchor "{{trust_anchor}}" --fetch-status-token --status-key "{{status_key}}"
 
+# Require a captured evidence bundle to prove phone-wallet run plus current Bundesdruckerei preprod trust/live status.
+bundesdruckerei-wallet-trust-status-proof bundle:
+    ./scripts/bundesdruckerei-wallet-trust-status-proof.sh "{{bundle}}"
+
 # Verify live sandbox configuration without mutating it by default.
 live-sandbox-smoke:
     ./scripts/live-sandbox-smoke.sh
