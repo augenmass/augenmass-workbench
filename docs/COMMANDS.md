@@ -1062,7 +1062,8 @@ Options (all optional):
 - `--leaf <LEAF>` (env `RP_LEAF_PATH`): the leaf certificate PEM matching `--key`. Pass it together with `--key`.
 - `--purpose <PURPOSE>` (env `PURPOSE`): the purpose baseline id for the over-ask inspector. Default `event_checkin`.
 - `--trust-anchor <TRUST_ANCHOR>` (env `TRUST_ANCHOR_PATH`): a PID issuer trust anchor PEM. When set, the response path rejects issuers that do not chain to it; when unset, issuer trust is not enforced.
-- `--live-status` (env `LIVE_STATUS`): resolve the token-status-list over the network on the response path and reject a revoked or suspended PID. Default `false` (offline-friendly). Only takes effect when `--trust-anchor` is also set.
+- `--status-signer <STATUS_SIGNER>` (env `STATUS_SIGNER_PATH`): a PEM certificate or public key that verifies token-status-list signatures. If omitted, live status falls back to the trust-anchor key for single-signer fixtures; real PID providers usually need this explicitly.
+- `--live-status` (env `LIVE_STATUS`): resolve the token-status-list over the network on the response path and reject a revoked or suspended PID. Default `false` (offline-friendly). Only takes effect when `--trust-anchor` is also set; use `--status-signer` when revocation is signed by a dedicated key.
 - `--quiet`: suppress the live per-step trace on the console. The trace still records and is served at `/trace/<session>` and `/api/trace/<session>`.
 - `--unsafe-debug-artifacts <UNSAFE_DEBUG_ARTIFACTS>` (env `AUGENMASS_UNSAFE_DEBUG_ARTIFACTS`): opt-in, off by default. Write full-fidelity debug artifacts for each session under `<dir>/<session>/`: the raw `direct_post` body, the decrypted authorization response when an encrypted wallet response is decrypted, the per-session private encryption key, the signed request object (JAR), the decoded request payload, and a verification context (`nonce`, `aud`, `vct`, clock, freshness window), plus a `debug-manifest.json` marked sensitive. On Unix, directories are tightened to `0700` and files to `0600`; on Windows, store them only in a private profile or encrypted workspace until native ACL hardening is added. UNSAFE: this writes raw wallet material, including personal data, to local disk in the clear. It is never served over HTTP; the trace records the file name, a label, the length, a SHA-256, and the redaction fields `unsafeDebugArtifacts`, `pathRedacted`, `redacted`, and `redaction`, never a path or a value.
 - `--relay <RELAY>` (env `AUGENMASS_RELAY`): publish only the wallet request/response endpoints through a hosted relay. Use `--relay augenmass` for the default hosted alias (`wss://wallet.augenmass.tech/_relay/tunnel` unless `AUGENMASS_RELAY_URL` overrides it), or pass a `ws://` / `wss://` control URL.
@@ -1151,7 +1152,7 @@ The codes, in typical order:
 | `RESPONSE_RECEIVED` | The wallet posts its response; the trace records its shape (mode, byte length, SHA-256, field names, state), never the raw body. |
 | `RESPONSE_DECRYPTED` | The JWE response is decrypted (ECDH-ES); the trace records the payload shape (length, SHA-256, field names, `vp_token` presence and shape), never a disclosed claim value. A plaintext (unencrypted) `direct_post` is refused, not decrypted (see `REJECTED`). |
 | `VERIFIED` or `REJECTED` | The SD-JWT VC issuer signature, the KB-JWT holder binding, the nonce and audience, the `vct`, and freshness are checked; on failure the exact reason is recorded. A non-conformant response is also `REJECTED` before verification: a plaintext `direct_post` (the verifier requires the encrypted `direct_post.jwt` profile) returns HTTP 422 and ends the timeline red. |
-| `STATUS_CHECKED` | Only with `--live-status` plus a trust anchor: the token-status-list is resolved and a revoked or suspended credential is rejected fail-closed. |
+| `STATUS_CHECKED` | Only with `--live-status` plus issuer trust/status-signer material: the token-status-list is resolved and a revoked or suspended credential is rejected fail-closed. |
 | `OVER_ASK_ANALYZED` | What the wallet actually disclosed is run through the over-ask inspector. |
 | `NOTE` | An informational annotation. |
 | `ERROR` | An error step. |
@@ -1175,7 +1176,9 @@ Sign with the real registrar leaf so the `client_id` matches the registered iden
 
 ```
 augenmass serve --key rp-private.pem.key --leaf rp-leaf.pem \
-  --trust-anchor pid-issuer-anchor.pem --live-status
+  --trust-anchor pid-issuer-anchor.pem \
+  --status-signer pid-status-signer.pem \
+  --live-status
 ```
 
 Bind on all interfaces so a wallet on a phone can reach the tool (the `--public-url` must be reachable from the phone, not `127.0.0.1`):

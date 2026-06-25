@@ -83,10 +83,9 @@ pub struct AppState {
     /// over the network and rejects a revoked/suspended PID. Off by default so
     /// the service stays offline-friendly.
     pub live_status: bool,
-    /// The trust-anchor PEM the service loaded, kept so the live-status resolver
-    /// can derive the trusted status-signer key from the anchor certificate (the
-    /// sandbox same-entity stand-in).
-    pub anchor_pem: Option<String>,
+    /// Trusted key for token-status-list signatures. In real deployments this
+    /// may be a dedicated revocation/status signer, not the issuer trust root.
+    pub status_signer: Option<JWK>,
     /// The per-session wallet-interaction trace (the debugger's event log).
     pub trace: TraceStore,
     pub(crate) status_fetcher: StatusFetcher,
@@ -247,6 +246,7 @@ impl AppState {
         trust_anchors: Option<TrustAnchors>,
         live_status: bool,
         anchor_pem: Option<String>,
+        status_signer: Option<JWK>,
         unsafe_debug_artifacts: Option<PathBuf>,
         console_trace: bool,
     ) -> Result<Self> {
@@ -303,6 +303,12 @@ impl AppState {
 
         let registered_scope = decode_bundled_scope();
         let baseline = inspector::baseline(purpose);
+        let status_signer = resolve_status_signer(
+            live_status,
+            trust_anchors.is_some(),
+            anchor_pem.as_deref(),
+            status_signer,
+        )?;
 
         Ok(Self {
             verifier,
@@ -317,7 +323,7 @@ impl AppState {
             ephemeral,
             trust_anchors,
             live_status,
-            anchor_pem,
+            status_signer,
             trace: TraceStore::new(console_trace),
             status_fetcher: StatusFetcher::Http,
             dcql_query: pid::pid_dcql_minimal(),
@@ -360,35 +366,43 @@ impl From<VerifierAttestations> for serde_json::Value {
     }
 }
 
-/// Derive the trusted status-signer JWK from the trust-anchor PEM (the sandbox
-/// same-entity stand-in for live status checks).
+/// Derive the trusted status-signer JWK from a PEM certificate or public-key
+/// PEM. For backwards-compatible fixture/demo runs, `serve --live-status` can
+/// still derive this from the issuer trust anchor when no explicit
+/// `--status-signer` is supplied. Real PID provider deployments often use a
+/// dedicated status-list signer, so callers should pass it explicitly.
 ///
-/// Supports a SINGLE issuing entity only. Live status binds the status-list
-/// signature to one anchor key, so a multi-certificate anchor PEM is ambiguous
-/// (which issuer signs the status list?). Rather than silently pick the first
-/// certificate, fail closed when the PEM carries more than one, so the
-/// constraint is loud instead of latent.
-pub(crate) fn status_signer_from_anchor(anchor_pem: &str) -> Result<JWK> {
-    let cert_count = anchor_pem.matches("BEGIN CERTIFICATE").count();
+/// Supports a single signer only. A multi-certificate PEM is ambiguous (which
+/// key signs the status list?), so it fails closed rather than silently picking
+/// the first certificate.
+pub(crate) fn status_signer_from_pem(pem: &str) -> Result<JWK> {
+    let cert_count = pem.matches("BEGIN CERTIFICATE").count();
     if cert_count > 1 {
         anyhow::bail!(
-            "live status supports a single issuer trust anchor, but the anchor PEM \
-             contains {cert_count} certificates; multi-issuer status signing is not \
-             yet wired (set LIVE_STATUS=false or supply a single-issuer anchor)"
+            "live status supports a single status signer, but the PEM contains \
+             {cert_count} certificates; supply one status-signer certificate or \
+             public key"
         );
     }
-    let body: String = anchor_pem
-        .lines()
-        .skip_while(|l| !l.contains("BEGIN CERTIFICATE"))
-        .skip(1)
-        .take_while(|l| !l.contains("END CERTIFICATE"))
-        .map(|l| l.trim())
-        .collect();
-    let der = BASE64_STANDARD
-        .decode(body.trim())
-        .context("decode trust-anchor PEM body")?;
-    augenmass_core::crypto::public_key_from_cert_der(&der)
-        .context("derive status-signer key from trust anchor")
+    crate::x509util::signer_jwk_from_pem(pem).context("derive status-signer key from PEM")
+}
+
+fn resolve_status_signer(
+    live_status: bool,
+    trust_enforced: bool,
+    anchor_pem: Option<&str>,
+    explicit_status_signer: Option<JWK>,
+) -> Result<Option<JWK>> {
+    if !live_status || !trust_enforced {
+        return Ok(explicit_status_signer);
+    }
+    match (explicit_status_signer, anchor_pem) {
+        (Some(signer), _) => Ok(Some(signer)),
+        (None, Some(pem)) => status_signer_from_pem(pem)
+            .context("derive status signer from trust anchor fallback")
+            .map(Some),
+        (None, None) => Ok(None),
+    }
 }
 
 fn decode_bundled_scope() -> Option<RegisteredScope> {

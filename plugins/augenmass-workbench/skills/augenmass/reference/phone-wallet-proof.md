@@ -19,7 +19,8 @@ the checklist to follow.
 
 It does not prove issuer trust, live revocation status, or over-ask analysis.
 Claim those only when the trace shows the explicit steps and the run used the
-required inputs, such as `--trust-anchor` plus `--live-status`.
+required inputs, such as `--trust-anchor`, `--status-signer`, and
+`--live-status`.
 
 ## Preflight
 
@@ -91,6 +92,7 @@ $AUGENMASS serve \
   --key rp-private.pem.key \
   --leaf rp-leaf.pem \
   --trust-anchor pid-issuer-anchor.pem \
+  --status-signer pid-status-signer.pem \
   --live-status \
   --unsafe-debug-artifacts "$DEBUG_DIR"
 ```

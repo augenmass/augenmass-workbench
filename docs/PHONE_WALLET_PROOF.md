@@ -24,8 +24,8 @@ phone-wallet spine:
 - the SD-JWT VC presentation verified offline: `VERIFIED`
 
 It does not prove issuer trust anchoring, live status, or that the wallet
-disclosed no more than the purpose allowed. Use the live trace, `--trust-anchor`
-plus `--live-status`, and the over-ask inspector for those claims.
+disclosed no more than the purpose allowed. Use the live trace, `--trust-anchor`,
+`--status-signer`, `--live-status`, and the over-ask inspector for those claims.
 
 ## Before the phone scan
 
@@ -157,9 +157,15 @@ $BIN serve \
   --key rp-private.pem.key \
   --leaf rp-leaf.pem \
   --trust-anchor pid-issuer-anchor.pem \
+  --status-signer pid-status-signer.pem \
   --live-status \
   --unsafe-debug-artifacts "$DEBUG_DIR"
 ```
+
+For the current Bundesdruckerei preprod sandbox PID provider, the issuer trust
+anchor and status-list signer are separate certificates. The provider root page
+links both: `certificates/root-ca.crt` for `--trust-anchor`, and
+`certificates/signer.crt` for `--status-signer`.
 
 Without `--key` and `--leaf`, the tool uses a throwaway development certificate.
 That is fine for proving the debugger mechanics, but do not claim it proves the
@@ -265,7 +271,8 @@ This known-good proof supports the stage claim that a real phone wallet
 completed an encrypted OpenID4VP presentation to the workbench verifier through
 the hosted relay, and that the workbench decrypted and verified the presentation
 with holder binding. It does not support issuer trust-anchor or live revocation
-claims unless the run is repeated with `--trust-anchor` and `--live-status`.
+claims unless the run is repeated with `--trust-anchor`, `--status-signer`, and
+`--live-status`.
 
 If a wallet response fails with `KbTimeInvalid: ... premature claim`, update to
 commit `4f152cd` or newer. That release accepts a tightly bounded 5-second

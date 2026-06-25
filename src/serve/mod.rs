@@ -62,6 +62,11 @@ pub struct ServeArgs {
     /// offline-friendly; only takes effect when a trust anchor is set.
     #[arg(long, env = "LIVE_STATUS", default_value_t = false)]
     pub live_status: bool,
+    /// PEM certificate or public key that verifies token-status-list signatures.
+    /// If omitted, live status falls back to the trust-anchor key for
+    /// single-signer fixtures; real PID providers usually need this explicitly.
+    #[arg(long, env = "STATUS_SIGNER_PATH")]
+    pub status_signer: Option<PathBuf>,
     /// Suppress the live per-step trace on the console (it still records and is
     /// served at /trace/:id and /api/trace/:id).
     #[arg(long, env = "QUIET", default_value_t = false)]
@@ -126,6 +131,17 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     };
     let trust_anchors = match anchor_pem.as_ref() {
         Some(pem) => Some(augenmass_core::TrustAnchors::from_pem(pem)?),
+        None => None,
+    };
+    let status_signer = match args.status_signer.as_ref() {
+        Some(p) => {
+            let pem =
+                std::fs::read_to_string(p).with_context(|| format!("read {}", p.display()))?;
+            Some(
+                state::status_signer_from_pem(&pem)
+                    .with_context(|| format!("load status signer {}", p.display()))?,
+            )
+        }
         None => None,
     };
     let enforce_trust = trust_anchors.is_some();
@@ -195,6 +211,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         trust_anchors,
         args.live_status,
         anchor_pem,
+        status_signer,
         args.unsafe_debug_artifacts.clone(),
         console_trace,
     )
@@ -254,8 +271,12 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     );
     eprintln!(
         "  status check : {}",
-        if args.live_status {
-            "live (revocation resolved over the network when an anchor is set)"
+        if args.live_status && enforce_trust && args.status_signer.is_some() {
+            "live (--status-signer set; revocation resolved over the network)"
+        } else if args.live_status && enforce_trust {
+            "live (status signer falls back to --trust-anchor; set --status-signer for dedicated revocation keys)"
+        } else if args.live_status {
+            "requested, but inactive until --trust-anchor is set"
         } else {
             "offline (set --live-status to resolve token-status-list revocation)"
         }

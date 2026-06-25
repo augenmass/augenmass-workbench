@@ -576,14 +576,16 @@ Open the printed URL in a browser. The landing page (`GET /`) mints a fresh sess
 
 The same trace is available three ways: live on this console (color-coded; suppress it with `--quiet`), as a browser timeline at `/trace/<session>` (it auto-refreshes while the exchange is in flight and stays still once the session reaches a terminal outcome), and as JSON at `/api/trace/<session>` for programmatic debugging. `/api/sessions` lists every session this run. The default trace is redacted: it shows the decoded request shape, response field names, lengths, SHA-256 digests, disclosed claim keys, and reject reasons, but never raw POST bodies, decrypted payloads, or claim values. Use `--unsafe-debug-artifacts <DIR>` only when you explicitly need full-fidelity local capture; those raw artifacts are written to disk and never served over HTTP. The over-ask inspector is at `/inspect/<session>`, with a `?demo=overask` variant that inspects an over-asking request shape.
 
-To make the `client_id` the registered identity, sign with the real registrar leaf by passing `--key` and `--leaf` together (or set `RP_KEY_PATH` and `RP_LEAF_PATH`). To enforce issuer trust and reject revoked credentials, add `--trust-anchor` and `--live-status`:
+To make the `client_id` the registered identity, sign with the real registrar leaf by passing `--key` and `--leaf` together (or set `RP_KEY_PATH` and `RP_LEAF_PATH`). To enforce issuer trust and reject revoked credentials, add `--trust-anchor`, the status-list signer, and `--live-status`:
 
 ```
 augenmass serve --key rp-private.pem.key --leaf rp-leaf.pem \
-  --trust-anchor pid-issuer-anchor.pem --live-status
+  --trust-anchor pid-issuer-anchor.pem \
+  --status-signer pid-status-signer.pem \
+  --live-status
 ```
 
-With `--live-status` plus an anchor, the trace gains a `STATUS_CHECKED` step before the over-ask analysis, and a revoked or suspended credential is rejected fail-closed.
+With `--live-status` plus an anchor/status signer, the trace gains a `STATUS_CHECKED` step before the over-ask analysis, and a revoked or suspended credential is rejected fail-closed.
 
 For a phone wallet on another device, `127.0.0.1` will not work: the `--public-url` is baked into the `request_uri` and `response_uri`, so bind all interfaces and set a base URL the phone can reach (it must end in `/`):
 
@@ -617,7 +619,7 @@ those explicit trace steps were configured and observed.
 | Compute or check x509_hash | `x509-hash <input> [--client-id ...]` | client_id mismatch |
 | Produce a body or query | `generate {regbody\|dcql} ...` | (producer) |
 | Diagnose a JAR | `doctor <request>` | findings |
-| Debug a live wallet interaction | `serve [--port --host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet --unsafe-debug-artifacts]` | (server; runs until Ctrl-C) |
+| Debug a live wallet interaction | `serve [--port --host --public-url --key --leaf --purpose --trust-anchor --status-signer --live-status --quiet --unsafe-debug-artifacts]` | (server; runs until Ctrl-C) |
 | Write a registration | `register <body> --target <clone\|cached-sandbox\|sandbox> [--yes --force]` | over-ask without `--force`, blocking format error, or confirmed cached-sandbox write |
 | Read registrations back | `list --target <clone\|cached-sandbox\|sandbox> [--rp <id>]` | (read-only) |
 | Run the local clone store | `clone serve [--db <path> --port <n>]` | (server) |

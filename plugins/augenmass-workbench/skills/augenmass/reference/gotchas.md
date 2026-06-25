@@ -357,13 +357,13 @@ Why it happens: it is natural to want a static request/response pair for a test.
 
 Fix: drive a live wallet against the running instance rather than replaying a recording. For static, deterministic checks, use `verify presentation` on the captured presentation with the matching `--nonce` and `--aud` instead.
 
-### 4.4 --live-status needs an anchor and supports a single issuer only
+### 4.4 --live-status needs issuer trust and the right status signer
 
-Mistake: passing `--live-status` alone, or pointing `--trust-anchor` at a multi-certificate anchor PEM, and expecting live revocation.
+Mistake: passing `--live-status` alone, or using the PID issuer trust root as the status-list signer when the provider uses a dedicated revocation/status certificate.
 
-Why it happens: `--live-status` reads as a standalone switch, but it only takes effect when a `--trust-anchor` is also set (it is off by default so the service stays offline-friendly). And live status binds the status-list signature to a single issuer anchor key, so a PEM carrying more than one certificate is ambiguous and fails closed rather than silently picking the first.
+Why it happens: `--live-status` reads as a standalone switch, but it only takes effect when a `--trust-anchor` is also set (it is off by default so the service stays offline-friendly). The credential issuer trust anchor and the token-status-list signer are related trust material, but they do not have to be the same key.
 
-Fix: set both `--trust-anchor <PEM>` and `--live-status`, and supply a single-issuer anchor PEM. With them set, the trace gains a `STATUS_CHECKED` step and a revoked or suspended credential is rejected fail-closed.
+Fix: set `--trust-anchor <PEM>` for the PID issuer and `--status-signer <PEM>` for the status-list token signer, then add `--live-status`. With them set, the trace gains a `STATUS_CHECKED` step and a revoked or suspended credential is rejected fail-closed.
 
 ---
 
@@ -389,4 +389,4 @@ Fix: set both `--trust-anchor <PEM>` and `--live-status`, and supply a single-is
 | zero-config client_id is throwaway | live debugger | `serve` | pass `--key` + `--leaf` for the registered identity |
 | `--public-url` unreachable from the wallet | live debugger | `serve` | `--host 0.0.0.0` + a reachable `--public-url` ending in `/` |
 | replaying a static wallet response | live debugger | `serve` | fresh ephemeral key + nonce per run; drive a live wallet |
-| `--live-status` without an anchor or multi-cert anchor | live debugger | `serve` | needs `--trust-anchor`; single issuer anchor only (fails closed) |
+| `--live-status` without issuer trust/status signer | live debugger | `serve` | set `--trust-anchor`; add `--status-signer` when revocation uses a dedicated key |

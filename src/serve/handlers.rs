@@ -38,8 +38,7 @@ use augenmass_core::{
 
 use crate::serve::artifacts::sha256_hex;
 use crate::serve::state::{
-    build_client_metadata, generate_encryption_key, status_signer_from_anchor, AppState,
-    SessionResult,
+    build_client_metadata, generate_encryption_key, AppState, SessionResult,
 };
 use crate::serve::trace::{TraceKind, TraceLevel};
 use crate::serve::view;
@@ -524,9 +523,7 @@ async fn verify_vp_token(
             .await;
 
         if st.live_status && st.trust_anchors.is_some() {
-            if let (Some(anchor_pem), Some(sref)) =
-                (st.anchor_pem.as_ref(), verified.status_ref.as_ref())
-            {
+            if let Some(sref) = verified.status_ref.as_ref() {
                 // A transport or signature failure here is an INFRASTRUCTURE
                 // problem, not a revocation. Record it as an error and say so,
                 // so it is never confused with a genuine "revoked" outcome.
@@ -548,25 +545,21 @@ async fn verify_vp_token(
                         return Err(reason);
                     }
                 };
-                let signer = match status_signer_from_anchor(anchor_pem) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        let reason = format!(
-                            "status-signer key could not be derived from the trust anchor: {e}"
-                        );
-                        st.trace
-                            .record_at(
-                                sid,
-                                TraceKind::Error,
-                                TraceLevel::Bad,
-                                &reason,
-                                Some(json!({ "error": e.to_string() })),
-                            )
-                            .await;
-                        return Err(reason);
-                    }
+                let Some(signer) = st.status_signer.as_ref() else {
+                    let reason =
+                        "live status is enabled but no status signer is configured".to_string();
+                    st.trace
+                        .record_at(
+                            sid,
+                            TraceKind::Error,
+                            TraceLevel::Bad,
+                            &reason,
+                            Some(json!({ "error": reason })),
+                        )
+                        .await;
+                    return Err(reason);
                 };
-                let status = match check_status_list_token(&jws, &signer, sref) {
+                let status = match check_status_list_token(&jws, signer, sref) {
                     Ok(s) => s,
                     Err(e) => {
                         let reason = format!("status-list token failed verification: {e}");
@@ -1068,6 +1061,7 @@ mod tests {
             true,
             Some(anchor_pem),
             None,
+            None,
             false,
         )
         .await
@@ -1087,6 +1081,7 @@ mod tests {
                 "event_checkin",
                 None,
                 false,
+                None,
                 None,
                 unsafe_debug_artifacts,
                 false,
@@ -1311,6 +1306,42 @@ mod tests {
         let st =
             state_with_anchor(fixture("certs/synthetic-pid-anchor.pem"), counter.clone()).await;
         let _ = verify_vp_token(&st, sid, &decrypted, &binding(NONCE), NOW).await;
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn live_status_can_use_dedicated_status_signer() {
+        let sid = Uuid::new_v4();
+        let vp = fixture("presentations/synthetic-pid-with-status.sdjwt");
+        let decrypted = json!({ "vp_token": vp });
+        let anchor_pem = fixture("certs/synthetic-pid-anchor.pem");
+        let trust_anchors =
+            TrustAnchors::from_pem(&anchor_pem).expect("parse PID issuer trust anchor");
+        let status_signer_pem = fixture("status/status-list-verify-key.pub.pem");
+        let status_signer =
+            crate::x509util::signer_jwk_from_pem(&status_signer_pem).expect("parse status signer");
+        let counter = Arc::new(AtomicUsize::new(0));
+        let mut st = AppState::new(
+            Url::parse("http://127.0.0.1:0/").unwrap(),
+            Url::parse("http://127.0.0.1:0/").unwrap(),
+            CertSource::Ephemeral,
+            "event_checkin",
+            Some(trust_anchors),
+            true,
+            Some(anchor_pem),
+            Some(status_signer),
+            None,
+            false,
+        )
+        .await
+        .expect("build offline app state");
+        st.status_fetcher = StatusFetcher::Recording(counter.clone());
+
+        let verified = verify_vp_token(&st, sid, &decrypted, &binding(NONCE), NOW)
+            .await
+            .expect("dedicated status signer accepts clear status-list");
+
+        assert!(verified.holder_bound);
         assert_eq!(counter.load(Ordering::SeqCst), 1);
     }
 }

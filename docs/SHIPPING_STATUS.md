@@ -579,9 +579,11 @@ binaries may require manual OS approval after checksum verification.
 
 ## Remaining polish
 
-- Optional auditor-grade extension: repeat the phone-wallet proof with a PID
-  issuer `--trust-anchor` and `--live-status` once the sandbox trust/status
-  material is stable enough to claim issuer anchoring and revocation status.
+- Optional auditor-grade extension: repeat the phone-wallet proof with the PID
+  provider `--trust-anchor`, the separate `--status-signer`, and
+  `--live-status` to produce a live trace containing `STATUS_CHECKED`. The
+  Bundesdruckerei preprod provider publishes the required root and signer
+  certificates; captured evidence already verifies offline with those inputs.
 - Keep the known-good phone-wallet proof local or in a private evidence store.
   The exported bundles and raw debug artifacts are sensitive and intentionally
   ignored by git.

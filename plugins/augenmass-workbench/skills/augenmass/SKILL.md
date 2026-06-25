@@ -171,7 +171,7 @@ For a live-wallet debugging report:
 | Generate a proportionate registration body | `$AUGENMASS generate regbody [--use-case age-check --over-broad --rp --support-uri --privacy-policy --purpose]` |
 | Generate a DCQL query from claim paths | `$AUGENMASS generate dcql --claim <path> [--claim <path> ...]` |
 | Diagnose a signed request / JAR | `$AUGENMASS doctor <request>` |
-| Debug a live wallet interaction (verifier-in-a-box) | `$AUGENMASS serve [--port --host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet --unsafe-debug-artifacts]` |
+| Debug a live wallet interaction (verifier-in-a-box) | `$AUGENMASS serve [--port --host --public-url --key --leaf --purpose --trust-anchor --status-signer --live-status --quiet --unsafe-debug-artifacts]` |
 | Export a local evidence bundle | `$AUGENMASS evidence export <session-dir> --out <bundle.json> [--signing-key <pem>]` |
 | Verify a local evidence bundle | `$AUGENMASS evidence verify <bundle.json> [--verify-key <pem>]` |
 | Replay a projector-safe timeline | `$AUGENMASS evidence replay <bundle.json> [--verify-key <pem>]` |

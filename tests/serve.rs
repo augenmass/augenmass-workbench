@@ -30,6 +30,7 @@ async fn spawn_server() -> (String, reqwest::Client) {
             false,
             None,
             None,
+            None,
             false,
         )
         .await

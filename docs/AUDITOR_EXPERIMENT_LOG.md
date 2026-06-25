@@ -44,8 +44,8 @@ Needs a phone before promotion:
 
 - Final iOS and Android scans after any request-shape or verification-path
   change.
-- Any stage claim that `--trust-anchor --live-status` works against the current
-  sandbox wallet credential.
+- Any stage claim that `--trust-anchor --status-signer --live-status` works
+  against the current sandbox wallet credential.
 
 ## Checkpoints
 
@@ -82,3 +82,25 @@ Needs a phone before promotion:
   formatting, Clippy with `-D warnings`, workspace unit/integration tests,
   fixture crypto/trust/status checks, request/audit checks, mdoc/DCQL decoding,
   relay source guard, and the local relay smoke.
+- 2026-06-25: Located the live sandbox trust/status material. The provider root
+  publishes `certificates/root-ca.crt` (issuer trust anchor) and
+  `certificates/signer.crt` (status-list signer), while the BMI usercontent
+  endpoint publishes a `trustlist+jwt` whose issuance/revocation services match
+  the same Bundesdruckerei preprod PID provider. Re-exporting the Android phone
+  evidence and running `verify presentation` with `--trust-anchor root-ca.crt`,
+  `--status-token <fetched credential status-list>`, and
+  `--status-key signer.crt` succeeds. Using the root CA as the status key fails,
+  proving the status signer is intentionally separate from the issuer trust
+  root.
+- 2026-06-25: Added `augenmass serve --status-signer <PEM>` so the live
+  debugger can express that real provider shape: `--trust-anchor` anchors the
+  PID issuer, while `--status-signer` verifies token-status-list signatures.
+  Without `--status-signer`, `serve --live-status` still falls back to the trust
+  anchor key for older single-key fixtures. Verified with focused live-status
+  unit tests and Clippy before the next full gate.
+- 2026-06-25: Re-ran the full local gate after wiring `--status-signer`.
+  `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
+  `cargo test --workspace --locked`, `just demo-proof`, and `just verify` all
+  pass. The full gate includes the local relay smoke and proves the public relay
+  still forwards only wallet-facing endpoints while local traces remain
+  redacted.
