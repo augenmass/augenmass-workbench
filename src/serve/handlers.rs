@@ -1561,6 +1561,25 @@ mod tests {
             OutputFormat::Text,
         )
         .expect("export runtime evidence bundle");
+        let bundle_json: Value = serde_json::from_str(
+            &fs::read_to_string(&bundle).expect("read runtime evidence bundle"),
+        )
+        .expect("runtime evidence bundle JSON");
+        let replay_events = bundle_json["payload"]["replayTrace"]["events"]
+            .as_array()
+            .expect("replay events");
+        let evidence_over_ask = replay_events
+            .iter()
+            .find(|event| event["code"] == "OVER_ASK_ANALYZED")
+            .expect("evidence replay over-disclosure analysis");
+        assert_eq!(evidence_over_ask["level"], "warn");
+        assert_eq!(evidence_over_ask["detail"]["overDisclosedCount"], 5);
+        assert_eq!(evidence_over_ask["detail"]["requestedCount"], 1);
+        assert!(evidence_over_ask["summary"]
+            .as_str()
+            .expect("summary")
+            .contains("over-disclosed 5"));
+
         let proven = crate::commands::evidence::assert_live(
             VerifyArgs {
                 bundle,

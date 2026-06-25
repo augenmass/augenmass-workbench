@@ -21,11 +21,13 @@ use ssi::jwk::JWK;
 
 use augenmass_core::crypto::decrypt_jwe;
 use augenmass_core::disclosure::revealed_claims;
+use augenmass_core::inspector;
 use augenmass_core::trust::TrustAnchors;
 use augenmass_core::{
     verify_pid_presentation_full, RequestBinding, StatusInput, TrustOptions, PID_VCT,
 };
 
+use crate::dcql;
 use crate::jose;
 use crate::output::{emit, OutputFormat};
 use crate::serve::artifacts::sha256_hex;
@@ -306,10 +308,11 @@ pub fn assert_live(args: VerifyArgs, format: OutputFormat) -> Result<bool> {
     let proof = assert_live_wallet_trace(&check.bundle.payload.replay_trace)?;
     strict_decrypted_response_from_direct_post(&check.bundle.payload.entries)?;
     let text = format!(
-        "LIVE WALLET EVIDENCE PROVEN\nsession: {}\nrequiredEvents: {}\nreplayEvents: {}\npayloadSha256: {}\nsignature: {}\nredacted: true\nnotes: trust/status/over-ask are not claimed by evidence assert-live; use the live trace and explicit gates for those.\n",
+        "LIVE WALLET EVIDENCE PROVEN\nsession: {}\nrequiredEvents: {}\nreplayEvents: {}\nwalletOverDisclosureAnalyzed: {}\npayloadSha256: {}\nsignature: {}\nredacted: true\nnotes: trust/status/over-ask are not claimed by evidence assert-live; wallet over-disclosure is replayed when explicit request keys are present. Use the live trace and explicit gates for trust/status.\n",
         check.bundle.payload.session,
         proof.required_events.join(", "),
         check.bundle.payload.replay_trace.events.len(),
+        proof.wallet_over_disclosure_analyzed,
         check.payload_sha256,
         check.signature_status,
     );
@@ -327,7 +330,8 @@ pub fn assert_live(args: VerifyArgs, format: OutputFormat) -> Result<bool> {
             "presentationVerified": true,
             "trustChecked": false,
             "statusChecked": false,
-            "overAskAnalyzed": false
+            "overAskAnalyzed": false,
+            "walletOverDisclosureAnalyzed": proof.wallet_over_disclosure_analyzed
         }
     });
     emit(format, &value, &text)?;
@@ -734,6 +738,7 @@ fn check_entry(entry: &EvidenceEntry) -> Result<()> {
 
 struct LiveEvidenceProof {
     required_events: Vec<String>,
+    wallet_over_disclosure_analyzed: bool,
 }
 
 fn assert_live_wallet_trace(replay: &ReplayTrace) -> Result<LiveEvidenceProof> {
@@ -786,6 +791,10 @@ fn assert_live_wallet_trace(replay: &ReplayTrace) -> Result<LiveEvidenceProof> {
 
     Ok(LiveEvidenceProof {
         required_events: required.iter().map(|code| (*code).to_string()).collect(),
+        wallet_over_disclosure_analyzed: replay
+            .events
+            .iter()
+            .any(|event| event.code == "OVER_ASK_ANALYZED"),
     })
 }
 
@@ -853,6 +862,7 @@ fn verify_signature(
 
 fn replay_from_entries(session: &str, entries: &[EvidenceEntry]) -> Result<ReplayTrace> {
     let mut replay = ReplayBuilder::new(session);
+    let request_payload = json_entry(entries, "request.payload.json")?;
     replay.push(
         "SESSION_CREATED",
         "info",
@@ -862,12 +872,12 @@ fn replay_from_entries(session: &str, entries: &[EvidenceEntry]) -> Result<Repla
             "redacted": true,
         })),
     );
-    if let Some(payload) = json_entry(entries, "request.payload.json")? {
+    if let Some(payload) = &request_payload {
         replay.push(
             "REQUEST_BUILT",
             "info",
             "rebuilt redacted authorization request context",
-            Some(request_context_detail(&payload)),
+            Some(request_context_detail(payload)),
         );
     }
     if let Some(entry) = find_entry(entries, "request.jwt") {
@@ -921,6 +931,15 @@ fn replay_from_entries(session: &str, entries: &[EvidenceEntry]) -> Result<Repla
             Some(redacted_decrypted_detail(&decrypted)),
         );
         if let Some(result) = offline_verify_detail(entries, &decrypted)? {
+            let disclosure_analysis = if result.verified {
+                offline_disclosure_analysis(
+                    request_payload.as_ref(),
+                    result.vct.as_deref().unwrap_or(PID_VCT),
+                    &result.disclosed_keys,
+                )?
+            } else {
+                None
+            };
             replay.push(
                 if result.verified {
                     "VERIFIED"
@@ -931,6 +950,14 @@ fn replay_from_entries(session: &str, entries: &[EvidenceEntry]) -> Result<Repla
                 result.summary,
                 Some(result.detail),
             );
+            if let Some(analysis) = disclosure_analysis {
+                replay.push(
+                    "OVER_ASK_ANALYZED",
+                    analysis.level,
+                    analysis.summary,
+                    Some(analysis.detail),
+                );
+            }
         }
     }
     Ok(replay.finish())
@@ -1044,6 +1071,14 @@ struct OfflineVerify {
     verified: bool,
     summary: String,
     detail: Value,
+    disclosed_keys: Vec<String>,
+    vct: Option<String>,
+}
+
+struct OfflineDisclosureAnalysis {
+    level: &'static str,
+    summary: String,
+    detail: Value,
 }
 
 struct VerificationContext {
@@ -1067,6 +1102,8 @@ fn offline_verify_detail(
                 "reason": "missing verification-context.json",
                 "redacted": true,
             }),
+            disclosed_keys: Vec::new(),
+            vct: None,
         }));
     };
     let nonce = context
@@ -1102,6 +1139,8 @@ fn offline_verify_detail(
                 "reason": "no SD-JWT VC presentation found",
                 "redacted": true,
             }),
+            disclosed_keys: Vec::new(),
+            vct: Some(vct.to_string()),
         }));
     }
     let mut last_detail = None;
@@ -1139,6 +1178,8 @@ fn offline_verify_detail(
                         "status": "not checked by evidence replay",
                         "redacted": true,
                     }),
+                    disclosed_keys: disclosed,
+                    vct: Some(verified.vct),
                 });
             }
             Err(e) => {
@@ -1149,11 +1190,61 @@ fn offline_verify_detail(
                         "reason": e.to_string(),
                         "redacted": true,
                     }),
+                    disclosed_keys: Vec::new(),
+                    vct: Some(vct.to_string()),
                 }));
             }
         }
     }
     Ok(last_detail)
+}
+
+fn offline_disclosure_analysis(
+    request_payload: Option<&Value>,
+    vct: &str,
+    disclosed_keys: &[String],
+) -> Result<Option<OfflineDisclosureAnalysis>> {
+    let Some(payload) = request_payload else {
+        return Ok(None);
+    };
+    let request_payload = serde_json::to_string(payload).context("serialize request payload")?;
+    let Ok(query) = dcql::parse_dcql(&request_payload) else {
+        return Ok(None);
+    };
+    let requested_keys = inspector::requested_keys(&query);
+    if requested_keys.is_empty() {
+        return Ok(None);
+    }
+    let report = inspector::analyze(vct, &query, None, None, disclosed_keys);
+    let over_disclosed_count = report.over_disclosed.len();
+    let level = if over_disclosed_count > 0 {
+        "warn"
+    } else {
+        "good"
+    };
+    let summary = if over_disclosed_count > 0 {
+        format!("offline replay found wallet over-disclosed {over_disclosed_count} claim(s) not requested")
+    } else {
+        format!(
+            "offline replay found no wallet over-disclosure across {} requested claim(s)",
+            report.counts.requested
+        )
+    };
+    Ok(Some(OfflineDisclosureAnalysis {
+        level,
+        summary,
+        detail: json!({
+            "vct": report.vct,
+            "requestedKeys": requested_keys,
+            "requestedCount": report.counts.requested,
+            "overDisclosed": report.over_disclosed,
+            "overDisclosedCount": over_disclosed_count,
+            "registeredScopeEvaluated": false,
+            "purposeEvaluated": false,
+            "note": "evidence replay compares explicit requested keys with offline-verified disclosed keys; registered scope and purpose-baseline over-ask are not evaluated here",
+            "redacted": true,
+        }),
+    }))
 }
 
 fn verification_context(entries: &[EvidenceEntry]) -> Result<VerificationContext> {
