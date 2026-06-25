@@ -50,3 +50,8 @@ Needs a phone before promotion:
 ## Checkpoints
 
 - 2026-06-25: Created isolated experiment branch/worktree and log.
+- 2026-06-25: Added nested disclosure accounting for object-valued SD-JWT
+  disclosures. A disclosed `age_equal_or_over` object is now expanded into
+  leaf fields such as `age_equal_or_over.18`, so the inspector can distinguish
+  the requested age threshold from wider threshold disclosure. Verified with
+  `cargo fmt --check` and `cargo test -p augenmass-core --locked`.

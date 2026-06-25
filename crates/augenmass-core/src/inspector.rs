@@ -351,3 +351,67 @@ fn verdict_line(c: &Counts) -> String {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{pid, PID_VCT};
+
+    #[test]
+    fn nested_age_leaf_disclosure_marks_requested_threshold() {
+        let query = pid::pid_query(&[&["age_equal_or_over", "18"]]);
+        let disclosed = vec!["age_equal_or_over.18".to_string()];
+
+        let report = analyze(
+            PID_VCT,
+            &query,
+            None,
+            baseline("age_gate_18").as_ref(),
+            &disclosed,
+        );
+
+        assert!(report.over_disclosed.is_empty());
+        let age_18 = report
+            .claim_rows
+            .iter()
+            .find(|row| row.key == "age_equal_or_over.18")
+            .expect("age 18 row");
+        assert!(age_18.requested);
+        assert!(age_18.disclosed);
+    }
+
+    #[test]
+    fn wider_age_object_disclosure_reports_unrequested_thresholds() {
+        let query = pid::pid_query(&[&["age_equal_or_over", "18"]]);
+        let disclosed = ["12", "14", "16", "18", "21", "65"]
+            .into_iter()
+            .map(|threshold| format!("age_equal_or_over.{threshold}"))
+            .collect::<Vec<_>>();
+
+        let report = analyze(
+            PID_VCT,
+            &query,
+            None,
+            baseline("age_gate_18").as_ref(),
+            &disclosed,
+        );
+
+        assert_eq!(
+            report.over_disclosed,
+            vec![
+                "age_equal_or_over.12",
+                "age_equal_or_over.14",
+                "age_equal_or_over.16",
+                "age_equal_or_over.21",
+                "age_equal_or_over.65",
+            ]
+        );
+        let age_18 = report
+            .claim_rows
+            .iter()
+            .find(|row| row.key == "age_equal_or_over.18")
+            .expect("age 18 row");
+        assert!(age_18.requested);
+        assert!(age_18.disclosed);
+    }
+}
