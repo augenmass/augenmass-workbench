@@ -149,6 +149,12 @@ exchange, while `prove-trust-status` proves the captured presentation under the
 supplied trust/status inputs. The proof output stays redacted. For fully offline
 proof, replace `--fetch-status-token` with `--status-token status-list.jwt`.
 
+In a full repository checkout, the combined wrapper is:
+
+```sh
+just wallet-trust-status-proof "$BUNDLE" pid-issuer-anchor.pem pid-status-signer.pem
+```
+
 ## Handling sensitive material
 
 `--unsafe-debug-artifacts` writes raw wallet material, decrypted response

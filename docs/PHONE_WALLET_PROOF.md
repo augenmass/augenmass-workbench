@@ -263,6 +263,12 @@ and disclosed claim keys, not wallet claim values. Use it together with
 captured presentation under explicit trust/status inputs. For fully offline
 proof, replace `--fetch-status-token` with `--status-token status-list.jwt`.
 
+The combined just wrapper runs both gates in order:
+
+```sh
+just wallet-trust-status-proof "$BUNDLE" pid-issuer-anchor.pem pid-status-signer.pem
+```
+
 ## Known-good demo result
 
 On 2026-06-25, the staged phone flow was proven with the hosted wallet-only

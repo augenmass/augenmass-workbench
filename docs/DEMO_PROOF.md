@@ -84,6 +84,10 @@ It runs:
   requires a captured `serve --unsafe-debug-artifacts` session from an actual
   wallet interaction. Use `docs/PHONE_WALLET_PROOF.md` as the operator checklist
   for producing that bundle.
+- `just wallet-trust-status-proof <bundle.json> <trust-anchor.pem>
+  <status-signer.pem>`: stronger post-capture proof that runs `assert-live` and
+  then re-verifies the captured presentation with issuer trust and a safely
+  fetched status-list token. It also requires a real captured wallet bundle.
 - `just live-cache-smoke`: starts `cache serve`, reaches the public sandbox API,
   proves admin-token protection, proves `MISS` then `HIT`, reads the configured
   relying party through `list --target cached-sandbox`, prewarms with

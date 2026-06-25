@@ -201,6 +201,11 @@ relay-smoke: build
 wallet-evidence-proof bundle:
     cargo run --quiet -- evidence assert-live "{{bundle}}"
 
+# Require a captured evidence bundle to prove phone-wallet run plus issuer trust/live status.
+wallet-trust-status-proof bundle trust_anchor status_key:
+    cargo run --quiet -- evidence assert-live "{{bundle}}"
+    cargo run --quiet -- evidence prove-trust-status "{{bundle}}" --trust-anchor "{{trust_anchor}}" --fetch-status-token --status-key "{{status_key}}"
+
 # Verify live sandbox configuration without mutating it by default.
 live-sandbox-smoke:
     ./scripts/live-sandbox-smoke.sh
