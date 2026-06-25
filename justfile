@@ -45,6 +45,7 @@ verify:
     cargo run --quiet -- serve --help > /dev/null
     cargo run --quiet -- evidence --help > /dev/null
     cargo run --quiet -- evidence assert-live --help > /dev/null
+    cargo run --quiet -- evidence profile --help > /dev/null
     cargo run --quiet -- evidence prove-trust-status --help > /dev/null
     cargo run --quiet -- cache serve --help > /dev/null
     cargo run --quiet -- cache warm --help > /dev/null
@@ -67,6 +68,18 @@ demo-proof:
     cargo test --test serve request_side_and_trace_flow
     ./scripts/serve-smoke.sh
     cargo test --test cache
+
+# Auditor-grade no-phone proof gate: strict encrypted evidence harness,
+# trust/status hostile cases, request-side serve runtime, and local smoke.
+auditor-no-phone-proof:
+    cargo test --test cli evidence_
+    cargo test --lib commands::evidence
+    cargo test --test serve request_side_and_trace_flow
+    ./scripts/serve-smoke.sh
+    cargo run --quiet -- evidence assert-live --help > /dev/null
+    cargo run --quiet -- evidence profile --help > /dev/null
+    cargo run --quiet -- evidence prove-trust-status --help > /dev/null
+    bash -n scripts/bundesdruckerei-wallet-trust-status-proof.sh
 
 # Print the stable offline presentation sequence from the resolved CLI binary.
 demo-run:

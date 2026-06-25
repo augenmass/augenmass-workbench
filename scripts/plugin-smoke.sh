@@ -96,6 +96,7 @@ grep -q 'Debug a live wallet interaction' "${SKILL}"
 grep -q 'Response contracts' "${SKILL}"
 grep -q 'evidence replay' "${SKILL}"
 grep -q 'evidence assert-live' "${SKILL}"
+grep -q 'evidence profile' "${SKILL}"
 grep -q 'prove-trust-status' "${SKILL}"
 grep -q 'reference/phone-wallet-proof.md' "${SKILL}"
 grep -q 'asks for too much data' "${SKILL}"
@@ -185,7 +186,7 @@ help_has serve
 grep -q -- '--unsafe-debug-artifacts' "${OUT}"
 grep -q -- '--live-status' "${OUT}"
 
-for evidence in export verify replay assert-live prove-trust-status; do
+for evidence in export verify replay assert-live profile prove-trust-status; do
   help_has evidence "${evidence}"
 done
 

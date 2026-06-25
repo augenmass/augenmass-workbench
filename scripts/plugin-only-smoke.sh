@@ -98,6 +98,9 @@ grep -q -- '--admin-token' "${OUT}"
 "${BIN}" serve --help >"${OUT}"
 grep -q -- '--unsafe-debug-artifacts' "${OUT}"
 
+"${BIN}" evidence profile --help >"${OUT}"
+grep -q '<BUNDLE>' "${OUT}"
+
 "${BIN}" evidence prove-trust-status --help >"${OUT}"
 grep -q -- '--fetch-status-token' "${OUT}"
 

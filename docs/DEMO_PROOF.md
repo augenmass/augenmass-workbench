@@ -84,6 +84,10 @@ It runs:
   requires a captured `serve --unsafe-debug-artifacts` session from an actual
   wallet interaction. Use `docs/PHONE_WALLET_PROOF.md` as the operator checklist
   for producing that bundle.
+- `just auditor-no-phone-proof`: local no-phone gate for the auditor evidence
+  harness. It runs the strict encrypted evidence CLI tests, hostile
+  trust/status cases, request-side serve runtime test, `serve-smoke`, and proof
+  command exposure checks.
 - `just wallet-trust-status-proof <bundle.json> <trust-anchor.pem>
   <status-signer.pem>`: stronger post-capture proof that runs `assert-live` and
   then re-verifies the captured presentation with issuer trust and a safely

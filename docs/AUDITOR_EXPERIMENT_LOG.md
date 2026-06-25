@@ -159,3 +159,7 @@ Needs a phone before promotion:
   conflicting status sources, and missing status source. Focused
   `cargo test --test cli evidence_` now covers both positive and hostile
   trust/status bundle proof paths.
+- 2026-06-25: Added `just auditor-no-phone-proof`, a local gate for the
+  strongest automated proof we can run without a handset: strict encrypted
+  evidence CLI tests, evidence unit tests, request-side serve runtime test,
+  `serve-smoke`, evidence proof command exposure, and wrapper shell syntax.
