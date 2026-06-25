@@ -58,6 +58,10 @@ That proves:
   advertised command surfaces through both Claude Code and Codex metadata checks.
 - `just plugin-bundle-freshness` verifies the plugin bundle manifest, version,
   launcher, and every committed target-binary hash.
+- On this experiment branch, the macOS plugin target binaries have been
+  refreshed from the local branch and expose `evidence prove-trust-status`.
+  Linux and Windows bundle targets remain from the `v0.2.0` release until a
+  full multi-platform release rebuild is cut.
 - The repo-local Claude Code marketplace validates with `--strict`, installs
   `augenmass-workbench@augenmass` in a temporary `HOME`, and reports it enabled.
 - The repo-local Codex marketplace installs `augenmass-workbench@augenmass` in a
@@ -587,6 +591,9 @@ binaries may require manual OS approval after checksum verification.
   Run `just bundesdruckerei-preprod-material-smoke` before a demo to confirm the
   public root, signer, and BMI trustlist material are still reachable and
   parseable.
+- Full release rebuild: before presenting cross-platform plugin install as
+  current for Linux or Windows, rebuild and reassemble all platform archives so
+  every bundled target exposes the same evidence commands as the macOS preview.
 - Keep the known-good phone-wallet proof local or in a private evidence store.
   The exported bundles and raw debug artifacts are sensitive and intentionally
   ignored by git.

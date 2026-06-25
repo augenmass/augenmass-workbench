@@ -132,3 +132,15 @@ Needs a phone before promotion:
   HTTPS, then runs `evidence assert-live` plus
   `evidence prove-trust-status --fetch-status-token`. This removes the manual
   cert-fetch step from the demo while keeping the proof gates explicit.
+- 2026-06-25: Re-exported five real phone-wallet captures into temporary local
+  evidence bundles and ran the redacted proof chain without committing any
+  sensitive material. Sessions `4095f1f4-cb16-4930-8773-16c793b78e73`,
+  `341c1ffc-88da-4c75-a13d-981c05c7e263`,
+  `5d3e0451-bdc2-4773-a5f1-1181034de5b3`,
+  `9118a5a0-405e-49d8-9ce8-cf4a7a7bd9b6`, and
+  `e1dffbc6-fabb-4a45-8ee5-9b42950cfa26` all passed
+  `evidence verify`, `evidence assert-live`, and
+  `bundesdruckerei-wallet-trust-status-proof` with
+  `statusTokenSource: fetched`. This is the current strongest demo proof:
+  completed phone-wallet exchange plus post-capture Bundesdruckerei preprod
+  trust/status verification, with PID-bearing material kept local and redacted.

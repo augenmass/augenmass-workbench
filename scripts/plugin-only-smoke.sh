@@ -98,6 +98,9 @@ grep -q -- '--admin-token' "${OUT}"
 "${BIN}" serve --help >"${OUT}"
 grep -q -- '--unsafe-debug-artifacts' "${OUT}"
 
+"${BIN}" evidence prove-trust-status --help >"${OUT}"
+grep -q -- '--fetch-status-token' "${OUT}"
+
 grep -q 'Do not assume those files exist' "${SKILL}"
 grep -q 'Developer ID signed and notarized' "${SKILL}"
 grep -q 'Use \$augenmass to show the purpose baselines' "${OPENAI_AGENT}"
@@ -105,6 +108,8 @@ grep -q 'Non-Technical Answer Example' "${ASK_REF}"
 grep -q 'Plain-Language Rule' "${EXPLAINER_REF}"
 grep -q 'Phone wallet proof checklist' "${PHONE_REF}"
 grep -q 'evidence assert-live' "${PHONE_REF}"
+grep -q 'evidence prove-trust-status' "${PHONE_REF}"
+grep -q 'bundesdruckerei-wallet-trust-status-proof' "${PHONE_REF}"
 grep -q -- '--unsafe-debug-artifacts' "${PHONE_REF}"
 
 echo "plugin-only smoke passed"

@@ -189,6 +189,8 @@ fi
   test -f docs/COMMANDS.md
   test -f docs/PHONE_WALLET_PROOF.md
   grep -q 'evidence assert-live' docs/PHONE_WALLET_PROOF.md
+  grep -q 'evidence prove-trust-status' docs/PHONE_WALLET_PROOF.md
+  grep -q 'bundesdruckerei-wallet-trust-status-proof' docs/PHONE_WALLET_PROOF.md
   grep -q -- '--unsafe-debug-artifacts' docs/PHONE_WALLET_PROOF.md
   test -f examples/min.json
   test -f examples/over.json
@@ -200,6 +202,7 @@ fi
 
   "${BIN}" --version
   "${BIN}" --help >/dev/null
+  "${BIN}" evidence prove-trust-status --help >/dev/null
   "${BIN}" inspect fixtures/requests/eudiplo-request.jwt >/dev/null
   "${BIN}" check examples/min.json >/dev/null
   if "${BIN}" check examples/over.json >/dev/null 2>&1; then

@@ -312,16 +312,19 @@ VERIFIED
 OVER_ASK_ANALYZED
 ```
 
-The exported bundles passed `evidence verify` and `evidence assert-live`. Those
-bundles are intentionally not committed because they are marked
-`sensitive: true`; keep them local or in a private evidence store only.
+The exported bundles passed `evidence verify`, `evidence assert-live`, and the
+Bundesdruckerei preprod `wallet-trust-status` proof wrapper with a freshly
+fetched status-list token. Those bundles are intentionally not committed because
+they are marked `sensitive: true`; keep them local or in a private evidence
+store only.
 
 This known-good proof supports the stage claim that a real phone wallet
 completed an encrypted OpenID4VP presentation to the workbench verifier through
-the hosted relay, and that the workbench decrypted and verified the presentation
-with holder binding. It does not support issuer trust-anchor or live revocation
-claims unless the run is repeated with `--trust-anchor`, `--status-signer`, and
-`--live-status`.
+the hosted relay, that the workbench decrypted and verified the presentation
+with holder binding, and that the captured presentation re-verifies under the
+current Bundesdruckerei preprod issuer trust/status material. It does not prove
+that the original live trace executed `serve --live-status`; the status proof is
+the post-capture `evidence prove-trust-status --fetch-status-token` gate.
 
 If a wallet response fails with `KbTimeInvalid: ... premature claim`, update to
 commit `4f152cd` or newer. That release accepts a tightly bounded 5-second

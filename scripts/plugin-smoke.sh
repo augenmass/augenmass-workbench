@@ -96,6 +96,7 @@ grep -q 'Debug a live wallet interaction' "${SKILL}"
 grep -q 'Response contracts' "${SKILL}"
 grep -q 'evidence replay' "${SKILL}"
 grep -q 'evidence assert-live' "${SKILL}"
+grep -q 'prove-trust-status' "${SKILL}"
 grep -q 'reference/phone-wallet-proof.md' "${SKILL}"
 grep -q 'asks for too much data' "${SKILL}"
 grep -q 'reference/ask-it-like-this.md' "${SKILL}"
@@ -104,6 +105,8 @@ grep -q 'What should an age-check service ask for' "${ASK_REF}"
 grep -q 'Developers use it before registering a relying party' "${EXPLAINER_REF}"
 grep -q 'Phone wallet proof checklist' "${PHONE_REF}"
 grep -q 'evidence assert-live' "${PHONE_REF}"
+grep -q 'evidence prove-trust-status' "${PHONE_REF}"
+grep -q 'bundesdruckerei-wallet-trust-status-proof' "${PHONE_REF}"
 grep -q -- '--unsafe-debug-artifacts' "${PHONE_REF}"
 
 CARGO_VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
@@ -182,7 +185,7 @@ help_has serve
 grep -q -- '--unsafe-debug-artifacts' "${OUT}"
 grep -q -- '--live-status' "${OUT}"
 
-for evidence in export verify replay assert-live; do
+for evidence in export verify replay assert-live prove-trust-status; do
   help_has evidence "${evidence}"
 done
 

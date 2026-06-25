@@ -45,6 +45,7 @@ verify:
     cargo run --quiet -- serve --help > /dev/null
     cargo run --quiet -- evidence --help > /dev/null
     cargo run --quiet -- evidence assert-live --help > /dev/null
+    cargo run --quiet -- evidence prove-trust-status --help > /dev/null
     cargo run --quiet -- cache serve --help > /dev/null
     cargo run --quiet -- cache warm --help > /dev/null
     cargo run --quiet -- cache status --help > /dev/null
@@ -52,6 +53,7 @@ verify:
     cargo run --quiet -p augenmass-relay -- --help > /dev/null
     # the mdoc decoder reads the committed ISO 18013-5 mDL vector
     cargo run --quiet -- decode mdoc fixtures/mdoc/issuer-signed.hex > /dev/null
+    bash -n scripts/bundesdruckerei-wallet-trust-status-proof.sh
     # DCQL validation: the committed eudiplo query is clean, a bad one blocks
     cargo run --quiet -- validate dcql fixtures/dcql/eudiplo-haip-pid-de.dcql.json > /dev/null
     sh -c 'if cargo run --quiet -- validate dcql "{\"credentials\":[]}"; then exit 1; else exit 0; fi'
