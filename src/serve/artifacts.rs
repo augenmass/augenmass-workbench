@@ -88,20 +88,45 @@ fn write_bytes(
         .with_context(|| format!("create unsafe debug session dir {}", dir.display()))?;
     tighten_dir_permissions(&dir)?;
 
-    let path = dir.join(filename);
+    let actual_filename = unique_artifact_filename(&dir, filename);
+    let path = dir.join(&actual_filename);
     fs::write(&path, data)
         .with_context(|| format!("write unsafe debug artifact {}", path.display()))?;
     tighten_file_permissions(&path)?;
 
     let artifact = DebugArtifact {
         label: label.to_string(),
-        filename: filename.to_string(),
+        filename: actual_filename,
         path: display_path(&path),
         len: data.len(),
         sha256: sha256_hex(data),
     };
     update_manifest(&dir, session, &artifact)?;
     Ok(artifact)
+}
+
+fn unique_artifact_filename(dir: &Path, filename: &str) -> String {
+    let first = dir.join(filename);
+    if !first.exists() {
+        return filename.to_string();
+    }
+
+    let path = Path::new(filename);
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or(filename);
+    let ext = path.extension().and_then(|value| value.to_str());
+    for idx in 2.. {
+        let candidate = match ext {
+            Some(ext) => format!("{stem}-{idx}.{ext}"),
+            None => format!("{stem}-{idx}"),
+        };
+        if !dir.join(&candidate).exists() {
+            return candidate;
+        }
+    }
+    unreachable!("unbounded duplicate artifact filename search should always return")
 }
 
 fn update_manifest(dir: &Path, session: Uuid, artifact: &DebugArtifact) -> Result<()> {
@@ -237,6 +262,51 @@ mod tests {
             assert_eq!(dir_mode, 0o700);
             assert_eq!(file_mode, 0o600);
         }
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn duplicate_artifact_writes_preserve_first_capture() {
+        let root = std::env::temp_dir().join(format!("augenmass-artifacts-{}", Uuid::new_v4()));
+        prepare_root(&root).expect("prepare root");
+        let session = Uuid::new_v4();
+
+        let first = write_text(&root, session, "direct-post.body", "raw body", "first-body")
+            .expect("write first artifact");
+        let second = write_text(
+            &root,
+            session,
+            "direct-post.body",
+            "raw body",
+            "second-body",
+        )
+        .expect("write duplicate artifact");
+
+        assert_eq!(first.filename, "direct-post.body");
+        assert_eq!(second.filename, "direct-post-2.body");
+        let dir = root.join(session.to_string());
+        assert_eq!(
+            fs::read_to_string(dir.join("direct-post.body")).expect("first body"),
+            "first-body"
+        );
+        assert_eq!(
+            fs::read_to_string(dir.join("direct-post-2.body")).expect("second body"),
+            "second-body"
+        );
+
+        let manifest: Value = serde_json::from_str(
+            &fs::read_to_string(dir.join("debug-manifest.json")).expect("read manifest"),
+        )
+        .expect("manifest json");
+        let filenames = manifest["entries"]
+            .as_array()
+            .expect("manifest entries")
+            .iter()
+            .filter_map(|entry| entry["filename"].as_str())
+            .collect::<Vec<_>>();
+        assert!(filenames.contains(&"direct-post.body"));
+        assert!(filenames.contains(&"direct-post-2.body"));
 
         let _ = fs::remove_dir_all(root);
     }

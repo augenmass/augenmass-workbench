@@ -216,3 +216,14 @@ Needs a phone before promotion:
   reports `walletOverDisclosureAnalyzed` separately while keeping
   `overAskAnalyzed`, `trustChecked`, and `statusChecked` reserved for explicit
   gates.
+- 2026-06-25: Rehearsed the experiment branch against real iOS and Android
+  sandbox wallets through `wallet.augenmass.tech`. iOS session
+  `913aab78-18ca-4342-b183-18ef305c8d2c` reached `VERIFIED`; the wallet logs
+  showed `PresentationSuccess` before a later wallet-side `Key mapping not
+  found` UI issue. Android session `b601db78-60fe-485d-8ccd-2e01bd490956`
+  reached `VERIFIED`, exported cleanly, and passed `evidence verify` plus
+  strict `evidence assert-live`. The rehearsal exposed one evidence-retention
+  edge case: a duplicate POST after a successful response could overwrite the
+  canonical `direct-post.body` artifact. Unsafe-debug artifact writes are now
+  append-only on filename collision, preserving the first canonical capture and
+  suffixing later duplicates such as `direct-post-2.body`.
