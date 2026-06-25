@@ -1,0 +1,22 @@
+title = "Augenmass Workbench gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Committed EUDI JWT fixtures used by tests and documentation."
+paths = [
+  '''^fixtures/presentations/.*\.sdjwt$''',
+  '''^fixtures/requests/.*\.jwt$''',
+  '''^fixtures/status/.*\.jwt$''',
+  '''^fixtures/regcert/rc-by-id\.json$''',
+]
+
+[[allowlists]]
+description = "Empty environment-variable placeholders in the public example file."
+paths = [
+  '''^\.env\.example$''',
+]
+regexes = [
+  '''AUGENMASS_[A-Z0-9_]*(TOKEN|SECRET|PASSWORD)=''',
+]

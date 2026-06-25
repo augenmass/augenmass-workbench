@@ -8,7 +8,19 @@ Augenmaß is German for a trained sense of proportion: judging the right amount 
 
 One engine, two surfaces. The same proportionality engine that audits the public EUDI registry at augenmass.tech runs locally here, so you can catch an over-ask on your own machine before you ever register it.
 
-The hackathon version was a light tool with six commands (`generate`, `check`, `doctor`, `register`, `list`, `clone`). This version surfaces the entire engine (verification, status, trust, disclosure, crypto) and adds offline decoders for the rest of the ecosystem's artifacts, behind one cohesive skill and CLI.
+The hackathon version was a light tool with six commands (`generate`, `check`, `doctor`, `register`, `list`, `clone`). This version surfaces the entire engine (verification, status, trust, disclosure, crypto), adds offline decoders for the rest of the ecosystem's artifacts, ships a live wallet debugger, and gives presenters a hosted relay/cache path for real-phone demos.
+
+## Current release shape
+
+The current branch is a private release candidate for the EUDI On presentation, not a README-only prototype. In the last proof pass, the workbench gained:
+
+- A platform-aware Claude Code/Codex plugin bundle with native launcher targets for macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64.
+- Published `v0.2.0` release archives with checksums and provenance manifests for the main desktop targets.
+- A stapled Apple Silicon macOS `.pkg`, signed by Developer ID Installer and accepted by Gatekeeper as `source=Notarized Developer ID`.
+- A deployed cached-sandbox backend at `https://cache.augenmass.tech/api` for stable public sandbox reads and demo prewarming.
+- A deployed wallet-only relay at `https://wallet.augenmass.tech`, proven with `just hosted-relay-proof`, so a phone wallet can reach `augenmass serve` without exposing trace, inspect, evidence, or unsafe debug artifacts publicly. The hosted relay is protected; operators configure the token through `AUGENMASS_RELAY_TOKEN`.
+
+The strongest demo path is still skill first, CLI underneath: ask the agent what an artifact is, have it run the Rust tool, show the over-ask finding with the legal basis, then switch to `serve --relay augenmass` for the real wallet exchange.
 
 ## Install the skill
 
@@ -44,7 +56,7 @@ Start with prompts that do not require a repository checkout:
 | Developer | `Use the augenmass skill: show the purpose baselines, generate a proportionate age-check body, and check it.` | The agent runs no-file commands, explains the generated minimal body, and confirms it passes the over-ask gate. |
 | Auditor | `Use the augenmass skill: explain why a full birthdate is too much for an over-18 check, and cite the basis.` | The agent explains the proportionality concern, cites the data-minimisation basis, and proposes `age_equal_or_over.18`. |
 | Non-technical reviewer | `Use the augenmass skill: in plain language, what should an age-check service ask for and what should it avoid?` | The agent avoids JSON detail, names the unnecessary data, explains the risk, and gives the safer replacement. |
-| Live demo | `Use the augenmass skill: prepare a safe live wallet debug run with redacted traces.` | The agent explains `serve`, `--public-url`, trust/status caveats, and why raw debug artifacts are opt-in only. |
+| Live demo | `Use the augenmass skill: prepare a safe live wallet debug run with redacted traces.` | The agent explains `serve --relay augenmass`, the wallet-only public relay, trust/status caveats, and why raw debug artifacts are opt-in only. |
 
 When the plugin was installed from a marketplace without the full repository checkout, use no-file prompts like these. Fixture prompts such as `inspect fixtures/requests/eudiplo-request.jwt` are for full checkouts or release archives that include `fixtures/` and `examples/`.
 
@@ -52,12 +64,14 @@ When the plugin was installed from a marketplace without the full repository che
 
 The plugin includes a small launcher plus native preview binaries for macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64. The skill resolves `AUGENMASS_BIN` first; otherwise it uses the bundled launcher and picks the matching target binary. Set `AUGENMASS_BIN` when you want to override the bundled binary, use an unsupported target, or point the skill at a source-built binary.
 
-Some macOS ZIP artifacts may be Developer ID signed and notarized when produced
-with `just macos-notarize`; check the release notes and sidecar proof before
-assuming a macOS binary is notarized. If macOS or Windows blocks a first run,
-verify the release checksum first, then approve the binary manually through the
-OS security UI, or build from source with `cargo build --release --locked` and
-set `AUGENMASS_BIN`.
+For the polished macOS Apple Silicon install path, use the stapled `.pkg`
+produced by `just macos-pkg-notarize`; the current local proof validates the
+package signature, stapling, and Gatekeeper install assessment. ZIP archives can
+be accepted by Apple's notary service without being stapled, so treat the `.pkg`
+as the offline-verifiable macOS installer. Windows binaries are not code-signed
+yet; verify the release checksum first, then approve the binary manually through
+the OS security UI, or build from source with `cargo build --release --locked`
+and set `AUGENMASS_BIN`.
 
 The skill is a thin layer over a plain CLI you can also build and run on its own, with or without an agent. On Unix-like shells:
 
@@ -91,7 +105,7 @@ The skill is the front door. You talk to it the way you would talk to a colleagu
 - "Register it, but refuse if it over-asks." It dry-runs first and writes only on your explicit go-ahead, and it will not write past an over-ask unless you force it.
 - "What is this token?" It sniffs the artifact and decodes it: an SD-JWT VC presentation, a JAR, a credential offer, an mdoc, a status list.
 - "Why is the wallet rejecting my request?" It diagnoses the signed request (x5c shape, the x509_hash client_id binding, content type).
-- "Run a verifier so I can test with a real wallet, and show me every step." It starts `augenmass serve`, a local verifier-in-a-box, and traces the exchange with raw wallet data redacted by default.
+- "Run a verifier so I can test with a real wallet, and show me every step." It starts `augenmass serve`; for a phone that needs a public HTTPS callback, it can add `--relay augenmass` so only the wallet request/response endpoints are reachable through `wallet.augenmass.tech`, while trace and evidence stay local.
 - "Explain this finding for someone non-technical." It restates the over-ask in plain language and ties it to the data-minimisation basis it rests on.
 
 For example, a privacy reviewer should not have to read JSON first. The skill
@@ -191,19 +205,19 @@ augenmass generate regbody --json
 
 Debug a live wallet interaction: run a local verifier, scan the QR with a real
 EUDI wallet, and watch every step of the exchange in the terminal and the
-browser. The committed smoke test proves the verifier runtime, request fetch,
-trace endpoints, plaintext rejection, and redaction without a phone wallet; a
-full `RESPONSE_DECRYPTED` / `VERIFIED` trace is the expected output of an actual
-phone-wallet run and should be captured before claiming a specific wallet demo
-environment is proven.
+browser. For a physical phone, use the hosted wallet-only relay so the phone can
+reach the request and response endpoints over HTTPS while the debug UI remains
+on localhost:
 
 For the exact capture/export/proof checklist, use
 `docs/PHONE_WALLET_PROOF.md`.
 
 ```sh
-augenmass serve
+export AUGENMASS_RELAY_TOKEN=<relay-token>
+augenmass serve --relay augenmass
 # augenmass serve: wallet-interaction debugger
 #   open      : http://127.0.0.1:8080/
+#   public    : https://wallet.augenmass.tech/r/<run-id>/
 #   client_id : x509_hash:...
 #   trace     : redacted by default; live on this console; also at <base>/trace/<session> and /api/trace/<session>
 #   artifacts : off (set --unsafe-debug-artifacts <dir> to capture raw wallet material locally; UNSAFE)
@@ -217,6 +231,14 @@ augenmass serve
 #   ...           ...       VERIFIED                presentation verified: urn:eudi:pid:de:1
 #   ...           ...       OVER_ASK_ANALYZED       ...
 ```
+
+The hosted proof for `wallet.augenmass.tech` checks health, byte-for-byte
+request-object forwarding, public trace/inspect refusal, plaintext
+`direct_post` rejection, and local trace redaction. The committed smoke test also
+proves the verifier runtime, request fetch, trace endpoints, plaintext
+rejection, and redaction without a phone wallet; a full `RESPONSE_DECRYPTED` /
+`VERIFIED` trace is the expected output of an actual phone-wallet run and should
+be captured before claiming a specific wallet demo environment is proven.
 
 ## The toolbox
 
@@ -246,7 +268,7 @@ DIAGNOSE
 - `validate dcql <input>`: validate a DCQL query for unique credential ids, `credential_sets` options that reference known ids, and claim paths whose shape matches the credential format (mdoc `[namespace, element]` vs SD-JWT string/null/index segments). Exits non-zero on a blocking error, so it gates CI.
 
 DEBUG (live wallet interaction)
-- `serve [--port --host --public-url --key --leaf --purpose --trust-anchor --live-status --quiet --unsafe-debug-artifacts]`: run a local OpenID4VP verifier (a verifier-in-a-box) so a real EUDI wallet can present to it, and trace the whole exchange. The trace is redacted by default (no raw bodies, no claim values); it streams to the console, renders as a live browser timeline at `/trace/<session>`, and serializes at `/api/trace/<session>`.
+- `serve [--port --host --public-url --relay --relay-token --key --leaf --purpose --trust-anchor --live-status --quiet --unsafe-debug-artifacts]`: run a local OpenID4VP verifier (a verifier-in-a-box) so a real EUDI wallet can present to it, and trace the whole exchange. `--relay augenmass` publishes only the phone-facing request/response endpoints through the hosted relay. The trace is redacted by default (no raw bodies, no claim values); it streams to the console, renders as a live browser timeline at `/trace/<session>`, and serializes at `/api/trace/<session>`.
 
 EVIDENCE (local audit bundles)
 - `evidence export <session-dir> --out <bundle.json> [--signing-key <pem>]`: export one `serve --unsafe-debug-artifacts` session directory into a sensitive portable bundle. The bundle contains raw local material and a deterministic redacted replay trace.
@@ -261,6 +283,11 @@ WRITE AND TARGETS (guard-railed)
 - `cache serve [--db --host --port --upstream --ttl-secs --timeout-secs --max-entries --admin-token --allowed-rp --allow-any-rp --unsafe-upstream]`: run a bounded read-through cached-sandbox mirror for public sandbox GET routes. Registration reads are RP-allowlisted; the default is the demo RP.
 - `cache warm [--api-base --admin-token --rp --timeout-secs]`: prewarm schema and registration reads before a demo or outage-sensitive rehearsal.
 - `cache status [--api-base --admin-token --timeout-secs]`: show the protected cache inventory, including upstream, TTL, max entries, allowlist, cached keys, fetch time, byte size, and SHA-256.
+
+HOSTED PROOFS
+- `just deployed-cache-smoke-required`: prove the hosted cache URL is HTTPS, non-local, protected, warmable, and serving expected public sandbox reads.
+- `just hosted-relay-proof`: prove the hosted wallet relay can carry a local `serve` run without exposing trace/inspect routes.
+- `just macos-pkg-notarization-status`: check the local stapled macOS `.pkg` notarization proof.
 
 ## Over-ask and the legal basis
 
@@ -298,7 +325,7 @@ Evidence replay turns that local capture into an audit artifact. Run `augenmass 
 
 Writes are dry-run by default. `register` makes no network call until you pass `--yes`; if the body over-asks, it refuses (exit 1) unless you also pass `--force`. Blocking format errors are never written past.
 
-There are three target modes. `clone` (the default) is a local registrar-compatible store (axum plus SQLite) with no signing, no auth, and no x5c: it holds payload-only JWTs and exists so you can rehearse the read and write paths entirely offline. `cached-sandbox` is a read-only, server-side mirror for public sandbox reads, with bounded SQLite storage, provenance headers, stale fallback for demos, request coalescing on cache misses, and an RP allowlist for registration-certificate read-through. It can run locally or as a small backend on Railway or a VPS; bind it with `AUGENMASS_CACHE_ADMIN_TOKEN=<token> AUGENMASS_CACHE_ALLOWED_RPS=<rp> augenmass cache serve --host 0.0.0.0 --port $PORT --db /data/augenmass-cache.sqlite`. Public binds require the admin token, a non-empty RP allowlist unless `--allow-any-rp` is explicitly set, and an https upstream without URL credentials, query, fragment, or private IP host unless `--unsafe-upstream` is explicitly set. Unlisted RP reads return `403` before the upstream is contacted. `sandbox` is the real registrar behind Keycloak; it is rehearsal-only and off-stage, and sandbox API/token URLs must be https unless `AUGENMASS_UNSAFE_SANDBOX_URLS=1` is used for loopback development. Configure targets through environment variables (see `docs/SANDBOX.md` and `.env.example`).
+There are three target modes. `clone` (the default) is a local registrar-compatible store (axum plus SQLite) with no signing, no auth, and no x5c: it holds payload-only JWTs and exists so you can rehearse the read and write paths entirely offline. `cached-sandbox` is a read-only, server-side mirror for public sandbox reads, with bounded SQLite storage, provenance headers, stale fallback for demos, request coalescing on cache misses, and an RP allowlist for registration-certificate read-through. It can run locally or as a small backend on Railway or a VPS; the current presentation backend is proven at `https://cache.augenmass.tech/api`. Public binds require the admin token, a non-empty RP allowlist unless `--allow-any-rp` is explicitly set, and an https upstream without URL credentials, query, fragment, or private IP host unless `--unsafe-upstream` is explicitly set. Unlisted RP reads return `403` before the upstream is contacted. `sandbox` is the real registrar behind Keycloak; it is rehearsal-only and off-stage, and sandbox API/token URLs must be https unless `AUGENMASS_UNSAFE_SANDBOX_URLS=1` is used for loopback development. Configure targets through environment variables (see `docs/SANDBOX.md` and `.env.example`).
 
 Secrets hygiene is enforced: the tool never logs, echoes, or commits tokens, certificates, or keys, and `.env*`, `secrets*.md`, `*.sqlite`, and `*signing-key*` are gitignored.
 
@@ -315,9 +342,10 @@ One engine is the spine. `augenmass-core` is a vendored, HTTP-free, pure-Rust cr
 - `docs/TOOLS.md`: an artifact field guide, organized by artifact type.
 - `docs/ARCHITECTURE.md`: the one-engine spine and how the CLI wraps `augenmass-core`.
 - `docs/SANDBOX.md`: the clone store, the sandbox registrar, and their environment variables.
-- `docs/DEPLOYMENT.md`: deploying the cached-sandbox backend on Railway, Docker, or a VPS, with notes for Cloudflare and Vercel.
+- `docs/DEPLOYMENT.md`: deploying the cached-sandbox backend and hosted wallet relay on Railway, Docker, or a VPS, with notes for Cloudflare and Vercel.
+- `docs/RELAY.md`: the hosted wallet relay for phone demos, including the wallet-only public surface, Railway shape, and proof gates.
 - `docs/INSTALL.md`: source install, plugin install, and platform caveats.
-- `docs/RELEASE.md`: CI, release archives, and platform support.
+- `docs/RELEASE.md`: CI, release archives, notarization, and platform support.
 - `docs/DEMO_PROOF.md`: offline demo gates plus local plugin, live-cache, deployed-cache, and Docker smoke checks.
 - `docs/PHONE_WALLET_PROOF.md`: exact rehearsal checklist for capturing,
   exporting, replaying, and proving a real phone-wallet interaction.

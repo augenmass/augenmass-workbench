@@ -16,11 +16,12 @@ name = "augenmass_workbench"
 path = "src/lib.rs"
 
 [workspace]
-members = [".", "crates/augenmass-core"]
+members = [".", "crates/augenmass-core", "crates/augenmass-relay-proto", "crates/augenmass-relay"]
 resolver = "2"
 
 [dependencies]
 augenmass-core = { path = "crates/augenmass-core" }
+augenmass-relay-proto = { path = "crates/augenmass-relay-proto" }
 openid4vp = { git = "https://github.com/spruceid/openid4vp", rev = "d2847dfcd07d1ea70ffc0c713ad650519d424a82" }
 ssi = { version = "0.16", features = ["secp256r1"] }
 anyhow = "1"
@@ -30,16 +31,19 @@ chrono = { version = "0.4", features = ["serde"] }
 ciborium = "0.2"
 clap = { version = "4", features = ["derive", "env"] }
 dotenvy = "0.15"
+futures-util = "0.3"
 qrcode = "0.14"
 rand = "0.8"
 rcgen = "0.13"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+rustls = { version = "0.23", features = ["ring"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 p256 = { version = "0.13", features = ["jwk", "ecdsa", "pem", "pkcs8"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"
 tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

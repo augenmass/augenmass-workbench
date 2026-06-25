@@ -48,11 +48,15 @@ verify:
     cargo run --quiet -- cache serve --help > /dev/null
     cargo run --quiet -- cache warm --help > /dev/null
     cargo run --quiet -- cache status --help > /dev/null
+    cargo run --quiet -- serve --relay ws://127.0.0.1:1/_relay/tunnel --help > /dev/null
+    cargo run --quiet -p augenmass-relay -- --help > /dev/null
     # the mdoc decoder reads the committed ISO 18013-5 mDL vector
     cargo run --quiet -- decode mdoc fixtures/mdoc/issuer-signed.hex > /dev/null
     # DCQL validation: the committed eudiplo query is clean, a bad one blocks
     cargo run --quiet -- validate dcql fixtures/dcql/eudiplo-haip-pid-de.dcql.json > /dev/null
     sh -c 'if cargo run --quiet -- validate dcql "{\"credentials\":[]}"; then exit 1; else exit 0; fi'
+    ./scripts/relay-source-guard.sh
+    ./scripts/relay-smoke.sh
 
 # A presentation-focused proof gate: stable offline commands that support the
 # agent-first demo story without sandbox credentials or a live wallet.
@@ -150,9 +154,17 @@ public-sandbox-snapshot:
 deployed-cache-smoke:
     ./scripts/deployed-cache-smoke.sh
 
+# Verify an already deployed hosted relay when AUGENMASS_DEPLOYED_RELAY_BASE is set.
+deployed-relay-smoke:
+    ./scripts/deployed-relay-smoke.sh
+
 # Verify required hosted-cache proof refuses local or insecure API bases.
 deployed-cache-guard-smoke:
     ./scripts/deployed-cache-guard-smoke.sh
+
+# Verify required hosted-relay proof refuses local or insecure relay bases.
+deployed-relay-guard-smoke:
+    ./scripts/deployed-relay-guard-smoke.sh
 
 # Verify public cache binds refuse unsafe deploy configuration before listening.
 cache-public-bind-guard-smoke:
@@ -165,6 +177,10 @@ deployed-cache-smoke-required:
 # Required hosted backend proof before claiming a deployed cache is ready.
 hosted-release-proof: deployed-cache-smoke-required
 
+# Required hosted relay proof before claiming phone-wallet ingress is ready.
+hosted-relay-proof:
+    AUGENMASS_DEPLOYED_RELAY_REQUIRED=1 ./scripts/deployed-relay-smoke.sh
+
 # Typecheck the optional Cloudflare Containers Worker adapter without deploying it.
 cloudflare-containers-typecheck:
     cd deploy/cloudflare-containers && bun install --frozen-lockfile && bun run typecheck
@@ -172,6 +188,10 @@ cloudflare-containers-typecheck:
 # Verify the bundled verifier-in-a-box runtime over loopback HTTP.
 serve-smoke:
     ./scripts/serve-smoke.sh
+
+# Verify the local hosted-relay path over loopback.
+relay-smoke: build
+    ./scripts/relay-smoke.sh
 
 # Require a captured evidence bundle to prove a completed encrypted phone-wallet run.
 wallet-evidence-proof bundle:

@@ -1065,6 +1065,10 @@ Options (all optional):
 - `--live-status` (env `LIVE_STATUS`): resolve the token-status-list over the network on the response path and reject a revoked or suspended PID. Default `false` (offline-friendly). Only takes effect when `--trust-anchor` is also set.
 - `--quiet`: suppress the live per-step trace on the console. The trace still records and is served at `/trace/<session>` and `/api/trace/<session>`.
 - `--unsafe-debug-artifacts <UNSAFE_DEBUG_ARTIFACTS>` (env `AUGENMASS_UNSAFE_DEBUG_ARTIFACTS`): opt-in, off by default. Write full-fidelity debug artifacts for each session under `<dir>/<session>/`: the raw `direct_post` body, the decrypted authorization response when an encrypted wallet response is decrypted, the per-session private encryption key, the signed request object (JAR), the decoded request payload, and a verification context (`nonce`, `aud`, `vct`, clock, freshness window), plus a `debug-manifest.json` marked sensitive. On Unix, directories are tightened to `0700` and files to `0600`; on Windows, store them only in a private profile or encrypted workspace until native ACL hardening is added. UNSAFE: this writes raw wallet material, including personal data, to local disk in the clear. It is never served over HTTP; the trace records the file name, a label, the length, a SHA-256, and the redaction fields `unsafeDebugArtifacts`, `pathRedacted`, `redacted`, and `redaction`, never a path or a value.
+- `--relay <RELAY>` (env `AUGENMASS_RELAY`): publish only the wallet request/response endpoints through a hosted relay. Use `--relay augenmass` for the default hosted alias (`wss://wallet.augenmass.tech/_relay/tunnel` unless `AUGENMASS_RELAY_URL` overrides it), or pass a `ws://` / `wss://` control URL.
+- `--relay-token <RELAY_TOKEN>` (env `AUGENMASS_RELAY_TOKEN`): bearer token for the hosted relay control connection. Prefer the environment variable so the token does not appear in shell history.
+- `--relay-ttl <RELAY_TTL>` (env `AUGENMASS_RELAY_TTL`): requested relay run lifetime in seconds. The relay clamps it to its configured maximum.
+- `--relay-optional` (env `AUGENMASS_RELAY_OPTIONAL`): continue local-only if relay setup fails. Use this only when fallback is acceptable; for a real phone demo, let relay failure fail fast.
 
 Runtime behavior: this command does not exit on its own and does not use `--json`. It binds the listener and serves until Ctrl-C. On startup it prints the open URL, the computed `client_id`, whether the cert is throwaway or the registrar leaf, whether issuer trust is enforced, whether status checks are live, where the trace is served, and whether unsafe local debug artifacts are enabled.
 
@@ -1085,6 +1089,28 @@ augenmass serve: wallet-interaction debugger
   Open the URL above, scan the QR with a wallet, and watch the trace below.
 ```
 
+Hosted relay mode keeps the operator UI local and gives the phone a temporary
+public URL for the wallet endpoints only:
+
+```
+AUGENMASS_RELAY_TOKEN=<token> augenmass serve --relay augenmass
+```
+
+```
+augenmass serve: wallet-interaction debugger (relay)
+  open         : http://127.0.0.1:8080/
+  listening    : http://127.0.0.1:8080
+  relay        : augenmass
+  run          : abcd1234 (TTL 600s)
+  public       : https://wallet.augenmass.tech/r/<run-id>/
+  scope        : relay carries only /request and /response; trace and evidence stay local
+```
+
+In relay mode, the landing page, trace, inspect, session list, and unsafe debug
+artifacts remain on the local `open` URL. The public relay URL forwards only
+`GET /request/<session>` and `POST /response/<session>`; public trace and
+inspect paths return `404`.
+
 ### HTTP endpoints
 
 | Method | Path | What it does |
@@ -1099,6 +1125,10 @@ augenmass serve: wallet-interaction debugger
 | `GET` | `/health` | Health check; returns `{ "status": "ok", "service": "augenmass serve" }`. |
 
 The `POST /response/:id` body is the wallet's `application/x-www-form-urlencoded` authorization response. The response is JSON shaped `{ "status": "verified" | "rejected", "reason"?, "inspect", "trace" }`: `status` is `verified` (HTTP 200) or `rejected` (HTTP 422), `reason` carries the rejection reason when rejected, and `inspect` and `trace` are absolute URLs to this session's inspector and timeline.
+
+When `--relay` is set, only `/request/:id` and `/response/:id` are reachable
+through the hosted relay. All other endpoints above stay reachable only through
+the local operator base URL.
 
 ### Trace event codes
 

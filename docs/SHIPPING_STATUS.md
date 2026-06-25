@@ -1,6 +1,6 @@
 # Shipping status
 
-Last local verification: 2026-06-24.
+Last local verification: 2026-06-25.
 
 This page is the short operator verdict for the Workbench as it stands before the
 EUDI On presentation. It is deliberately practical: what is proven, what can be
@@ -21,8 +21,8 @@ The strongest presentation path is skill first, CLI underneath:
 2. Have it decode and explain the artifact without leaking raw secrets.
 3. Show an over-ask request being blocked with a cited legal basis.
 4. Verify a real committed PID presentation fixture and hostile variants.
-5. Use `serve` for the live wallet-interaction debugger if the phone/network
-   setup is ready.
+5. Use `serve --relay augenmass` for the live wallet-interaction debugger with
+   a real phone wallet over `https://wallet.augenmass.tech`.
 6. Use `cache serve`, `cache warm`, and `cache status` to keep sandbox reads stable
    and inspect what is cached.
 
@@ -290,6 +290,38 @@ schema `HIT`. `cache status` showed three warmed entries for schema metadata,
 schema vocabularies, and the configured demo RP registration list. The admin
 token is set in Railway and is not committed.
 
+Latest hosted-relay deployment proof on 2026-06-25:
+
+- Railway project: `augenmass-workbench-cache`
+- Service: `relay`
+- Deployment: `b790a2bb-ee76-4f5d-b860-3629c5b367d3`
+- Status: `SUCCESS`
+- Runtime log: `augenmass relay listening addr=0.0.0.0:8080`
+- Volume: none; the relay is stateless.
+- Custom domain: `https://wallet.augenmass.tech`
+- DNS: `wallet.augenmass.tech` CNAME resolves to `gu10iony.up.railway.app`.
+- Domain verification: Railway TXT verification is true.
+- Certificate: valid Railway ECDSA certificate for `wallet.augenmass.tech`.
+
+The public health endpoint returned the relay health JSON:
+
+```sh
+curl --max-time 20 -i https://wallet.augenmass.tech/healthz
+```
+
+The required hosted proof passed:
+
+```sh
+just hosted-relay-proof
+```
+
+It started local `augenmass serve`, opened a temporary run through the deployed
+relay, proved the public request object is forwarded byte-for-byte, proved
+public trace/inspect routes are not exposed, rejected plaintext `direct_post`
+with HTTP 422 through the relay, and confirmed the local trace stayed redacted.
+The relay auth token is set in Railway and mirrored locally only in
+`.env.relay.local`, which is gitignored.
+
 ## Presentation-safe surfaces
 
 These are good to show on stage or in a recording:
@@ -302,6 +334,13 @@ These are good to show on stage or in a recording:
 - `verify presentation`, `verify trust`, and `verify status-list`: prove good
   fixtures and reject hostile ones.
 - `serve`: live verifier-in-a-box with redacted traces by default.
+- `serve --relay augenmass`: hosted phone-wallet ingress. The public relay
+  carries only `/request/<session>` and `/response/<session>`; trace, inspect,
+  session APIs, evidence, and unsafe debug artifacts stay on localhost.
+- `relay-smoke`: local proof for the hosted relay path. It compares local and
+  relayed request objects byte-for-byte, proves public trace/inspect return
+  `404`, rejects plaintext `direct_post`, and checks relay logs for forbidden
+  sentinels.
 - `serve-smoke`: a local runtime proof for the verifier-in-a-box without a phone
   wallet; it exercises session minting, JAR fetch, trace endpoints, plaintext
   rejection, and redaction. It honors `AUGENMASS_BIN` for native source or
@@ -332,6 +371,12 @@ These are good to show on stage or in a recording:
   admin token is provided.
 - `deployed-cache-guard-smoke`: a no-network local guard that proves required
   hosted-cache proof rejects `http://`, loopback, and private-IP API bases.
+- `deployed-relay-smoke`: an opt-in hosted-relay proof. It skips without
+  `AUGENMASS_DEPLOYED_RELAY_BASE`; with a hosted relay URL and token it checks
+  health, request-object forwarding, public trace/inspect refusal, plaintext
+  rejection, and local trace redaction.
+- `deployed-relay-guard-smoke`: a no-network local guard that proves required
+  hosted-relay proof rejects `http://`, `ws://`, loopback, and private-IP bases.
 - `cache-public-bind-guard-smoke`: a no-network local guard that proves
   `cache serve --host 0.0.0.0` refuses missing admin tokens, empty RP allowlists,
   unsafe upstreams, and `--max-entries 0` before it starts listening.
@@ -343,11 +388,13 @@ These are good to show on stage or in a recording:
   status, authenticated warm, and warmed entries.
 - `hosted-release-proof`: release-checklist alias for
   `deployed-cache-smoke-required`.
+- `hosted-relay-proof`: release-checklist alias for required hosted relay proof.
+  It passed against `https://wallet.augenmass.tech` on 2026-06-25.
 
 ## Backend deployment verdict
 
 Best simple deployment target: Railway or a small VPS/container host. Railway is
-now proven for the current presentation cache backend.
+now proven for the current presentation cache backend and hosted wallet relay.
 
 The Docker image has the right shape for Railway:
 
@@ -380,6 +427,18 @@ AUGENMASS_CACHE_API_BASE=https://cache.augenmass.tech/api
 
 Use the Railway admin token only for `cache warm`, `cache status`, and required
 hosted proof gates. Do not put it in demos, slides, or committed files.
+
+The current hosted relay service is deployed and proven:
+
+```sh
+AUGENMASS_RELAY=augenmass
+AUGENMASS_RELAY_TOKEN=<token>
+```
+
+`https://wallet.augenmass.tech/healthz` returns the relay health JSON, and
+`just hosted-relay-proof` passed against the public domain. The relay remains a
+wallet-only ingress: phone wallets can reach request/response endpoints, while
+trace, inspect, evidence, session APIs, and unsafe debug artifacts stay local.
 
 Cloudflare Containers now have an optional Worker adapter under
 `deploy/cloudflare-containers/`, proven locally with
@@ -479,15 +538,28 @@ Apple notarization acceptance for the submitted standalone CLI ZIP. It is not a
 stapled offline installer proof; a `.pkg` lane needs a Developer ID Installer
 certificate.
 
+macOS stapled installer checkpoint `97385b9c-4c7c-4cb3-ae46-aeff800b3534`
+passed for the local Apple Silicon package:
+
+```sh
+just macos-pkg-notarize
+just macos-pkg-notarization-status
+```
+
+The proof is local under
+`dist/macos-pkg/aarch64-apple-darwin/pkg-notarization-proof.json`, with
+`notaryStatus: Accepted`, `stapled: true`, and `spctlAccepted: true`.
+`pkgutil --check-signature` reports a package signed by
+`Developer ID Installer: Reza Shokri (B4F7YTTM6C)`, `xcrun stapler validate`
+passes, and `spctl --assess --type install` accepts it as
+`source=Notarized Developer ID`.
+
 Not yet fully proven:
 
 - macOS Intel notarization has not been run from this machine yet.
-- macOS ZIPs are accepted by Apple's notary service but are not stapled; a
-  stapled `.pkg` or `.dmg` release path is still future polish.
-- The `.pkg` lane now exists as `just macos-pkg-notarize`, but it requires a
-  `Developer ID Installer` identity. The provided `p12.p12` contained
-  `Developer ID Application`, which signs apps/CLIs but cannot sign flat
-  installer packages.
+- macOS ZIPs are accepted by Apple's notary service but are not stapled; use
+  the stapled `.pkg` for the polished Apple Silicon macOS install path.
+- macOS Intel `.pkg` notarization has not been run from this machine yet.
 - Windows binaries are not code-signed.
 
 The code is Rust-only, and native release archives are now proven for the main

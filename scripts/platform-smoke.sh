@@ -52,7 +52,7 @@ run_target() {
   fi
 
   echo "CHECK ${target}"
-  cargo check --locked --target "${target}" --all-targets
+  cargo check --workspace --locked --target "${target}" --all-targets
   echo "PASS ${target}"
 }
 
