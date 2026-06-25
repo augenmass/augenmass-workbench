@@ -188,3 +188,13 @@ Needs a phone before promotion:
   variable patterns, preserving the leak check while making it robust to
   leading hyphens. Verified with direct `relay-smoke` and a full `just verify`
   pass after the fix.
+- 2026-06-25: Extended the no-phone encrypted runtime proof to cover the
+  trust/status path through the real response handler. The test generates a
+  runtime PID issuer leaf signed by a generated trust anchor, carries the leaf
+  in the SD-JWT `x5c`, embeds a token-status-list reference, configures
+  `serve` with the generated trust anchor plus the existing dedicated status
+  signer fixture, and uses the recording status fetcher to return the clear
+  status-list token. The resulting encrypted `direct_post.jwt` run must verify,
+  trust-anchor, fetch status exactly once, record `STATUS_CHECKED`, and keep the
+  trace redacted. `just auditor-no-phone-proof` now runs both runtime tests via
+  the `encrypted_direct_post_runtime_` pattern.
