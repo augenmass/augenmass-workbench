@@ -16,9 +16,11 @@ use p256::ecdsa::{Signature, SigningKey, VerifyingKey};
 use p256::pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePublicKey, LineEnding};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use ssi::claims::sd_jwt::SdJwt;
 use ssi::jwk::JWK;
 
 use augenmass_core::crypto::decrypt_jwe;
+use augenmass_core::disclosure::revealed_claims;
 use augenmass_core::{
     verify_pid_presentation_full, RequestBinding, StatusInput, TrustOptions, PID_VCT,
 };
@@ -114,6 +116,61 @@ pub struct ReplayEvent {
     pub detail: Option<Value>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct EvidenceProfile {
+    session: String,
+    signature: String,
+    entries: usize,
+    replay_events: usize,
+    presentations: Vec<PresentationProfile>,
+    readiness: ProfileReadiness,
+    redacted: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct PresentationProfile {
+    presentation_sha256: String,
+    issuer_header: IssuerHeaderProfile,
+    issuer_claim_fields: Vec<String>,
+    vct: Option<String>,
+    disclosed_claim_keys: Vec<String>,
+    status_list: StatusListProfile,
+    redacted: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct IssuerHeaderProfile {
+    alg: Option<String>,
+    typ: Option<String>,
+    x5c_count: usize,
+    leaf_cert_sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct StatusListProfile {
+    present: bool,
+    idx_present: bool,
+    uri_present: bool,
+    uri_https: bool,
+    uri_host: Option<String>,
+    uri_sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct ProfileReadiness {
+    live_wallet_proven: bool,
+    issuer_x5c_present: bool,
+    status_list_ref_present: bool,
+    trust_anchor_claim_possible: bool,
+    live_status_claim_possible: bool,
+    notes: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SourceManifest {
@@ -192,6 +249,15 @@ pub fn replay(args: VerifyArgs, format: OutputFormat) -> Result<bool> {
     let replay = check.bundle.payload.replay_trace;
     let text = render_replay(&replay, &check.signature_status);
     emit(format, &json!(replay), &text)?;
+    Ok(true)
+}
+
+pub fn profile(args: VerifyArgs, format: OutputFormat) -> Result<bool> {
+    let check = check_bundle(&args.bundle, args.verify_key.as_deref())?;
+    let profile = profile_from_bundle(&check.bundle, &check.signature_status)?;
+    let text = render_profile(&profile);
+    let value = serde_json::to_value(&profile).context("serialize evidence profile")?;
+    emit(format, &value, &text)?;
     Ok(true)
 }
 
@@ -853,6 +919,188 @@ fn presentations_from_decrypted(value: &Value) -> Vec<&str> {
     presentations
 }
 
+fn profile_from_bundle(bundle: &EvidenceBundle, signature_status: &str) -> Result<EvidenceProfile> {
+    let decrypted = decrypted_response(&bundle.payload.entries)?;
+    let presentations = decrypted
+        .as_ref()
+        .map(presentations_from_decrypted)
+        .unwrap_or_default()
+        .into_iter()
+        .map(presentation_profile)
+        .collect::<Result<Vec<_>>>()?;
+    let live_wallet_proven = assert_live_wallet_trace(&bundle.payload.replay_trace).is_ok();
+    let issuer_x5c_present = presentations
+        .iter()
+        .any(|profile| profile.issuer_header.x5c_count > 0);
+    let status_list_ref_present = presentations
+        .iter()
+        .any(|profile| profile.status_list.present);
+    let live_status_claim_possible = presentations
+        .iter()
+        .any(|profile| profile.status_list.present && profile.status_list.uri_https);
+    let trust_anchor_claim_possible = issuer_x5c_present;
+    let mut notes = Vec::new();
+    if trust_anchor_claim_possible {
+        notes.push(
+            "issuer x5c is present; a trust claim still needs the matching external issuer anchor PEM"
+                .to_string(),
+        );
+    } else {
+        notes.push(
+            "issuer x5c is absent; this bundle cannot support a trust-anchor claim".to_string(),
+        );
+    }
+    if live_status_claim_possible {
+        notes.push(
+            "status-list reference is present and HTTPS; a live-status claim still needs the fetched token and trusted status signer"
+                .to_string(),
+        );
+    } else if status_list_ref_present {
+        notes.push(
+            "status-list reference is present but is not an HTTPS URI in the redacted profile"
+                .to_string(),
+        );
+    } else {
+        notes.push("status-list reference is absent; no live-status check is possible from this credential".to_string());
+    }
+
+    Ok(EvidenceProfile {
+        session: bundle.payload.session.clone(),
+        signature: signature_status.to_string(),
+        entries: bundle.payload.entries.len(),
+        replay_events: bundle.payload.replay_trace.events.len(),
+        presentations,
+        readiness: ProfileReadiness {
+            live_wallet_proven,
+            issuer_x5c_present,
+            status_list_ref_present,
+            trust_anchor_claim_possible,
+            live_status_claim_possible,
+            notes,
+        },
+        redacted: true,
+    })
+}
+
+fn presentation_profile(presentation: &str) -> Result<PresentationProfile> {
+    let issuer_jwt = presentation.split('~').next().unwrap_or(presentation);
+    let decoded = jose::decode_compact(issuer_jwt).ok();
+    let header = decoded.as_ref().map(|jwt| &jwt.header);
+    let payload = decoded.as_ref().map(|jwt| &jwt.payload);
+    let issuer_header = issuer_header_profile(header);
+    let issuer_claim_fields = payload.map(object_keys).unwrap_or_default();
+    let vct = payload
+        .and_then(|value| value.get("vct"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let disclosed_claim_keys = disclosed_claim_keys(presentation);
+    let status_list = payload
+        .map(status_list_profile)
+        .unwrap_or_else(absent_status_list_profile);
+
+    Ok(PresentationProfile {
+        presentation_sha256: sha256_hex(presentation.as_bytes()),
+        issuer_header,
+        issuer_claim_fields,
+        vct,
+        disclosed_claim_keys,
+        status_list,
+        redacted: true,
+    })
+}
+
+fn issuer_header_profile(header: Option<&Value>) -> IssuerHeaderProfile {
+    let alg = header
+        .and_then(|value| value.get("alg"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let typ = header
+        .and_then(|value| value.get("typ"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let x5c_count = header
+        .and_then(|value| value.get("x5c"))
+        .map(|x5c| match x5c {
+            Value::Array(items) => items.len(),
+            Value::String(_) => 1,
+            _ => 0,
+        })
+        .unwrap_or(0);
+    let leaf_cert_sha256 = header
+        .and_then(|value| jose::leaf_der_from_x5c(value).ok())
+        .map(|der| sha256_hex(&der));
+    IssuerHeaderProfile {
+        alg,
+        typ,
+        x5c_count,
+        leaf_cert_sha256,
+    }
+}
+
+fn disclosed_claim_keys(presentation: &str) -> Vec<String> {
+    let Some(view) = SdJwt::new(presentation)
+        .ok()
+        .and_then(|sd_jwt| revealed_claims(&sd_jwt).ok())
+    else {
+        return Vec::new();
+    };
+    let mut keys = view
+        .disclosed
+        .iter()
+        .map(|claim| claim.key())
+        .collect::<Vec<_>>();
+    keys.sort();
+    keys.dedup();
+    keys
+}
+
+fn status_list_profile(payload: &Value) -> StatusListProfile {
+    let Some(status_list) = payload.pointer("/status/status_list") else {
+        return absent_status_list_profile();
+    };
+    let idx_present = status_list.get("idx").and_then(Value::as_u64).is_some();
+    let uri = status_list.get("uri").and_then(Value::as_str);
+    let uri_present = uri.is_some();
+    let uri_sha256 = uri.map(|value| sha256_hex(value.as_bytes()));
+    let parsed = uri.and_then(|value| url::Url::parse(value).ok());
+    let uri_https = parsed
+        .as_ref()
+        .map(|value| value.scheme() == "https")
+        .unwrap_or(false);
+    let uri_host = parsed
+        .as_ref()
+        .and_then(url::Url::host_str)
+        .map(ToString::to_string);
+    StatusListProfile {
+        present: true,
+        idx_present,
+        uri_present,
+        uri_https,
+        uri_host,
+        uri_sha256,
+    }
+}
+
+fn absent_status_list_profile() -> StatusListProfile {
+    StatusListProfile {
+        present: false,
+        idx_present: false,
+        uri_present: false,
+        uri_https: false,
+        uri_host: None,
+        uri_sha256: None,
+    }
+}
+
+fn object_keys(value: &Value) -> Vec<String> {
+    let mut keys = value
+        .as_object()
+        .map(|map| map.keys().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    keys.sort();
+    keys
+}
+
 fn request_context_detail(payload: &Value) -> Value {
     let dcql_count = payload
         .get("dcql_query")
@@ -1047,6 +1295,75 @@ fn render_replay(replay: &ReplayTrace, signature_status: &str) -> String {
     out
 }
 
+fn render_profile(profile: &EvidenceProfile) -> String {
+    let mut out = format!(
+        "EVIDENCE PROFILE (redacted)\nsession: {}\nsignature: {}\nentries: {}\nreplayEvents: {}\npresentations: {}\n",
+        profile.session,
+        profile.signature,
+        profile.entries,
+        profile.replay_events,
+        profile.presentations.len()
+    );
+    out.push_str(&format!(
+        "liveWalletProven: {}\nissuerX5cPresent: {}\nstatusListRefPresent: {}\ntrustAnchorClaimPossible: {}\nliveStatusClaimPossible: {}\n",
+        profile.readiness.live_wallet_proven,
+        profile.readiness.issuer_x5c_present,
+        profile.readiness.status_list_ref_present,
+        profile.readiness.trust_anchor_claim_possible,
+        profile.readiness.live_status_claim_possible
+    ));
+    for (idx, presentation) in profile.presentations.iter().enumerate() {
+        out.push_str(&format!(
+            "\npresentation #{}\n  sha256: {}\n  vct: {}\n  issuer alg/typ: {}/{}\n  x5c count: {}\n",
+            idx + 1,
+            presentation.presentation_sha256,
+            presentation.vct.as_deref().unwrap_or("unknown"),
+            presentation.issuer_header.alg.as_deref().unwrap_or("unknown"),
+            presentation.issuer_header.typ.as_deref().unwrap_or("unknown"),
+            presentation.issuer_header.x5c_count,
+        ));
+        if let Some(hash) = &presentation.issuer_header.leaf_cert_sha256 {
+            out.push_str(&format!("  leaf cert sha256: {hash}\n"));
+        }
+        out.push_str(&format!(
+            "  issuer fields: {}\n  disclosed keys: {}\n",
+            list_or_dash(&presentation.issuer_claim_fields),
+            list_or_dash(&presentation.disclosed_claim_keys)
+        ));
+        if presentation.status_list.present {
+            out.push_str(&format!(
+                "  status-list: present, idx={}, uri={}, https={}, host={}\n",
+                presentation.status_list.idx_present,
+                presentation.status_list.uri_present,
+                presentation.status_list.uri_https,
+                presentation
+                    .status_list
+                    .uri_host
+                    .as_deref()
+                    .unwrap_or("redacted")
+            ));
+            if let Some(hash) = &presentation.status_list.uri_sha256 {
+                out.push_str(&format!("  status-list uri sha256: {hash}\n"));
+            }
+        } else {
+            out.push_str("  status-list: absent\n");
+        }
+    }
+    out.push_str("\nnotes:\n");
+    for note in &profile.readiness.notes {
+        out.push_str(&format!("  - {note}\n"));
+    }
+    out
+}
+
+fn list_or_dash(items: &[String]) -> String {
+    if items.is_empty() {
+        "-".to_string()
+    } else {
+        items.join(", ")
+    }
+}
+
 #[cfg(unix)]
 fn tighten_file_permissions(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
@@ -1077,6 +1394,14 @@ mod tests {
             "len": text.len(),
             "sha256": sha256_hex(text.as_bytes()),
         })
+    }
+
+    fn b64_json(value: Value) -> String {
+        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&value).expect("json bytes"))
+    }
+
+    fn fake_compact_jwt(header: Value, payload: Value) -> String {
+        format!("{}.{}.", b64_json(header), b64_json(payload))
     }
 
     fn source_session() -> PathBuf {
@@ -1114,6 +1439,30 @@ mod tests {
             serde_json::to_string_pretty(&manifest).unwrap(),
         )
         .expect("write manifest");
+        root
+    }
+
+    fn source_session_with_auth_response(auth_response: &str) -> PathBuf {
+        let root = source_session();
+        fs::write(root.join("auth-response.json"), auth_response).expect("write auth response");
+        let manifest_path = root.join("debug-manifest.json");
+        let mut manifest: Value =
+            serde_json::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
+        manifest["entries"]
+            .as_array_mut()
+            .expect("entries")
+            .push(json!({
+                "label": "decrypted authorization response",
+                "filename": "auth-response.json",
+                "path": root.join("auth-response.json").display().to_string(),
+                "len": auth_response.len(),
+                "sha256": sha256_hex(auth_response.as_bytes()),
+            }));
+        fs::write(
+            &manifest_path,
+            serde_json::to_string_pretty(&manifest).unwrap(),
+        )
+        .expect("rewrite manifest");
         root
     }
 
@@ -1164,6 +1513,52 @@ mod tests {
         let replay = serde_json::to_string(&bundle.payload.replay_trace).unwrap();
         assert!(!replay.contains("secret-claim"));
         assert!(replay.contains("raw direct_post form body"));
+
+        let _ = fs::remove_dir_all(source);
+    }
+
+    #[test]
+    fn profile_reports_status_readiness_without_payload_values() {
+        let issuer = fake_compact_jwt(
+            json!({
+                "alg": "ES256",
+                "typ": "vc+sd-jwt",
+                "x5c": ["not-a-real-cert"],
+            }),
+            json!({
+                "vct": PID_VCT,
+                "secretValue": "Alice Example",
+                "status": {
+                    "status_list": {
+                        "idx": 42,
+                        "uri": "https://status.example.test/list.jwt"
+                    }
+                }
+            }),
+        );
+        let presentation = format!("{issuer}~disclosure~kb.jwt.sig");
+        let auth_response = serde_json::to_string(&json!({
+            "vp_token": presentation,
+            "state": "abc",
+        }))
+        .unwrap();
+        let source = source_session_with_auth_response(&auth_response);
+        let bundle = build_bundle(&source, None).expect("build bundle");
+
+        let profile = profile_from_bundle(&bundle, "absent").expect("profile");
+        assert_eq!(profile.presentations.len(), 1);
+        assert!(profile.readiness.issuer_x5c_present);
+        assert!(profile.readiness.status_list_ref_present);
+        assert!(profile.readiness.live_status_claim_possible);
+        assert_eq!(
+            profile.presentations[0].status_list.uri_host.as_deref(),
+            Some("status.example.test")
+        );
+
+        let rendered = serde_json::to_string(&profile).unwrap();
+        assert!(rendered.contains("secretValue"));
+        assert!(!rendered.contains("Alice Example"));
+        assert!(!rendered.contains("https://status.example.test/list.jwt"));
 
         let _ = fs::remove_dir_all(source);
     }

@@ -55,3 +55,11 @@ Needs a phone before promotion:
   leaf fields such as `age_equal_or_over.18`, so the inspector can distinguish
   the requested age threshold from wider threshold disclosure. Verified with
   `cargo fmt --check` and `cargo test -p augenmass-core --locked`.
+- 2026-06-25: Added `augenmass evidence profile`, a redacted bundle profiler
+  for auditor readiness. It verifies bundle hashes/replay first, then reports
+  only safe metadata: presentation hashes, issuer header shape, x5c presence,
+  disclosed claim keys, status-list reference presence, HTTPS/host/URI hash,
+  and whether trust-anchor/live-status claims are possible with external trust
+  material. Verified with `cargo fmt --check`,
+  `cargo test -p augenmass-workbench commands::evidence --locked`, and
+  `cargo test -p augenmass-workbench evidence_profile_reports_redacted_readiness --locked`.

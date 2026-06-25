@@ -846,6 +846,48 @@ fn evidence_assert_live_accepts_verified_wallet_bundle() {
 }
 
 #[test]
+fn evidence_profile_reports_redacted_readiness() {
+    let source = live_evidence_source_session();
+    let bundle_dir = test_temp_dir("augenmass-cli-profile-evidence-bundle");
+    let bundle = bundle_dir.join("bundle.json");
+
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    bin()
+        .args(["evidence", "profile", bundle.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(contains("EVIDENCE PROFILE"))
+        .stdout(contains("presentations: 1"))
+        .stdout(contains("issuerX5cPresent: true"))
+        .stdout(contains("trustAnchorClaimPossible: true"));
+
+    let out = bin()
+        .args(["--json", "evidence", "profile", bundle.to_str().unwrap()])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("valid JSON");
+    assert_eq!(value["redacted"], true);
+    assert_eq!(value["presentations"].as_array().unwrap().len(), 1);
+    assert_eq!(value["readiness"]["issuerX5cPresent"], true);
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
+}
+
+#[test]
 fn evidence_assert_live_rejects_plaintext_or_failed_bundle() {
     let source = evidence_source_session();
     let bundle_dir = test_temp_dir("augenmass-cli-failed-evidence-bundle");
