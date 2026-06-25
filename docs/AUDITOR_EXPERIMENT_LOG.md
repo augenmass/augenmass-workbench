@@ -154,3 +154,8 @@ Needs a phone before promotion:
   `341c1ffc-88da-4c75-a13d-981c05c7e263`, and
   `5d3e0451-bdc2-4773-a5f1-1181034de5b3` after the hardening; all still pass
   strict `evidence assert-live` plus the Bundesdruckerei trust/status wrapper.
+- 2026-06-25: Added fail-closed CLI coverage for `evidence prove-trust-status`:
+  revoked status-list token, wrong issuer trust anchor, wrong status signer,
+  conflicting status sources, and missing status source. Focused
+  `cargo test --test cli evidence_` now covers both positive and hostile
+  trust/status bundle proof paths.

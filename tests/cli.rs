@@ -1124,6 +1124,193 @@ fn evidence_prove_trust_status_accepts_redacted_bundle() {
 }
 
 #[test]
+fn evidence_prove_trust_status_rejects_revoked_status() {
+    let source = status_evidence_source_session();
+    let bundle_dir = test_temp_dir("augenmass-cli-status-revoked-evidence-bundle");
+    let bundle = bundle_dir.join("bundle.json");
+
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    bin()
+        .args([
+            "evidence",
+            "prove-trust-status",
+            bundle.to_str().unwrap(),
+            "--trust-anchor",
+            "fixtures/certs/synthetic-pid-anchor.pem",
+            "--status-token",
+            "fixtures/status/status-list-REVOKED.jwt",
+            "--status-key",
+            STATUS_KEY,
+        ])
+        .assert()
+        .failure()
+        .stdout(contains("EVIDENCE TRUST/STATUS REJECTED"))
+        .stdout(contains("reason:"));
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
+}
+
+#[test]
+fn evidence_prove_trust_status_rejects_wrong_anchor() {
+    let source = status_evidence_source_session();
+    let bundle_dir = test_temp_dir("augenmass-cli-status-wrong-anchor-bundle");
+    let bundle = bundle_dir.join("bundle.json");
+
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    bin()
+        .args([
+            "evidence",
+            "prove-trust-status",
+            bundle.to_str().unwrap(),
+            "--trust-anchor",
+            "fixtures/certs/erica-trust-anchor.pem",
+            "--status-token",
+            "fixtures/status/status-list-CLEAR.jwt",
+            "--status-key",
+            STATUS_KEY,
+        ])
+        .assert()
+        .failure()
+        .stdout(contains("EVIDENCE TRUST/STATUS REJECTED"))
+        .stdout(contains("reason:"));
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
+}
+
+#[test]
+fn evidence_prove_trust_status_rejects_wrong_status_key() {
+    let source = status_evidence_source_session();
+    let bundle_dir = test_temp_dir("augenmass-cli-status-wrong-key-bundle");
+    let bundle = bundle_dir.join("bundle.json");
+
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    bin()
+        .args([
+            "evidence",
+            "prove-trust-status",
+            bundle.to_str().unwrap(),
+            "--trust-anchor",
+            "fixtures/certs/synthetic-pid-anchor.pem",
+            "--status-token",
+            "fixtures/status/status-list-CLEAR.jwt",
+            "--status-key",
+            "fixtures/certs/erica-trust-anchor.pem",
+        ])
+        .assert()
+        .failure()
+        .stdout(contains("EVIDENCE TRUST/STATUS REJECTED"))
+        .stdout(contains("reason:"));
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
+}
+
+#[test]
+fn evidence_prove_trust_status_rejects_ambiguous_status_source() {
+    let source = status_evidence_source_session();
+    let bundle_dir = test_temp_dir("augenmass-cli-status-ambiguous-source-bundle");
+    let bundle = bundle_dir.join("bundle.json");
+
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    bin()
+        .args([
+            "evidence",
+            "prove-trust-status",
+            bundle.to_str().unwrap(),
+            "--trust-anchor",
+            "fixtures/certs/synthetic-pid-anchor.pem",
+            "--status-token",
+            "fixtures/status/status-list-CLEAR.jwt",
+            "--fetch-status-token",
+            "--status-key",
+            STATUS_KEY,
+        ])
+        .assert()
+        .failure()
+        .stderr(contains("cannot be used with '--fetch-status-token'"));
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
+}
+
+#[test]
+fn evidence_prove_trust_status_requires_status_source() {
+    let source = status_evidence_source_session();
+    let bundle_dir = test_temp_dir("augenmass-cli-status-missing-source-bundle");
+    let bundle = bundle_dir.join("bundle.json");
+
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    bin()
+        .args([
+            "evidence",
+            "prove-trust-status",
+            bundle.to_str().unwrap(),
+            "--trust-anchor",
+            "fixtures/certs/synthetic-pid-anchor.pem",
+            "--status-key",
+            STATUS_KEY,
+        ])
+        .assert()
+        .failure()
+        .stderr(contains("set --status-token <jwt> or --fetch-status-token"));
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
+}
+
+#[test]
 fn evidence_assert_live_rejects_plaintext_or_failed_bundle() {
     let source = evidence_source_session();
     let bundle_dir = test_temp_dir("augenmass-cli-failed-evidence-bundle");
