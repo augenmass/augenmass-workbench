@@ -5,7 +5,7 @@
     "kind": "mixed-local-preview",
     "note": "macOS target binaries refreshed from the current experiment branch; Linux and Windows targets remain from the v0.2.0 release until the next multi-platform release build",
     "baseRelease": "v0.2.0",
-    "localCommit": "a39cd48"
+    "localCommit": "60c9f05"
   },
   "launchers": [
     "augenmass",
@@ -16,7 +16,7 @@
     {
       "target": "aarch64-apple-darwin",
       "binary": "aarch64-apple-darwin/augenmass",
-      "binarySha256": "4890db367ecac485c65109c54b0878866b9ce42c58433a5c40457f6db5a6e346",
+      "binarySha256": "62323450d1a8889779a867bb62eed55b4eeec2950c990301e7de7ff3765d424e",
       "archive": "local-aarch64-apple-darwin-release-build",
       "archiveSha256": "",
       "sourceManifest": "local-build"
@@ -24,7 +24,7 @@
     {
       "target": "x86_64-apple-darwin",
       "binary": "x86_64-apple-darwin/augenmass",
-      "binarySha256": "bfc762d395130fa3d0625a2fcb39f44c550881df567fc7765719aa0968df675d",
+      "binarySha256": "2456e416cebf47d920ee7816cb39a6d6ccd46f1b0855977711df7ddc4a3777b6",
       "archive": "local-x86_64-apple-darwin-release-build",
       "archiveSha256": "",
       "sourceManifest": "local-build"
