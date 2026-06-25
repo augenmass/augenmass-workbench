@@ -163,3 +163,11 @@ Needs a phone before promotion:
   strongest automated proof we can run without a handset: strict encrypted
   evidence CLI tests, evidence unit tests, request-side serve runtime test,
   `serve-smoke`, evidence proof command exposure, and wrapper shell syntax.
+- 2026-06-25: Ran the full `just verify` gate on
+  `codex/auditor-proof-experiment` at commit `2ef1059`. It passed the complete
+  local suite: formatting, Clippy, workspace tests, build, over-ask/regbody
+  smoke checks, DCQL validation, the Bundesdruckerei wrapper shell check, relay
+  source guard, and `relay-smoke`. The relay smoke confirmed the local relay
+  still forwards only wallet-facing paths, refuses public trace/inspect access,
+  rejects plaintext `direct_post`, keeps the local trace redacted, and emits
+  redacted relay logs.
