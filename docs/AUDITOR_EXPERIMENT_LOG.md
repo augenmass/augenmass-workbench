@@ -38,6 +38,7 @@ Can be developed without a phone:
 - Exercise trust/status code against existing fixtures.
 - Research available sandbox trust/status metadata from checked-in docs and
   public metadata endpoints.
+- Automate no-phone reachability checks for public trust/status material.
 - Update docs and proof language.
 
 Needs a phone before promotion:
@@ -104,3 +105,10 @@ Needs a phone before promotion:
   pass. The full gate includes the local relay smoke and proves the public relay
   still forwards only wallet-facing endpoints while local traces remain
   redacted.
+- 2026-06-25: Added `just bundesdruckerei-preprod-material-smoke`, a no-phone
+  live-material smoke for the current preprod PID provider. It fetches the
+  provider root page, root CA, status signer certificate, and BMI trustlist JWT
+  with byte caps and HTTPS guards, parses the certs/JWT through the CLI, and
+  prints only safe hashes and aggregate counts. This proves reachability and
+  parseability of public trust/status material, not a completed wallet
+  presentation.

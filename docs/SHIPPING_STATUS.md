@@ -584,6 +584,9 @@ binaries may require manual OS approval after checksum verification.
   `--live-status` to produce a live trace containing `STATUS_CHECKED`. The
   Bundesdruckerei preprod provider publishes the required root and signer
   certificates; captured evidence already verifies offline with those inputs.
+  Run `just bundesdruckerei-preprod-material-smoke` before a demo to confirm the
+  public root, signer, and BMI trustlist material are still reachable and
+  parseable.
 - Keep the known-good phone-wallet proof local or in a private evidence store.
   The exported bundles and raw debug artifacts are sensitive and intentionally
   ignored by git.
@@ -602,6 +605,13 @@ For the latest public sandbox aggregate before a demo or website update:
 
 ```sh
 just public-sandbox-snapshot
+```
+
+For the latest Bundesdruckerei preprod trust/status material before a trust or
+revocation demo:
+
+```sh
+just bundesdruckerei-preprod-material-smoke
 ```
 
 Last observed snapshot from this checkout:

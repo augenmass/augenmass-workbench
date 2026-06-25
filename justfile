@@ -150,6 +150,10 @@ live-cache-smoke:
 public-sandbox-snapshot:
     ./scripts/public-sandbox-snapshot.sh
 
+# Verify Bundesdruckerei preprod PID trust/status material is reachable and parseable without a phone.
+bundesdruckerei-preprod-material-smoke:
+    ./scripts/bundesdruckerei-preprod-material-smoke.sh
+
 # Verify an already deployed cache backend when AUGENMASS_DEPLOYED_CACHE_API_BASE is set.
 deployed-cache-smoke:
     ./scripts/deployed-cache-smoke.sh

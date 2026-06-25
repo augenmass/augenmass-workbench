@@ -42,6 +42,14 @@ sandbox registry:
 just public-sandbox-snapshot
 ```
 
+If the presentation will mention issuer trust or live revocation material for
+the current Bundesdruckerei preprod PID provider, check that the public material
+is still reachable and parseable before the phone scan:
+
+```sh
+just bundesdruckerei-preprod-material-smoke
+```
+
 If the presentation depends on stable sandbox reads, start and warm the local
 cached-sandbox mirror before the live segment:
 
@@ -165,7 +173,10 @@ $BIN serve \
 For the current Bundesdruckerei preprod sandbox PID provider, the issuer trust
 anchor and status-list signer are separate certificates. The provider root page
 links both: `certificates/root-ca.crt` for `--trust-anchor`, and
-`certificates/signer.crt` for `--status-signer`.
+`certificates/signer.crt` for `--status-signer`. The
+`bundesdruckerei-preprod-material-smoke` target checks those URLs plus the BMI
+trustlist JWT without needing a phone, but it does not prove a completed wallet
+presentation.
 
 Without `--key` and `--leaf`, the tool uses a throwaway development certificate.
 That is fine for proving the debugger mechanics, but do not claim it proves the

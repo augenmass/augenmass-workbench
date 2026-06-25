@@ -136,6 +136,7 @@ just codex-plugin-smoke
 just serve-smoke
 just live-cache-smoke
 just public-sandbox-snapshot
+just bundesdruckerei-preprod-material-smoke
 just deployed-cache-guard-smoke
 just cache-public-bind-guard-smoke
 just deployed-cache-smoke
@@ -150,10 +151,13 @@ just docker-smoke-no-cache
 ```
 
 `live-cache-smoke` intentionally touches `https://sandbox.eudi-wallet.org/api`.
-It does not use sandbox credentials. `live-sandbox-smoke` skips without
-credentials, dry-runs sandbox registration when credentials are present, and
-only writes if `AUGENMASS_LIVE_SANDBOX_WRITE=1` is set. The Docker smokes
-require a running Docker daemon. None of these gates starts remote GitHub CI.
+It does not use sandbox credentials. `bundesdruckerei-preprod-material-smoke`
+fetches public Bundesdruckerei/BMI trust-status material and checks it is
+reachable and parseable, but does not prove a phone-wallet presentation.
+`live-sandbox-smoke` skips without credentials, dry-runs sandbox registration
+when credentials are present, and only writes if `AUGENMASS_LIVE_SANDBOX_WRITE=1`
+is set. The Docker smokes require a running Docker daemon. None of these gates
+starts remote GitHub CI.
 
 ## Stable rehearsal sequence
 
