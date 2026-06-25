@@ -120,3 +120,9 @@ Needs a phone before promotion:
   `evidence assert-live`: `assert-live` proves the encrypted phone-wallet spine,
   while `prove-trust-status` proves issuer trust and supplied status-list
   validity for the captured authorization response.
+- 2026-06-25: Extended `evidence prove-trust-status` with
+  `--fetch-status-token`, an opt-in mode that fetches the referenced
+  token-status-list from the captured credential URI through the same hardened
+  public-address fetch path used by `serve --live-status`. This removes the
+  manual status-token copy/paste step for live evidence while keeping
+  `--status-token` available for fully offline proof.

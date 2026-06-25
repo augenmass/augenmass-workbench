@@ -1313,7 +1313,7 @@ notes: trust/status/over-ask are not claimed by evidence assert-live; use the li
 ## `evidence prove-trust-status`
 
 ```
-Usage: augenmass evidence prove-trust-status [OPTIONS] --trust-anchor <TRUST_ANCHOR> --status-token <STATUS_TOKEN> --status-key <STATUS_KEY> <BUNDLE>
+Usage: augenmass evidence prove-trust-status [OPTIONS] --trust-anchor <TRUST_ANCHOR> --status-key <STATUS_KEY> <BUNDLE>
 ```
 
 Arguments:
@@ -1324,15 +1324,18 @@ Options:
 
 - `--verify-key <VERIFY_KEY>`: optional P-256 public key PEM for signature verification.
 - `--trust-anchor <TRUST_ANCHOR>`: PID issuer trust anchor PEM, as a file path or inline PEM.
-- `--status-token <STATUS_TOKEN>`: status-list token (`statuslist+jwt`), as a file path or inline compact JWT.
+- `--status-token <STATUS_TOKEN>`: status-list token (`statuslist+jwt`), as a file path or inline compact JWT. Use this for fully offline/reproducible proof.
+- `--fetch-status-token`: fetch the status-list token from the credential's captured HTTPS status URI. This uses the same guarded public-address fetch path as `serve --live-status`: HTTPS only, no redirects, non-public IPs refused, DNS pinned after vetting, and a body-size cap.
 - `--status-key <STATUS_KEY>`: status-signer public key or certificate PEM, as a file path or inline PEM.
 
 `prove-trust-status` first performs the same bundle verification, then uses the
 captured verification context (`nonce`, `aud`, `vct`, timestamp, freshness
 window) and captured authorization response to re-run presentation verification
-with explicit issuer trust and token-status-list inputs. It prints only safe
-metadata: bundle hash, presentation hash, booleans, and disclosed claim keys.
-It does not print disclosed claim values or raw wallet material.
+with explicit issuer trust and token-status-list inputs. Exactly one of
+`--status-token` or `--fetch-status-token` is required. It prints only safe
+metadata: bundle hash, presentation hash, status-token source, booleans, the
+status URI hash, and disclosed claim keys. It does not print disclosed claim
+values or raw wallet material.
 
 Use it alongside `evidence assert-live`: `assert-live` proves the completed
 encrypted phone-wallet exchange, while `prove-trust-status` proves the captured
@@ -1345,6 +1348,7 @@ EVIDENCE TRUST/STATUS PROVEN
 session: <session>
 payloadSha256: <sha256>
 signature: absent|valid with embedded key|valid with supplied key
+statusTokenSource: supplied|fetched
 presentations: <n>
 redacted: true
 
@@ -1356,6 +1360,7 @@ presentation #1
   status checked: true
   status-list ref: true
   disclosed keys: <keys>
+  status uri sha256: <sha256>
 ```
 
 Example:
@@ -1369,7 +1374,7 @@ augenmass evidence replay evidence.json
 augenmass evidence assert-live evidence.json
 augenmass evidence prove-trust-status evidence.json \
   --trust-anchor pid-issuer-anchor.pem \
-  --status-token status-list.jwt \
+  --fetch-status-token \
   --status-key pid-status-signer.pem
 ```
 

@@ -133,20 +133,21 @@ bundle proves a completed encrypted phone-wallet presentation. If the trace ends
 in `REJECTED` or `ERROR`, keep it as a debugging artifact, not as proof of a
 successful demo.
 
-If you also have the PID issuer anchor, the status-list token referenced by the
-credential, and the status signer certificate/public key, run the explicit
-trust/status gate:
+If you also have the PID issuer anchor and the status signer certificate/public
+key, run the explicit trust/status gate. The tool can safely fetch the
+referenced status-list token from the captured credential URI:
 
 ```sh
 $AUGENMASS evidence prove-trust-status "$BUNDLE" \
   --trust-anchor pid-issuer-anchor.pem \
-  --status-token status-list.jwt \
+  --fetch-status-token \
   --status-key pid-status-signer.pem
 ```
 
 Use both claims together: `assert-live` proves the completed phone-wallet
 exchange, while `prove-trust-status` proves the captured presentation under the
-supplied trust/status inputs. The proof output stays redacted.
+supplied trust/status inputs. The proof output stays redacted. For fully offline
+proof, replace `--fetch-status-token` with `--status-token status-list.jwt`.
 
 ## Handling sensitive material
 

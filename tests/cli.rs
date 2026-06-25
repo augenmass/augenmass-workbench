@@ -1028,6 +1028,7 @@ fn evidence_prove_trust_status_accepts_redacted_bundle() {
     let value: serde_json::Value = serde_json::from_slice(&out).expect("valid JSON");
     assert_eq!(value["valid"], true);
     assert_eq!(value["redacted"], true);
+    assert_eq!(value["statusTokenSource"], "supplied");
     assert_eq!(value["presentations"][0]["trustAnchored"], true);
     assert_eq!(value["presentations"][0]["statusChecked"], true);
 

@@ -29,6 +29,7 @@ use augenmass_core::{
 use crate::jose;
 use crate::output::{emit, OutputFormat};
 use crate::serve::artifacts::sha256_hex;
+use crate::serve::state::StatusFetcher;
 use crate::x509util::signer_jwk_from_pem;
 
 const BUNDLE_KIND: &str = "augenmass-evidence-bundle";
@@ -53,7 +54,8 @@ pub struct TrustStatusArgs {
     pub bundle: PathBuf,
     pub verify_key: Option<PathBuf>,
     pub trust_anchor: String,
-    pub status_token: String,
+    pub status_token: Option<String>,
+    pub fetch_status_token: bool,
     pub status_key: String,
 }
 
@@ -189,6 +191,7 @@ struct TrustStatusProof {
     session: String,
     signature: String,
     payload_sha256: String,
+    status_token_source: String,
     presentations: Vec<TrustStatusPresentationProof>,
     redacted: bool,
     notes: Vec<String>,
@@ -203,6 +206,7 @@ struct TrustStatusPresentationProof {
     trust_anchored: bool,
     status_checked: bool,
     status_list_ref_present: bool,
+    status_uri_sha256: Option<String>,
     disclosed_claim_keys: Vec<String>,
     redacted: bool,
 }
@@ -329,11 +333,33 @@ pub fn assert_live(args: VerifyArgs, format: OutputFormat) -> Result<bool> {
     Ok(true)
 }
 
-pub fn prove_trust_status(args: TrustStatusArgs, format: OutputFormat) -> Result<bool> {
+pub async fn prove_trust_status(args: TrustStatusArgs, format: OutputFormat) -> Result<bool> {
+    prove_trust_status_with_fetcher(args, format, &StatusFetcher::Http).await
+}
+
+async fn prove_trust_status_with_fetcher(
+    args: TrustStatusArgs,
+    format: OutputFormat,
+    fetcher: &StatusFetcher,
+) -> Result<bool> {
     let check = check_bundle(&args.bundle, args.verify_key.as_deref())?;
+    let token_source = match (&args.status_token, args.fetch_status_token) {
+        (Some(_), false) => "supplied",
+        (None, true) => "fetched",
+        (Some(_), true) => {
+            bail!("use either --status-token or --fetch-status-token, not both");
+        }
+        (None, false) => {
+            bail!("set --status-token <jwt> or --fetch-status-token");
+        }
+    };
 
     let trust_anchor_pem = read_text_arg(&args.trust_anchor)?;
-    let status_token = read_text_arg(&args.status_token)?;
+    let supplied_status_token = args
+        .status_token
+        .as_deref()
+        .map(read_text_arg)
+        .transpose()?;
     let status_key_pem = read_text_arg(&args.status_key)?;
     let anchors = TrustAnchors::from_pem(&trust_anchor_pem).context("load trust anchor PEM")?;
     let status_signer = signer_jwk_from_pem(&status_key_pem).context("load status signer PEM")?;
@@ -352,10 +378,23 @@ pub fn prove_trust_status(args: TrustStatusArgs, format: OutputFormat) -> Result
             nonce: context.nonce.clone(),
             aud: context.aud.clone(),
         };
+        let status_token = match supplied_status_token.as_ref() {
+            Some(token) => token.trim().to_string(),
+            None => {
+                fetch_status_token_for_presentation(
+                    presentation,
+                    &binding,
+                    &context,
+                    &anchors,
+                    fetcher,
+                )
+                .await?
+            }
+        };
         let options = TrustOptions {
             anchors: Some(&anchors),
             status: StatusInput::Token {
-                jws: status_token.trim().to_string(),
+                jws: status_token,
                 signer: status_signer.clone(),
             },
         };
@@ -388,6 +427,10 @@ pub fn prove_trust_status(args: TrustStatusArgs, format: OutputFormat) -> Result
                     trust_anchored: true,
                     status_checked: true,
                     status_list_ref_present: true,
+                    status_uri_sha256: pid
+                        .status_ref
+                        .as_ref()
+                        .map(|status_ref| sha256_hex(status_ref.uri.as_bytes())),
                     disclosed_claim_keys,
                     redacted: true,
                 });
@@ -426,6 +469,7 @@ pub fn prove_trust_status(args: TrustStatusArgs, format: OutputFormat) -> Result
         session: check.bundle.payload.session,
         signature: check.signature_status,
         payload_sha256: check.payload_sha256,
+        status_token_source: token_source.to_string(),
         presentations: proofs,
         redacted: true,
         notes: vec![
@@ -441,6 +485,32 @@ pub fn prove_trust_status(args: TrustStatusArgs, format: OutputFormat) -> Result
     let value = serde_json::to_value(&proof).context("serialize trust/status proof")?;
     emit(format, &value, &text)?;
     Ok(true)
+}
+
+async fn fetch_status_token_for_presentation(
+    presentation: &str,
+    binding: &RequestBinding,
+    context: &VerificationContext,
+    anchors: &TrustAnchors,
+    fetcher: &StatusFetcher,
+) -> Result<String> {
+    let verified = verify_pid_presentation_full(
+        presentation,
+        binding,
+        &context.vct,
+        context.max_age_secs,
+        context.now_unix,
+        &TrustOptions {
+            anchors: Some(anchors),
+            status: StatusInput::None,
+        },
+    )
+    .map_err(|reason| anyhow::anyhow!("{:?}: {}", reason.kind, reason.reason))?;
+    let status_ref = verified
+        .status_ref
+        .as_ref()
+        .context("presentation has no token-status-list reference")?;
+    fetcher.fetch(&status_ref.uri).await
 }
 
 fn build_bundle(session_dir: &Path, signing_key: Option<&Path>) -> Result<EvidenceBundle> {
@@ -1494,10 +1564,11 @@ fn render_replay(replay: &ReplayTrace, signature_status: &str) -> String {
 
 fn render_trust_status_proof(proof: &TrustStatusProof) -> String {
     let mut out = format!(
-        "EVIDENCE TRUST/STATUS PROVEN\nsession: {}\npayloadSha256: {}\nsignature: {}\npresentations: {}\nredacted: true\n",
+        "EVIDENCE TRUST/STATUS PROVEN\nsession: {}\npayloadSha256: {}\nsignature: {}\nstatusTokenSource: {}\npresentations: {}\nredacted: true\n",
         proof.session,
         proof.payload_sha256,
         proof.signature,
+        proof.status_token_source,
         proof.presentations.len(),
     );
     for (idx, presentation) in proof.presentations.iter().enumerate() {
@@ -1512,6 +1583,9 @@ fn render_trust_status_proof(proof: &TrustStatusProof) -> String {
             presentation.status_list_ref_present,
             list_or_dash(&presentation.disclosed_claim_keys),
         ));
+        if let Some(hash) = &presentation.status_uri_sha256 {
+            out.push_str(&format!("  status uri sha256: {hash}\n"));
+        }
     }
     out.push_str("\nnotes:\n");
     for note in &proof.notes {
@@ -1797,8 +1871,8 @@ mod tests {
         let _ = fs::remove_dir_all(source);
     }
 
-    #[test]
-    fn prove_trust_status_accepts_fixture_bundle() {
+    #[tokio::test]
+    async fn prove_trust_status_accepts_fixture_bundle() {
         let presentation = fixture("presentations/synthetic-pid-with-status.sdjwt")
             .trim()
             .to_string();
@@ -1817,11 +1891,13 @@ mod tests {
                 bundle: out.clone(),
                 verify_key: None,
                 trust_anchor: "fixtures/certs/synthetic-pid-anchor.pem".to_string(),
-                status_token: "fixtures/status/status-list-CLEAR.jwt".to_string(),
+                status_token: Some("fixtures/status/status-list-CLEAR.jwt".to_string()),
+                fetch_status_token: false,
                 status_key: "fixtures/status/status-list-verify-key.pub.pem".to_string(),
             },
             OutputFormat::Json,
         )
+        .await
         .expect("trust/status proof runs");
 
         assert!(ok);
@@ -1860,6 +1936,45 @@ mod tests {
         let profile = profile_from_bundle(&check.bundle, "absent").expect("profile");
         let rendered = serde_json::to_string(&profile).unwrap();
         assert!(!rendered.contains("Alice Example"));
+
+        let _ = fs::remove_dir_all(source);
+        let _ = fs::remove_file(out);
+    }
+
+    #[tokio::test]
+    async fn prove_trust_status_can_fetch_status_token_with_safe_fetcher() {
+        let presentation = fixture("presentations/synthetic-pid-with-status.sdjwt")
+            .trim()
+            .to_string();
+        let auth_response = serde_json::to_string(&json!({
+            "vp_token": presentation,
+            "state": "abc",
+        }))
+        .unwrap();
+        let source = source_session_with_auth_response(&auth_response);
+        let bundle = build_bundle(&source, None).expect("build bundle");
+        let out = unique_temp("augenmass-evidence-fetch-status").join("bundle.json");
+        write_bundle(&out, &bundle).expect("write bundle");
+        let counter = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let fetcher = StatusFetcher::Recording(counter.clone());
+
+        let ok = prove_trust_status_with_fetcher(
+            TrustStatusArgs {
+                bundle: out.clone(),
+                verify_key: None,
+                trust_anchor: "fixtures/certs/synthetic-pid-anchor.pem".to_string(),
+                status_token: None,
+                fetch_status_token: true,
+                status_key: "fixtures/status/status-list-verify-key.pub.pem".to_string(),
+            },
+            OutputFormat::Json,
+            &fetcher,
+        )
+        .await
+        .expect("trust/status proof fetches status token");
+
+        assert!(ok);
+        assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 1);
 
         let _ = fs::remove_dir_all(source);
         let _ = fs::remove_file(out);

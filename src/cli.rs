@@ -255,7 +255,10 @@ enum EvidenceCmd {
         trust_anchor: String,
         /// Status-list token (statuslist+jwt), as a file path or inline compact JWT.
         #[arg(long)]
-        status_token: String,
+        status_token: Option<String>,
+        /// Fetch the status-list token from the credential's captured HTTPS status URI.
+        #[arg(long, conflicts_with = "status_token")]
+        fetch_status_token: bool,
         /// Status-signer public key or certificate PEM, as a file path or inline PEM.
         #[arg(long)]
         status_key: String,
@@ -501,7 +504,7 @@ pub async fn run() -> Result<()> {
             exit_if(bad);
         }
         Command::Evidence { what } => {
-            let ok = run_evidence(what, fmt)?;
+            let ok = run_evidence(what, fmt).await?;
             exit_if(!ok);
         }
         Command::Register(cmd) => {
@@ -597,7 +600,7 @@ fn resolve_cache_port(port: Option<u16>) -> u16 {
     .unwrap_or(DEFAULT_CACHE_PORT)
 }
 
-fn run_evidence(what: EvidenceCmd, fmt: OutputFormat) -> Result<bool> {
+async fn run_evidence(what: EvidenceCmd, fmt: OutputFormat) -> Result<bool> {
     match what {
         EvidenceCmd::Export {
             session_dir,
@@ -631,17 +634,22 @@ fn run_evidence(what: EvidenceCmd, fmt: OutputFormat) -> Result<bool> {
             verify_key,
             trust_anchor,
             status_token,
+            fetch_status_token,
             status_key,
-        } => evidence::prove_trust_status(
-            evidence::TrustStatusArgs {
-                bundle,
-                verify_key,
-                trust_anchor,
-                status_token,
-                status_key,
-            },
-            fmt,
-        ),
+        } => {
+            evidence::prove_trust_status(
+                evidence::TrustStatusArgs {
+                    bundle,
+                    verify_key,
+                    trust_anchor,
+                    status_token,
+                    fetch_status_token,
+                    status_key,
+                },
+                fmt,
+            )
+            .await
+        }
     }
 }
 
