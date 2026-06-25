@@ -5,6 +5,7 @@
 //! is exercised by `just verify` and the `clone_server` unit test, not here.
 
 use assert_cmd::Command;
+use augenmass_core::crypto::{encrypt_jwe, generate_response_encryption_key_pair};
 use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
 use serde_json::json;
@@ -50,6 +51,16 @@ fn write_evidence_source_artifact(
         "len": text.len(),
         "sha256": sha256_hex(text.as_bytes()),
     })
+}
+
+fn encrypted_direct_post_artifacts(auth_response: &str) -> (String, String) {
+    let (private_jwk, public_jwk) =
+        generate_response_encryption_key_pair("enc-test").expect("generate response enc key");
+    let payload: serde_json::Value =
+        serde_json::from_str(auth_response).expect("auth response value");
+    let response = encrypt_jwe(&payload, &public_jwk).expect("encrypt direct_post.jwt");
+    let private_jwk = serde_json::to_string(&private_jwk).expect("private jwk json");
+    (format!("response={response}&state=abc"), private_jwk)
 }
 
 fn evidence_source_session() -> PathBuf {
@@ -127,6 +138,7 @@ fn live_evidence_source_session() -> PathBuf {
         "vct": "urn:eudi:pid:de:1",
     }))
     .expect("verification context json");
+    let (direct_post_body, private_jwk) = encrypted_direct_post_artifacts(&auth_response);
     let entries = vec![
         write_evidence_source_artifact(
             &dir,
@@ -144,7 +156,13 @@ fn live_evidence_source_session() -> PathBuf {
             &dir,
             "direct-post.body",
             "raw direct_post form body",
-            "response=not-a-real-jwe&state=abc",
+            &direct_post_body,
+        ),
+        write_evidence_source_artifact(
+            &dir,
+            "session-enc-key.jwk",
+            "session response encryption private JWK",
+            &private_jwk,
         ),
         write_evidence_source_artifact(
             &dir,
@@ -171,6 +189,39 @@ fn live_evidence_source_session() -> PathBuf {
         serde_json::to_string_pretty(&manifest).expect("manifest json"),
     )
     .expect("write live evidence source manifest");
+    dir
+}
+
+fn artifact_only_live_evidence_source_session() -> PathBuf {
+    let dir = live_evidence_source_session();
+    fs::write(
+        dir.join("direct-post.body"),
+        "response=not-a-real-jwe&state=abc",
+    )
+    .expect("replace direct_post body");
+    fs::remove_file(dir.join("session-enc-key.jwk")).expect("remove session key");
+
+    let manifest_path = dir.join("debug-manifest.json");
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&manifest_path).expect("manifest"))
+            .expect("manifest json");
+    let entries = manifest
+        .get_mut("entries")
+        .and_then(serde_json::Value::as_array_mut)
+        .expect("entries");
+    entries.retain(|entry| entry["filename"] != "session-enc-key.jwk");
+    for entry in entries {
+        if entry["filename"] == "direct-post.body" {
+            let text = fs::read_to_string(dir.join("direct-post.body")).expect("body");
+            entry["len"] = json!(text.len());
+            entry["sha256"] = json!(sha256_hex(text.as_bytes()));
+        }
+    }
+    fs::write(
+        &manifest_path,
+        serde_json::to_string_pretty(&manifest).expect("manifest json"),
+    )
+    .expect("write manifest");
     dir
 }
 
@@ -211,6 +262,7 @@ fn status_evidence_source_session() -> PathBuf {
         "vct": "urn:eudi:pid:de:1",
     }))
     .expect("verification context json");
+    let (direct_post_body, private_jwk) = encrypted_direct_post_artifacts(&auth_response);
     let entries = vec![
         write_evidence_source_artifact(
             &dir,
@@ -228,7 +280,13 @@ fn status_evidence_source_session() -> PathBuf {
             &dir,
             "direct-post.body",
             "raw direct_post form body",
-            "response=not-a-real-jwe&state=abc",
+            &direct_post_body,
+        ),
+        write_evidence_source_artifact(
+            &dir,
+            "session-enc-key.jwk",
+            "session response encryption private JWK",
+            &private_jwk,
         ),
         write_evidence_source_artifact(
             &dir,
@@ -924,6 +982,35 @@ fn evidence_assert_live_accepts_verified_wallet_bundle() {
     assert_eq!(value["claims"]["presentationVerified"], true);
     assert_eq!(value["claims"]["trustChecked"], false);
     assert_eq!(value["claims"]["overAskAnalyzed"], false);
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
+}
+
+#[test]
+fn evidence_assert_live_requires_decryptable_direct_post_jwt() {
+    let source = artifact_only_live_evidence_source_session();
+    let bundle_dir = test_temp_dir("augenmass-cli-artifact-only-live-evidence");
+    let bundle = bundle_dir.join("bundle.json");
+
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    bin()
+        .args(["evidence", "assert-live", bundle.to_str().unwrap()])
+        .assert()
+        .failure()
+        .stderr(contains(
+            "evidence bundle does not contain session-enc-key.jwk",
+        ));
 
     let _ = fs::remove_dir_all(source);
     let _ = fs::remove_dir_all(bundle_dir);

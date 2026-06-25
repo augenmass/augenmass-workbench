@@ -304,6 +304,7 @@ pub fn profile(args: VerifyArgs, format: OutputFormat) -> Result<bool> {
 pub fn assert_live(args: VerifyArgs, format: OutputFormat) -> Result<bool> {
     let check = check_bundle(&args.bundle, args.verify_key.as_deref())?;
     let proof = assert_live_wallet_trace(&check.bundle.payload.replay_trace)?;
+    strict_decrypted_response_from_direct_post(&check.bundle.payload.entries)?;
     let text = format!(
         "LIVE WALLET EVIDENCE PROVEN\nsession: {}\nrequiredEvents: {}\nreplayEvents: {}\npayloadSha256: {}\nsignature: {}\nredacted: true\nnotes: trust/status/over-ask are not claimed by evidence assert-live; use the live trace and explicit gates for those.\n",
         check.bundle.payload.session,
@@ -958,18 +959,43 @@ fn decrypt_from_direct_post(entries: &[EvidenceEntry]) -> Result<Option<Value>> 
     ) else {
         return Ok(None);
     };
-    let body = String::from_utf8(entry_bytes(body_entry)?)
-        .with_context(|| format!("artifact {} is not UTF-8", body_entry.filename))?;
-    let response = AuthorizationResponse::from_x_www_form_urlencoded(body.as_bytes())
-        .context("parse direct_post body")?;
-    let AuthorizationResponse::Jwt(jwt) = response else {
+    let Some(jwt) = encrypted_response_from_body(body_entry)? else {
         return Ok(None);
     };
+    decrypt_direct_post_jwt(&jwt, key_entry).map(Some)
+}
+
+fn strict_decrypted_response_from_direct_post(entries: &[EvidenceEntry]) -> Result<Value> {
+    let body_entry = find_entry(entries, "direct-post.body")
+        .context("evidence bundle does not contain direct-post.body")?;
+    let key_entry = find_entry(entries, "session-enc-key.jwk")
+        .context("evidence bundle does not contain session-enc-key.jwk")?;
+    let jwt = encrypted_response_from_body(body_entry)?
+        .context("direct-post.body is not an encrypted direct_post.jwt response")?;
+    let decrypted = decrypt_direct_post_jwt(&jwt, key_entry)?;
+    if let Some(artifact) = json_entry(entries, "auth-response.json")? {
+        if decrypted != artifact {
+            bail!("auth-response.json does not match direct-post.body decrypted with session-enc-key.jwk");
+        }
+    }
+    Ok(decrypted)
+}
+
+fn encrypted_response_from_body(entry: &EvidenceEntry) -> Result<Option<String>> {
+    let body = String::from_utf8(entry_bytes(entry)?)
+        .with_context(|| format!("artifact {} is not UTF-8", entry.filename))?;
+    let response = AuthorizationResponse::from_x_www_form_urlencoded(body.as_bytes())
+        .context("parse direct_post body")?;
+    Ok(match response {
+        AuthorizationResponse::Jwt(jwt) => Some(jwt.response),
+        _ => None,
+    })
+}
+
+fn decrypt_direct_post_jwt(jwt: &str, key_entry: &EvidenceEntry) -> Result<Value> {
     let key_bytes = entry_bytes(key_entry)?;
     let key: JWK = serde_json::from_slice(&key_bytes).context("parse session response JWK")?;
-    decrypt_jwe(&jwt.response, &key)
-        .context("decrypt direct_post.jwt from evidence bundle")
-        .map(Some)
+    decrypt_jwe(jwt, &key).context("decrypt direct_post.jwt from evidence bundle")
 }
 
 struct ReplayBuilder {

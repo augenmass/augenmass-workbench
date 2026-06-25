@@ -144,3 +144,13 @@ Needs a phone before promotion:
   `statusTokenSource: fetched`. This is the current strongest demo proof:
   completed phone-wallet exchange plus post-capture Bundesdruckerei preprod
   trust/status verification, with PID-bearing material kept local and redacted.
+- 2026-06-25: Hardened `evidence assert-live` so a successful proof must decrypt
+  the captured `direct-post.body` with the captured `session-enc-key.jwk` and,
+  when `auth-response.json` exists, verify that both payloads match. Added a
+  Rust-only ECDH-ES JWE helper for no-phone harnesses and replaced the positive
+  CLI fixture with a real compact JWE. The regression test now rejects a
+  verified-looking bundle that only carries a synthetic decrypted artifact.
+  Re-exported sessions `4095f1f4-cb16-4930-8773-16c793b78e73`,
+  `341c1ffc-88da-4c75-a13d-981c05c7e263`, and
+  `5d3e0451-bdc2-4773-a5f1-1181034de5b3` after the hardening; all still pass
+  strict `evidence assert-live` plus the Bundesdruckerei trust/status wrapper.

@@ -219,6 +219,7 @@ dependencies = [
  "josekit",
  "openid4vp",
  "p256",
+ "rand 0.8.6",
  "rcgen",
  "serde",
  "serde_json",

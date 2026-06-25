@@ -16,6 +16,7 @@ ssi = { version = "0.16", features = ["secp256r1"] }
 josekit = { git = "https://github.com/cobward/josekit-rs", rev = "635c8a7" }
 x509-cert = "0.2.4"
 p256 = { version = "0.13", features = ["jwk", "ecdsa", "pem"] }
+rand = "0.8"
 sha2 = "0.10"
 base64 = "0.21"
 serde = { version = "1", features = ["derive"] }
