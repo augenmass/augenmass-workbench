@@ -227,6 +227,41 @@ proves a completed encrypted phone-wallet presentation to the workbench
 verifier." Add separate wording for trust/status/over-ask only if those steps
 were explicitly configured and observed.
 
+## Known-good demo result
+
+On 2026-06-25, the staged phone flow was proven with the hosted wallet-only
+relay, the registrar-issued leaf, and the age-only request:
+
+```sh
+$BIN serve \
+  --relay augenmass \
+  --key ../secrets/rp.key \
+  --leaf fixtures/certs/access-leaf.pem \
+  --age-only \
+  --unsafe-debug-artifacts "$DEBUG_DIR"
+```
+
+Two real sandbox-wallet sessions reached the full encrypted wallet spine:
+
+```text
+SESSION_CREATED
+REQUEST_BUILT
+REQUEST_OBJECT_FETCHED
+RESPONSE_RECEIVED
+RESPONSE_DECRYPTED
+VERIFIED
+OVER_ASK_ANALYZED
+```
+
+Both exported bundles passed `evidence verify` and `evidence assert-live`.
+Those bundles are intentionally not committed because they are marked
+`sensitive: true`; keep them local or in a private evidence store only.
+
+If a wallet response fails with `KbTimeInvalid: ... premature claim`, update to
+commit `4f152cd` or newer. That release accepts a tightly bounded 5-second
+future clock skew for freshly minted KB-JWTs while keeping the 300-second
+freshness window.
+
 ## What to say if it does not complete
 
 - If the phone cannot open the URL: the `--public-url` is unreachable from the

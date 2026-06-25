@@ -76,13 +76,23 @@ pub fn landing_page(state: &AppState, session_id: &Uuid, auth_url: &str) -> Stri
     } else {
         "<p class=\"banner ok\">Signing with the registrar-issued leaf.</p>"
     };
+    let request_blurb = if state.request_profile.starts_with("age-only") {
+        "The phone-demo ask: only whether the PID says age over 18. No name, family name, birthdate, address, or nationality. Reloading this page starts a fresh request (a new session and QR)."
+    } else {
+        "The minimal ask: given name, family name, and over-18. Nothing else. Reloading this page starts a fresh request (a new session and QR)."
+    };
+    let inspect_label = if state.request_profile.starts_with("age-only") {
+        "Inspect this request (age-only)"
+    } else {
+        "Inspect this request (minimal)"
+    };
 
     let body = format!(
         "<header><h1>Present your German PID</h1>\
          <p class=\"sub\">ERICA checks whether the protocol is valid. This checks whether the relying party is asking responsibly, and traces the whole exchange so you can debug it.</p></header>\
          <main>{mode}\
          <section class=\"card\"><h3>Scan to present</h3>\
-         <p class=\"blurb\">The minimal ask: given name, family name, and over-18. Nothing else. Reloading this page starts a fresh request (a new session and QR).</p>\
+         <p class=\"blurb\">{request_blurb}</p>\
          <div class=\"qr\">{qr}</div>\
          <p class=\"mono\"><code>{auth}</code></p>\
          <p>client_id: <code>{cid}</code></p></section>\
@@ -91,16 +101,18 @@ pub fn landing_page(state: &AppState, session_id: &Uuid, auth_url: &str) -> Stri
          <p><a class=\"btn\" href=\"{trace}\">Open the live trace</a></p></section>\
          <section class=\"card\"><h3>Inspect the request</h3>\
          <p class=\"blurb\">See the over-ask analysis without presenting anything.</p>\
-         <p><a class=\"btn ghost\" href=\"{inspect}\">Inspect this request (minimal)</a> \
+         <p><a class=\"btn ghost\" href=\"{inspect}\">{inspect_label}</a> \
          <a class=\"btn ghost\" href=\"{inspect}?demo=overask\">Inspect an over-asking variant</a></p>\
          <p class=\"blurb\">Signed request object (for ERICA): <code>{req}</code></p></section></main>\
          <footer><p class=\"note\">Sandbox shortcuts are labelled. The minimal baseline is a curated judgment, not a Rulebook derivation.</p></footer>",
         mode = mode,
+        request_blurb = request_blurb,
         qr = qr,
         auth = esc(auth_url),
         trace = esc(&trace),
         cid = esc(&state.client_id),
         inspect = esc(&inspect),
+        inspect_label = inspect_label,
         req = esc(&request_url),
     );
     page("Present your German PID", "", &body)
