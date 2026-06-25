@@ -100,13 +100,14 @@ pub fn check_status_list_token(
             format!("status token payload is not JSON: {e}"),
         )
     })?;
-    let status_list = claims.get("status_list").ok_or_else(|| {
+    let mut status_list = claims.get("status_list").cloned().ok_or_else(|| {
         reject(
             RejectKind::StatusListUnavailable,
             "status token has no status_list claim",
         )
     })?;
-    let jsl: JsonStatusList = serde_json::from_value(status_list.clone()).map_err(|e| {
+    normalize_status_list_encoding(&mut status_list);
+    let jsl: JsonStatusList = serde_json::from_value(status_list).map_err(|e| {
         reject(
             RejectKind::StatusListUnavailable,
             format!("status_list claim is malformed: {e}"),
@@ -167,6 +168,63 @@ pub fn check_presentation_status(
     }
 }
 
+fn normalize_status_list_encoding(status_list: &mut Value) {
+    let Some(lst) = status_list.get_mut("lst") else {
+        return;
+    };
+    let Some(raw) = lst.as_str() else {
+        return;
+    };
+    let mut padded = raw.replace('-', "+").replace('_', "/");
+    let remainder = padded.len() % 4;
+    if remainder == 0 || remainder == 1 {
+        if padded != raw {
+            *lst = Value::String(padded);
+        }
+        return;
+    }
+    for _ in 0..(4 - remainder) {
+        padded.push('=');
+    }
+    *lst = Value::String(padded);
+}
+
 fn reject(kind: RejectKind, reason: impl Into<String>) -> RejectReason {
     RejectReason::new(kind, reason)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn normalizes_unpadded_status_list_encoding() {
+        let mut value = json!({
+            "bits": 1,
+            "lst": "eNpjYEAFAAAQAAE"
+        });
+        normalize_status_list_encoding(&mut value);
+        assert_eq!(value["lst"], "eNpjYEAFAAAQAAE=");
+    }
+
+    #[test]
+    fn normalizes_url_safe_status_list_encoding() {
+        let mut value = json!({
+            "bits": 1,
+            "lst": "ab-_"
+        });
+        normalize_status_list_encoding(&mut value);
+        assert_eq!(value["lst"], "ab+/");
+    }
+
+    #[test]
+    fn leaves_invalid_base64_length_unchanged() {
+        let mut value = json!({
+            "bits": 1,
+            "lst": "abcde"
+        });
+        normalize_status_list_encoding(&mut value);
+        assert_eq!(value["lst"], "abcde");
+    }
 }

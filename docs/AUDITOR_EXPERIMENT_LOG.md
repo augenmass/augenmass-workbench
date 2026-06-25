@@ -63,3 +63,17 @@ Needs a phone before promotion:
   material. Verified with `cargo fmt --check`,
   `cargo test -p augenmass-workbench commands::evidence --locked`, and
   `cargo test -p augenmass-workbench evidence_profile_reports_redacted_readiness --locked`.
+- 2026-06-25: Profiled the latest local phone evidence bundles. The two iOS
+  bundles profile cleanly. The previous Android bundle fails strict replay
+  determinism after the nested-disclosure change, but re-exporting from its
+  local unsafe-debug source with this branch produces a valid bundle. All three
+  latest phone credentials carry an issuer x5c leaf and an HTTPS status-list
+  reference on the Bundesdruckerei preprod PID provider.
+- 2026-06-25: Fixed status-list decoding for the live sandbox token shape. The
+  sandbox status-list token uses unpadded base64 in `status_list.lst`; the core
+  verifier now normalizes unpadded/base64url list encodings after JWS signature
+  verification and before status-list bit decoding. A local redacted probe
+  fetched the Android credential's referenced `application/statuslist+jwt` and
+  `augenmass verify status` returned `VALID` using the issuer leaf carried in
+  the credential. This proves live status mechanics and reachability, but not
+  external PID issuer trust anchoring.
