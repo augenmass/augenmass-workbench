@@ -257,6 +257,12 @@ AUGENMASS_DEPLOYED_RELAY_TOKEN=<secret> \
   just hosted-relay-proof
 ```
 
+On 2026-06-25, the Railway relay at `https://wallet.augenmass.tech` had
+propagated DNS, a valid certificate, and passed `just hosted-relay-proof`
+against the public domain. That proof checks health, byte-for-byte request
+object forwarding, public trace/inspect refusal, plaintext `direct_post`
+rejection, and local trace redaction.
+
 Do not claim phone-wallet ingress is ready until the hosted proof passes against
 the actual public domain.
 

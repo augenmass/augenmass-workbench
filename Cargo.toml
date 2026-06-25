@@ -36,6 +36,7 @@ qrcode = "0.14"
 rand = "0.8"
 rcgen = "0.13"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+rustls = { version = "0.23", features = ["ring"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 p256 = { version = "0.13", features = ["jwk", "ecdsa", "pem", "pkcs8"] }
 serde = { version = "1", features = ["derive"] }

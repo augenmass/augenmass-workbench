@@ -1,6 +1,6 @@
 # Shipping status
 
-Last local verification: 2026-06-24.
+Last local verification: 2026-06-25.
 
 This page is the short operator verdict for the Workbench as it stands before the
 EUDI On presentation. It is deliberately practical: what is proven, what can be
@@ -21,8 +21,8 @@ The strongest presentation path is skill first, CLI underneath:
 2. Have it decode and explain the artifact without leaking raw secrets.
 3. Show an over-ask request being blocked with a cited legal basis.
 4. Verify a real committed PID presentation fixture and hostile variants.
-5. Use `serve` for the live wallet-interaction debugger if the phone/network
-   setup is ready.
+5. Use `serve --relay augenmass` for the live wallet-interaction debugger with
+   a real phone wallet over `https://wallet.augenmass.tech`.
 6. Use `cache serve`, `cache warm`, and `cache status` to keep sandbox reads stable
    and inspect what is cached.
 
@@ -290,7 +290,7 @@ schema `HIT`. `cache status` showed three warmed entries for schema metadata,
 schema vocabularies, and the configured demo RP registration list. The admin
 token is set in Railway and is not committed.
 
-Latest hosted-relay deployment state on 2026-06-24:
+Latest hosted-relay deployment proof on 2026-06-25:
 
 - Railway project: `augenmass-workbench-cache`
 - Service: `relay`
@@ -298,19 +298,28 @@ Latest hosted-relay deployment state on 2026-06-24:
 - Status: `SUCCESS`
 - Runtime log: `augenmass relay listening addr=0.0.0.0:8080`
 - Volume: none; the relay is stateless.
-- Custom domain requested: `https://wallet.augenmass.tech`
+- Custom domain: `https://wallet.augenmass.tech`
+- DNS: `wallet.augenmass.tech` CNAME resolves to `gu10iony.up.railway.app`.
+- Domain verification: Railway TXT verification is true.
+- Certificate: valid Railway ECDSA certificate for `wallet.augenmass.tech`.
 
-The relay service is running, but hosted proof is blocked on DNS/certificate
-completion for `wallet.augenmass.tech`. Railway requires:
+The public health endpoint returned the relay health JSON:
 
-```text
-CNAME wallet.augenmass.tech -> gu10iony.up.railway.app
-TXT   _railway-verify.wallet.augenmass.tech -> railway-verify=c7f97fe392cf9d37fe28dd3926cdffc7eed70548a0312410e16d72058635fb33
+```sh
+curl --max-time 20 -i https://wallet.augenmass.tech/healthz
 ```
 
-Until that DNS is live and Railway issues the certificate, `curl
-https://wallet.augenmass.tech/healthz` and `just hosted-relay-proof` cannot
-pass. The relay auth token is set in Railway and mirrored locally only in
+The required hosted proof passed:
+
+```sh
+just hosted-relay-proof
+```
+
+It started local `augenmass serve`, opened a temporary run through the deployed
+relay, proved the public request object is forwarded byte-for-byte, proved
+public trace/inspect routes are not exposed, rejected plaintext `direct_post`
+with HTTP 422 through the relay, and confirmed the local trace stayed redacted.
+The relay auth token is set in Railway and mirrored locally only in
 `.env.relay.local`, which is gitignored.
 
 ## Presentation-safe surfaces
@@ -380,13 +389,12 @@ These are good to show on stage or in a recording:
 - `hosted-release-proof`: release-checklist alias for
   `deployed-cache-smoke-required`.
 - `hosted-relay-proof`: release-checklist alias for required hosted relay proof.
-  It is intentionally not green until the `wallet.augenmass.tech` DNS/cert step
-  above is complete.
+  It passed against `https://wallet.augenmass.tech` on 2026-06-25.
 
 ## Backend deployment verdict
 
 Best simple deployment target: Railway or a small VPS/container host. Railway is
-now proven for the current presentation cache backend.
+now proven for the current presentation cache backend and hosted wallet relay.
 
 The Docker image has the right shape for Railway:
 
@@ -420,17 +428,17 @@ AUGENMASS_CACHE_API_BASE=https://cache.augenmass.tech/api
 Use the Railway admin token only for `cache warm`, `cache status`, and required
 hosted proof gates. Do not put it in demos, slides, or committed files.
 
-The current hosted relay service is deployed and running, but its branded domain
-still needs DNS:
+The current hosted relay service is deployed and proven:
 
 ```sh
 AUGENMASS_RELAY=augenmass
 AUGENMASS_RELAY_TOKEN=<token>
 ```
 
-Use it only after `https://wallet.augenmass.tech/healthz` returns the relay
-health JSON and `just hosted-relay-proof` passes. Before that, the local
-`just relay-smoke` result proves the relay mechanics, not the public domain.
+`https://wallet.augenmass.tech/healthz` returns the relay health JSON, and
+`just hosted-relay-proof` passed against the public domain. The relay remains a
+wallet-only ingress: phone wallets can reach request/response endpoints, while
+trace, inspect, evidence, session APIs, and unsafe debug artifacts stay local.
 
 Cloudflare Containers now have an optional Worker adapter under
 `deploy/cloudflare-containers/`, proven locally with
