@@ -241,7 +241,11 @@ $BIN serve \
   --unsafe-debug-artifacts "$DEBUG_DIR"
 ```
 
-Two real sandbox-wallet sessions reached the full encrypted wallet spine:
+Two real sandbox-wallet sessions reached the full encrypted wallet spine. A
+later rehearsal in the same venue setup confirmed the flow again with both
+wallet families: iOS reached `PresentationSuccess` in the wallet logs and the
+workbench trace reached `VERIFIED`; Android showed "Data sent successfully" and
+the wallet log recorded "Verifier accepted the response."
 
 ```text
 SESSION_CREATED
@@ -253,9 +257,15 @@ VERIFIED
 OVER_ASK_ANALYZED
 ```
 
-Both exported bundles passed `evidence verify` and `evidence assert-live`.
-Those bundles are intentionally not committed because they are marked
+The exported bundles passed `evidence verify` and `evidence assert-live`. Those
+bundles are intentionally not committed because they are marked
 `sensitive: true`; keep them local or in a private evidence store only.
+
+This known-good proof supports the stage claim that a real phone wallet
+completed an encrypted OpenID4VP presentation to the workbench verifier through
+the hosted relay, and that the workbench decrypted and verified the presentation
+with holder binding. It does not support issuer trust-anchor or live revocation
+claims unless the run is repeated with `--trust-anchor` and `--live-status`.
 
 If a wallet response fails with `KbTimeInvalid: ... premature claim`, update to
 commit `4f152cd` or newer. That release accepts a tightly bounded 5-second

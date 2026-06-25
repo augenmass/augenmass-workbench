@@ -349,6 +349,14 @@ These are good to show on stage or in a recording:
   `evidence assert-live`: signed, projector-safe replay of captured local debug
   artifacts, plus a post-capture gate that proves a completed encrypted
   phone-wallet run before we claim one.
+- Real phone-wallet proof: on 2026-06-25, `serve --relay augenmass --age-only`
+  with the registrar-issued leaf completed against the sandbox iOS and Android
+  wallets. The workbench traces reached `REQUEST_OBJECT_FETCHED`,
+  `RESPONSE_RECEIVED`, `RESPONSE_DECRYPTED`, `VERIFIED`, and
+  `OVER_ASK_ANALYZED`; exported bundles passed `evidence verify` and
+  `evidence assert-live`. Android showed a visible "Data sent successfully"
+  screen. iOS logged `PresentationSuccess`; a post-success blank/white-screen
+  UI issue belongs to the wallet UI, not the verifier protocol path.
 - `cache serve`, `cache warm`, and `cache status`: a small backend for stable
   cached-sandbox reads plus an operator view of the protected cache inventory.
 - `public-sandbox-snapshot`: a no-credentials live-data report for presentation
@@ -571,9 +579,12 @@ binaries may require manual OS approval after checksum verification.
 
 ## Remaining polish
 
-- Record a live wallet run with `serve --unsafe-debug-artifacts`, export it, and
-  run `evidence assert-live` if network/public URL setup cooperates. The
-  operator checklist is `docs/PHONE_WALLET_PROOF.md`.
+- Optional auditor-grade extension: repeat the phone-wallet proof with a PID
+  issuer `--trust-anchor` and `--live-status` once the sandbox trust/status
+  material is stable enough to claim issuer anchoring and revocation status.
+- Keep the known-good phone-wallet proof local or in a private evidence store.
+  The exported bundles and raw debug artifacts are sensitive and intentionally
+  ignored by git.
 - Keep GitHub CI manual-only unless runner-minute spending is explicitly
   approved.
 - If the public sandbox is unstable, prewarm the cache with:
