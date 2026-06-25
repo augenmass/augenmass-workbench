@@ -101,6 +101,8 @@ pub(crate) enum StatusFetcher {
     Http,
     #[cfg(test)]
     Recording(std::sync::Arc<std::sync::atomic::AtomicUsize>),
+    #[cfg(test)]
+    RecordingToken(std::sync::Arc<std::sync::atomic::AtomicUsize>, &'static str),
 }
 
 pub(crate) enum SessionResult {
@@ -162,6 +164,11 @@ impl StatusFetcher {
                 ))
                 .trim()
                 .to_string())
+            }
+            #[cfg(test)]
+            Self::RecordingToken(counter, token) => {
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Ok(token.trim().to_string())
             }
         }
     }

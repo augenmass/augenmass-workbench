@@ -198,3 +198,11 @@ Needs a phone before promotion:
   trust-anchor, fetch status exactly once, record `STATUS_CHECKED`, and keep the
   trace redacted. `just auditor-no-phone-proof` now runs both runtime tests via
   the `encrypted_direct_post_runtime_` pattern.
+- 2026-06-25: Added hostile encrypted runtime coverage for live revocation. The
+  same generated trust-anchor/issuer setup now runs against the revoked
+  status-list fixture and must return 422, record `STATUS_CHECKED` as bad,
+  record `REJECTED`, remove the session encryption key, and keep the trace
+  redacted. The runtime happy-path test also now asserts nested age-object
+  disclosure accounting at the trace layer: the request is not over-asking, but
+  the wallet response over-discloses five unrequested age thresholds, so the
+  `OVER_ASK_ANALYZED` event is a warning with `overDisclosedCount: 5`.

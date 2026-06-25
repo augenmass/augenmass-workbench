@@ -653,21 +653,30 @@ async fn record_over_ask(st: &AppState, sid: Uuid, disclosed: &[String]) {
         st.baseline.as_ref(),
         disclosed,
     );
-    let over = report.has_over_ask();
-    let level = if over {
+    let over_ask = report.has_over_ask();
+    let over_disclosed_count = report.over_disclosed.len();
+    let has_issue = over_ask || over_disclosed_count > 0;
+    let level = if has_issue {
         TraceLevel::Warn
     } else {
         TraceLevel::Good
+    };
+    let summary = if !over_ask && over_disclosed_count > 0 {
+        format!("Wallet over-disclosed {over_disclosed_count} claim(s) not requested")
+    } else {
+        report.verdict_line.clone()
     };
     st.trace
         .record_at(
             sid,
             TraceKind::OverAskAnalyzed,
             level,
-            report.verdict_line.clone(),
+            summary,
             Some(json!({
                 "verdict": report.verdict_line,
-                "overAsk": over,
+                "overAsk": over_ask,
+                "overDisclosed": report.over_disclosed,
+                "overDisclosedCount": over_disclosed_count,
                 "purpose": report.purpose,
                 "beyondPurpose": report.counts.beyond_purpose,
                 "beyondRegistration": report.counts.beyond_registration,
@@ -1135,6 +1144,7 @@ mod tests {
         root: PathBuf,
         anchor_pem: String,
         counter: Arc<AtomicUsize>,
+        status_token: &'static str,
     ) -> Arc<AppState> {
         let trust_anchors =
             TrustAnchors::from_pem(&anchor_pem).expect("parse runtime trust anchor");
@@ -1159,7 +1169,7 @@ mod tests {
             "age-only German PID query (age_equal_or_over.18)",
             pid::pid_query(&[&["age_equal_or_over", "18"]]),
         );
-        state.status_fetcher = StatusFetcher::Recording(counter);
+        state.status_fetcher = StatusFetcher::RecordingToken(counter, status_token);
         Arc::new(state)
     }
 
@@ -1573,6 +1583,10 @@ mod tests {
             root.clone(),
             anchor_pem,
             counter.clone(),
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/fixtures/status/status-list-CLEAR.jwt"
+            )),
         )
         .await;
         let (sid, _) = create_request(&state).await.expect("request");
@@ -1614,6 +1628,87 @@ mod tests {
         }
         let trace_text = serde_json::to_string(&trace).expect("trace JSON");
         assert!(trace_text.contains("status-list entry 42 is VALID"));
+        assert!(!trace_text.contains("Runtime Secret"));
+        assert!(!trace_text.contains(&encrypted));
+        let over_ask = trace
+            .events
+            .iter()
+            .find(|event| event.code == "OVER_ASK_ANALYZED")
+            .expect("over-ask event");
+        assert_eq!(over_ask.level, TraceLevel::Warn);
+        assert!(over_ask.summary.contains("over-disclosed 5"));
+        let detail = over_ask.detail.as_ref().expect("over-ask detail");
+        assert_eq!(detail["overAsk"], false);
+        assert_eq!(detail["overDisclosedCount"], 5);
+        assert_eq!(detail["beyondPurpose"], 0);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn encrypted_direct_post_runtime_rejects_revoked_live_status() {
+        let root = std::env::temp_dir().join(format!("augenmass-runtime-{}", Uuid::new_v4()));
+        let (issuer_jwk, anchor_pem) = runtime_issuer_jwk_signed_by_anchor();
+        let counter = Arc::new(AtomicUsize::new(0));
+        let state = age_only_state_for_trust_status_runtime_proof(
+            root.clone(),
+            anchor_pem,
+            counter.clone(),
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/fixtures/status/status-list-REVOKED.jwt"
+            )),
+        )
+        .await;
+        let (sid, _) = create_request(&state).await.expect("request");
+        let _ = get_request_object(State(state.clone()), Path(sid.to_string()))
+            .await
+            .expect("request object");
+        let (body, encrypted) = encrypted_runtime_direct_post_body(
+            &state,
+            sid,
+            &issuer_jwk,
+            Some(json!({
+                "status_list": {
+                    "idx": 42,
+                    "uri": "https://status.example.test/list.jwt"
+                }
+            })),
+        )
+        .await;
+
+        let (status, Json(value)) =
+            receive_response(State(state.clone()), Path(sid.to_string()), body)
+                .await
+                .expect("revoked response rejected cleanly");
+
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(value["status"], "rejected");
+        assert!(value["reason"]
+            .as_str()
+            .unwrap()
+            .contains("credential is revoked"));
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+        assert!(!state.encryption_keys.lock().await.contains_key(&sid));
+
+        let trace = state.trace.get(sid).await.expect("trace");
+        let codes: Vec<&str> = trace.events.iter().map(|event| event.code).collect();
+        for expected in [
+            "RESPONSE_DECRYPTED",
+            "VERIFIED",
+            "STATUS_CHECKED",
+            "REJECTED",
+        ] {
+            assert!(codes.contains(&expected), "codes: {codes:?}");
+        }
+        let status_event = trace
+            .events
+            .iter()
+            .find(|event| event.code == "STATUS_CHECKED")
+            .expect("status event");
+        assert_eq!(status_event.level, TraceLevel::Bad);
+        assert!(status_event.summary.contains("revoked"));
+        let trace_text = serde_json::to_string(&trace).expect("trace JSON");
         assert!(!trace_text.contains("Runtime Secret"));
         assert!(!trace_text.contains(&encrypted));
 
