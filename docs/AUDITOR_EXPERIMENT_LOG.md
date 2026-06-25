@@ -227,10 +227,16 @@ Needs a phone before promotion:
   canonical `direct-post.body` artifact. Unsafe-debug artifact writes are now
   append-only on filename collision, preserving the first canonical capture and
   suffixing later duplicates such as `direct-post-2.body`.
-- 2026-06-25: Refreshed the committed macOS plugin bundle binaries for
-  `v0.3.0` after confirming the older plugin binary rejected the newest phone
-  evidence bundle with a replay-determinism mismatch. The source-built CLI and
-  refreshed plugin binary both pass strict `evidence assert-live` on the Android
-  proof bundle and report `walletOverDisclosureAnalyzed`; Linux and Windows
-  plugin targets remain the `v0.2.0` release binaries until the next full
-  multi-platform release rebuild.
+- 2026-06-25: Refreshed the committed plugin bundle binaries for `v0.3.0`
+  across macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64 after
+  confirming stale target binaries could hide the newest phone-proof and
+  trust/status behavior. The source-built CLI and refreshed plugin binaries pass
+  strict `evidence assert-live` on the Android proof bundle and report
+  `walletOverDisclosureAnalyzed`.
+- 2026-06-25: Closed the follow-up audit findings before treating `v0.3.0` as
+  shippable: URL-safe status-list `lst` values now remain URL-safe while
+  padding is restored, array disclosures such as `nationalities` map to the
+  modeled parent claim, live status rejects credentials without a status-list
+  reference, `prove-trust-status` rejects mixed valid/invalid presentation
+  bundles, and status-signer PEM parsing rejects ambiguous multi-certificate
+  input.

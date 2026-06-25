@@ -19,8 +19,8 @@ artifact and registrar guardrail toolkit into a demonstrable EUDI Wallet
 workbench: a real phone wallet can scan a QR, fetch the signed OpenID4VP request,
 post an encrypted response through the hosted relay, and leave behind a redacted
 evidence bundle that can be verified later. The macOS plugin binaries are
-refreshed from this branch; Linux and Windows plugin binaries still point at the
-published `v0.2.0` release until the next full multi-platform rebuild.
+refreshed from this branch, and the Linux/Windows plugin binaries are refreshed
+from the same `v0.3.0` release workflow artifacts.
 
 ### Added
 
@@ -51,11 +51,10 @@ published `v0.2.0` release until the next full multi-platform rebuild.
 
 ### Changed
 
-- The macOS plugin bundle binaries are refreshed from the current release branch
-  and now print `augenmass 0.3.0`.
-- Documentation now treats `0.3.0` as the presentation/demo release line and
-  keeps `v0.2.0` as the published cross-platform binary baseline for Linux and
-  Windows until a full rebuild happens.
+- The plugin bundle binaries are refreshed from the current release branch for
+  macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64; each target now
+  prints `augenmass 0.3.0`.
+- Documentation now treats `0.3.0` as the presentation/demo release line.
 - `serve --unsafe-debug-artifacts` keeps the first canonical artifact when a
   wallet retries the response after success, and writes later captures with a
   suffix such as `direct-post-2.body`.
@@ -67,6 +66,9 @@ published `v0.2.0` release until the next full multi-platform rebuild.
   canonical unsafe artifact.
 - Stale macOS plugin binary behavior: the committed macOS plugin launcher now
   accepts the newest phone proof bundle and reports `walletOverDisclosureAnalyzed`.
+- Stale Linux and Windows plugin binary behavior: bundled non-macOS targets now
+  come from the same `v0.3.0` workflow artifacts as the release line, not the
+  older `v0.2.0` release.
 
 ### Security
 
@@ -77,8 +79,6 @@ published `v0.2.0` release until the next full multi-platform rebuild.
 
 ### Known Caveats
 
-- Linux and Windows plugin target binaries remain `v0.2.0` release binaries in
-  this mixed bundle.
 - The hosted relay is suitable for controlled demos and operator use; a broader
   public service needs operational policy, monitoring, and abuse controls.
 - The proof bundles are sensitive and intentionally not committed.

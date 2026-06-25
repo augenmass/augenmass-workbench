@@ -32,6 +32,7 @@ fi
 
 cargo_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
 expected_version="augenmass ${cargo_version}"
+expected_binary_marker="augenmass/${cargo_version}"
 
 jq -e \
   --arg version "${cargo_version}" \
@@ -57,6 +58,10 @@ for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu 
     echo "plugin target binary hash mismatch for ${target}" >&2
     echo "manifest sha: ${manifest_sha}" >&2
     echo "binary sha:   ${binary_sha}" >&2
+    exit 1
+  fi
+  if ! grep -aFq "${expected_binary_marker}" "${ROOT}/plugins/augenmass-workbench/bin/${binary_path}"; then
+    echo "plugin target binary version marker mismatch for ${target}: expected '${expected_binary_marker}'" >&2
     exit 1
   fi
 done

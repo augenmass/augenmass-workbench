@@ -16,7 +16,7 @@ The current branch is the `v0.3.0` EUDI On presentation release, not a README-on
 
 - A platform-aware Claude Code/Codex plugin bundle with native launcher targets for macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64.
 - Published `v0.2.0` release archives with checksums and provenance manifests for the main desktop targets.
-- Current `v0.3.0` line for live wallet proof, hosted relay, evidence replay, and the presentation-ready macOS plugin bundle. Linux and Windows plugin targets remain from `v0.2.0` until the next full multi-platform rebuild.
+- Current `v0.3.0` line for live wallet proof, hosted relay, evidence replay, and the presentation-ready plugin bundle across macOS, Linux, and Windows targets.
 - A stapled Apple Silicon macOS `.pkg`, signed by Developer ID Installer and accepted by Gatekeeper as `source=Notarized Developer ID`.
 - A deployed cached-sandbox backend at `https://cache.augenmass.tech/api` for stable public sandbox reads and demo prewarming.
 - A deployed wallet-only relay at `https://wallet.augenmass.tech`, proven with `just hosted-relay-proof`, so a phone wallet can reach `augenmass serve` without exposing trace, inspect, evidence, or unsafe debug artifacts publicly. The hosted relay is protected; operators configure the token through `AUGENMASS_RELAY_TOKEN`.
@@ -63,7 +63,7 @@ When the plugin was installed from a marketplace without the full repository che
 
 ## CLI and bundled launcher
 
-The plugin includes a small launcher plus native target binaries for macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64. The macOS targets are refreshed from the `v0.3.0` branch; the Linux and Windows targets remain `v0.2.0` release binaries until the next full multi-platform rebuild. The skill resolves `AUGENMASS_BIN` first; otherwise it uses the bundled launcher and picks the matching target binary. Set `AUGENMASS_BIN` when you want to override the bundled binary, use an unsupported target, or point the skill at a source-built binary.
+The plugin includes a small launcher plus native `v0.3.0` target binaries for macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64. The skill resolves `AUGENMASS_BIN` first; otherwise it uses the bundled launcher and picks the matching target binary. Set `AUGENMASS_BIN` when you want to override the bundled binary, use an unsupported target, or point the skill at a source-built binary.
 
 For the polished macOS Apple Silicon install path, use the stapled `.pkg`
 produced by `just macos-pkg-notarize`; the current local proof validates the

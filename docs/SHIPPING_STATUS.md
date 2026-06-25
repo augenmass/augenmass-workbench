@@ -58,11 +58,11 @@ That proves:
   advertised command surfaces through both Claude Code and Codex metadata checks.
 - `just plugin-bundle-freshness` verifies the plugin bundle manifest, version,
   launcher, and every committed target-binary hash.
-- On this experiment branch, the macOS plugin target binaries have been
+- On this experiment branch, all four committed plugin target binaries
+  (macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64) have been
   refreshed for `v0.3.0` and expose the latest evidence replay,
-  `walletOverDisclosureAnalyzed`, and append-only unsafe artifact behavior.
-  Linux and Windows bundle targets remain from the `v0.2.0` release until a
-  full multi-platform release rebuild is cut.
+  `walletOverDisclosureAnalyzed`, fail-closed trust/status proof behavior, and
+  append-only unsafe artifact behavior.
 - The repo-local Claude Code marketplace validates with `--strict`, installs
   `augenmass-workbench@augenmass` in a temporary `HOME`, and reports it enabled.
 - The repo-local Codex marketplace installs `augenmass-workbench@augenmass` in a
