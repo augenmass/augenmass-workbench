@@ -538,15 +538,28 @@ Apple notarization acceptance for the submitted standalone CLI ZIP. It is not a
 stapled offline installer proof; a `.pkg` lane needs a Developer ID Installer
 certificate.
 
+macOS stapled installer checkpoint `97385b9c-4c7c-4cb3-ae46-aeff800b3534`
+passed for the local Apple Silicon package:
+
+```sh
+just macos-pkg-notarize
+just macos-pkg-notarization-status
+```
+
+The proof is local under
+`dist/macos-pkg/aarch64-apple-darwin/pkg-notarization-proof.json`, with
+`notaryStatus: Accepted`, `stapled: true`, and `spctlAccepted: true`.
+`pkgutil --check-signature` reports a package signed by
+`Developer ID Installer: Reza Shokri (B4F7YTTM6C)`, `xcrun stapler validate`
+passes, and `spctl --assess --type install` accepts it as
+`source=Notarized Developer ID`.
+
 Not yet fully proven:
 
 - macOS Intel notarization has not been run from this machine yet.
-- macOS ZIPs are accepted by Apple's notary service but are not stapled; a
-  stapled `.pkg` or `.dmg` release path is still future polish.
-- The `.pkg` lane now exists as `just macos-pkg-notarize`, but it requires a
-  `Developer ID Installer` identity. The provided `p12.p12` contained
-  `Developer ID Application`, which signs apps/CLIs but cannot sign flat
-  installer packages.
+- macOS ZIPs are accepted by Apple's notary service but are not stapled; use
+  the stapled `.pkg` for the polished Apple Silicon macOS install path.
+- macOS Intel `.pkg` notarization has not been run from this machine yet.
 - Windows binaries are not code-signed.
 
 The code is Rust-only, and native release archives are now proven for the main

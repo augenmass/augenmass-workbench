@@ -224,10 +224,26 @@ Installer, submits it to Apple's notary service, staples the ticket, and verifie
 with `pkgutil --check-signature`, `xcrun stapler validate`, and
 `spctl --assess --type install`.
 
-If a `.p12` import only adds `Developer ID Application`, it is the wrong
-certificate for `.pkg` signing. Create/download **Developer ID Installer** in
-Apple Developer Certificates, install it into Keychain, and verify that
-`security find-identity -v` prints a `Developer ID Installer: ...` identity.
+On this machine, `Developer ID Installer: Reza Shokri (B4F7YTTM6C)` produced a
+stapled `aarch64-apple-darwin` package on 2026-06-25:
+
+```text
+submission: 97385b9c-4c7c-4cb3-ae46-aeff800b3534
+pkg: dist/macos-pkg/aarch64-apple-darwin/augenmass-v0.2.0-aarch64-apple-darwin.pkg
+notaryStatus: Accepted
+stapled: true
+spctlAccepted: true
+```
+
+The proof gate is:
+
+```sh
+just macos-pkg-notarization-status
+```
+
+It checks the local proof JSON, then verifies the package again with
+`pkgutil --check-signature`, `xcrun stapler validate`, and
+`spctl --assess --type install`.
 
 Published release `v0.2.0` is available at:
 
