@@ -295,8 +295,8 @@ be byte-identical to a local build because build paths can differ.
 Then tag from a clean tree:
 
 ```sh
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 That tag push starts the release workflow and spends runner minutes. For the
