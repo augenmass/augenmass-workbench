@@ -582,6 +582,37 @@ mod tests {
         }
     }
 
+    #[test]
+    fn mixed_public_and_non_public_resolution_is_rejected() {
+        let public_v4 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34)), 443);
+        let public_v6 = SocketAddr::new(
+            IpAddr::V6(
+                "2606:2800:220:1:248:1893:25c8:1946"
+                    .parse::<Ipv6Addr>()
+                    .unwrap(),
+            ),
+            443,
+        );
+        let denied = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 443);
+
+        let err = vet_resolved_status_addrs(
+            "https://example.com/status",
+            vec![public_v4, denied, public_v6],
+        )
+        .expect_err("mixed public and non-public addresses reject");
+        assert!(
+            err.to_string().contains("10.0.0.1"),
+            "unexpected error: {err}"
+        );
+
+        let resolved = vec![public_v4, public_v6];
+        let vetted = vet_resolved_status_addrs("https://example.com/status", resolved.clone())
+            .expect("public address set passes");
+        let pinned_addrs = vetted.clone();
+        assert_eq!(pinned_addrs, vetted);
+        assert_eq!(pinned_addrs, resolved);
+    }
+
     #[tokio::test]
     async fn http_status_fetcher_rejects_literal_non_public_hosts_before_network() {
         for uri in [

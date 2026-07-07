@@ -1050,8 +1050,12 @@ mod tests {
     use std::sync::Arc;
 
     use base64::prelude::*;
+    use p256::elliptic_curve::ecdh::diffie_hellman;
+    use p256::elliptic_curve::sec1::ToEncodedPoint;
     use p256::pkcs8::DecodePrivateKey;
+    use rand::RngCore;
     use serde::{Deserialize, Serialize};
+    use sha2::Digest;
     use ssi::claims::jws::JwsPayload;
     use ssi::claims::jwt::ClaimSet;
     use ssi::claims::sd_jwt::{ConcealJwtClaims, KbJwtPayload, SdAlg};
@@ -1070,6 +1074,12 @@ mod tests {
     const NOW: i64 = 1780435200;
     const NONCE: &str = "b4ba2623-76a2-486b-a1f6-f1656025d07b";
     const AUD: &str = "https://self-issued.me/v2";
+
+    #[derive(Clone, Copy)]
+    enum RuntimeJweShape {
+        LocalHarness,
+        WalletA128GcmWithPartyInfo,
+    }
 
     fn fixture(rel: &str) -> String {
         let path = format!("{}/fixtures/{rel}", env!("CARGO_MANIFEST_DIR"));
@@ -1306,6 +1316,23 @@ mod tests {
         issuer_jwk: &JWK,
         status: Option<Value>,
     ) -> (String, String) {
+        encrypted_runtime_direct_post_body_with_shape(
+            state,
+            sid,
+            issuer_jwk,
+            status,
+            RuntimeJweShape::LocalHarness,
+        )
+        .await
+    }
+
+    async fn encrypted_runtime_direct_post_body_with_shape(
+        state: &Arc<AppState>,
+        sid: Uuid,
+        issuer_jwk: &JWK,
+        status: Option<Value>,
+        shape: RuntimeJweShape,
+    ) -> (String, String) {
         let jar = state
             .verifier
             .retrieve_authorization_request(sid)
@@ -1316,30 +1343,330 @@ mod tests {
             .payload;
         let nonce = payload["nonce"].as_str().expect("request nonce");
         let aud = payload["client_id"].as_str().expect("request client_id");
-        let mut enc_jwk_value = payload["client_metadata"]["jwks"]["keys"][0].clone();
-        if let Value::Object(map) = &mut enc_jwk_value {
-            // The wallet-facing JWK advertises JWE alg metadata (`ECDH-ES`),
-            // but ssi::JWK's alg enum is JWS-oriented. The key material is what
-            // the local no-phone encrypter needs.
-            map.remove("alg");
-        }
-        let enc_jwk: JWK =
-            serde_json::from_value(enc_jwk_value).expect("response encryption public JWK");
+        let enc_jwk_value = payload["client_metadata"]["jwks"]["keys"][0].clone();
         let presentation = synthetic_runtime_presentation(nonce, aud, issuer_jwk, status).await;
-        let encrypted = encrypt_jwe(
-            &json!({
-                "vp_token": presentation,
-                "state": sid.to_string(),
-            }),
-            &enc_jwk,
-        )
-        .expect("encrypt direct_post.jwt response");
+        let response_payload = json!({
+            "vp_token": presentation,
+            "state": sid.to_string(),
+        });
+        let encrypted = match shape {
+            RuntimeJweShape::LocalHarness => {
+                let mut enc_jwk_value = enc_jwk_value;
+                if let Value::Object(map) = &mut enc_jwk_value {
+                    // The wallet-facing JWK advertises JWE alg metadata (`ECDH-ES`),
+                    // but ssi::JWK's alg enum is JWS-oriented. The key material is what
+                    // the local no-phone encrypter needs.
+                    map.remove("alg");
+                }
+                let enc_jwk: JWK =
+                    serde_json::from_value(enc_jwk_value).expect("response encryption public JWK");
+                encrypt_jwe(&response_payload, &enc_jwk).expect("encrypt direct_post.jwt response")
+            }
+            RuntimeJweShape::WalletA128GcmWithPartyInfo => {
+                wallet_jwe_a128gcm_with_party_info(&response_payload, &enc_jwk_value, sid)
+            }
+        };
         let body = url::form_urlencoded::Serializer::new(String::new())
             .append_pair("response", &encrypted)
             .append_pair("state", &sid.to_string())
             .finish();
         (body, encrypted)
     }
+
+    fn wallet_jwe_a128gcm_with_party_info(
+        payload: &Value,
+        recipient_jwk: &Value,
+        sid: Uuid,
+    ) -> String {
+        let recipient_public = p256_public_key_from_jwk(recipient_jwk);
+        let ephemeral_secret = p256::SecretKey::random(&mut rand::rngs::OsRng);
+        let ephemeral_public = ephemeral_secret.public_key();
+        let apu = b"wallet-runtime-test";
+        let apv = sid.to_string();
+        let kid = recipient_jwk["kid"].as_str().expect("recipient key id");
+        let header = json!({
+            "alg": "ECDH-ES",
+            "enc": "A128GCM",
+            "typ": "JWT",
+            "kid": kid,
+            "apu": BASE64_URL_SAFE_NO_PAD.encode(apu),
+            "apv": BASE64_URL_SAFE_NO_PAD.encode(apv.as_bytes()),
+            "epk": public_jwk_value(&ephemeral_public),
+        });
+        let protected = BASE64_URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(&header).expect("serialize protected JWE header"));
+        let shared_secret = diffie_hellman(
+            ephemeral_secret.to_nonzero_scalar(),
+            recipient_public.as_affine(),
+        );
+        let cek = concat_kdf(
+            "A128GCM",
+            16,
+            shared_secret.raw_secret_bytes().as_ref(),
+            Some(apu),
+            Some(apv.as_bytes()),
+        );
+        let mut iv = [0u8; 12];
+        rand::rngs::OsRng.fill_bytes(&mut iv);
+        let plaintext = serde_json::to_vec(payload).expect("serialize JWE payload");
+        let (ciphertext, tag) = aes_128_gcm_encrypt(&cek, &iv, protected.as_bytes(), &plaintext);
+
+        format!(
+            "{}..{}.{}.{}",
+            protected,
+            BASE64_URL_SAFE_NO_PAD.encode(iv),
+            BASE64_URL_SAFE_NO_PAD.encode(ciphertext),
+            BASE64_URL_SAFE_NO_PAD.encode(tag)
+        )
+    }
+
+    fn p256_public_key_from_jwk(jwk: &Value) -> p256::PublicKey {
+        let x = BASE64_URL_SAFE_NO_PAD
+            .decode(jwk["x"].as_str().expect("JWK x coordinate"))
+            .expect("decode JWK x coordinate");
+        let y = BASE64_URL_SAFE_NO_PAD
+            .decode(jwk["y"].as_str().expect("JWK y coordinate"))
+            .expect("decode JWK y coordinate");
+        let mut sec1 = [0u8; 65];
+        sec1[0] = 0x04;
+        sec1[1..33].copy_from_slice(&x);
+        sec1[33..65].copy_from_slice(&y);
+        p256::PublicKey::from_sec1_bytes(&sec1).expect("parse P-256 public key")
+    }
+
+    fn public_jwk_value(public_key: &p256::PublicKey) -> Value {
+        let point = public_key.to_encoded_point(false);
+        json!({
+            "kty": "EC",
+            "crv": "P-256",
+            "x": BASE64_URL_SAFE_NO_PAD.encode(point.x().expect("public key x coordinate")),
+            "y": BASE64_URL_SAFE_NO_PAD.encode(point.y().expect("public key y coordinate")),
+        })
+    }
+
+    fn concat_kdf(
+        alg: &str,
+        shared_key_len: usize,
+        derived_key: &[u8],
+        apu: Option<&[u8]>,
+        apv: Option<&[u8]>,
+    ) -> Vec<u8> {
+        let mut shared_key = Vec::new();
+        let count = shared_key_len.div_ceil(32);
+        for i in 0..count {
+            let mut hasher = sha2::Sha256::new();
+            hasher.update(&((i + 1) as u32).to_be_bytes());
+            hasher.update(derived_key);
+            hasher.update(&(alg.len() as u32).to_be_bytes());
+            hasher.update(alg.as_bytes());
+            hasher.update(&(apu.map_or(0, <[u8]>::len) as u32).to_be_bytes());
+            if let Some(value) = apu {
+                hasher.update(value);
+            }
+            hasher.update(&(apv.map_or(0, <[u8]>::len) as u32).to_be_bytes());
+            if let Some(value) = apv {
+                hasher.update(value);
+            }
+            hasher.update(&((shared_key_len * 8) as u32).to_be_bytes());
+            shared_key.extend(hasher.finalize());
+        }
+        shared_key.truncate(shared_key_len);
+        shared_key
+    }
+
+    fn aes_128_gcm_encrypt(
+        key: &[u8],
+        iv: &[u8; 12],
+        aad: &[u8],
+        plaintext: &[u8],
+    ) -> (Vec<u8>, [u8; 16]) {
+        let round_keys = aes_128_expand_key(key);
+        let hash_subkey = aes_128_encrypt_block(&[0u8; 16], &round_keys);
+        let mut j0 = [0u8; 16];
+        j0[..12].copy_from_slice(iv);
+        j0[15] = 1;
+
+        let mut counter = j0;
+        let mut ciphertext = Vec::with_capacity(plaintext.len());
+        for chunk in plaintext.chunks(16) {
+            increment_gcm_counter(&mut counter);
+            let stream = aes_128_encrypt_block(&counter, &round_keys);
+            ciphertext.extend(chunk.iter().zip(stream.iter()).map(|(a, b)| a ^ b));
+        }
+
+        let ghash = ghash(&hash_subkey, aad, &ciphertext);
+        let tag_mask = aes_128_encrypt_block(&j0, &round_keys);
+        let mut tag = [0u8; 16];
+        for i in 0..16 {
+            tag[i] = tag_mask[i] ^ ghash[i];
+        }
+        (ciphertext, tag)
+    }
+
+    fn increment_gcm_counter(counter: &mut [u8; 16]) {
+        let value = u32::from_be_bytes(counter[12..16].try_into().unwrap()).wrapping_add(1);
+        counter[12..16].copy_from_slice(&value.to_be_bytes());
+    }
+
+    fn ghash(hash_subkey: &[u8; 16], aad: &[u8], ciphertext: &[u8]) -> [u8; 16] {
+        let h = u128::from_be_bytes(*hash_subkey);
+        let mut y = 0u128;
+        for block in ghash_blocks(aad)
+            .into_iter()
+            .chain(ghash_blocks(ciphertext).into_iter())
+        {
+            y = ghash_multiply(y ^ u128::from_be_bytes(block), h);
+        }
+        let mut lengths = [0u8; 16];
+        lengths[..8].copy_from_slice(&((aad.len() as u64) * 8).to_be_bytes());
+        lengths[8..].copy_from_slice(&((ciphertext.len() as u64) * 8).to_be_bytes());
+        y = ghash_multiply(y ^ u128::from_be_bytes(lengths), h);
+        y.to_be_bytes()
+    }
+
+    fn ghash_blocks(input: &[u8]) -> Vec<[u8; 16]> {
+        input
+            .chunks(16)
+            .map(|chunk| {
+                let mut block = [0u8; 16];
+                block[..chunk.len()].copy_from_slice(chunk);
+                block
+            })
+            .collect()
+    }
+
+    fn ghash_multiply(mut x: u128, mut y: u128) -> u128 {
+        let reduction = 0xe1000000000000000000000000000000u128;
+        let mut z = 0u128;
+        for _ in 0..128 {
+            if x & (1 << 127) != 0 {
+                z ^= y;
+            }
+            if y & 1 == 0 {
+                y >>= 1;
+            } else {
+                y = (y >> 1) ^ reduction;
+            }
+            x <<= 1;
+        }
+        z
+    }
+
+    fn aes_128_expand_key(key: &[u8]) -> [u8; 176] {
+        assert_eq!(key.len(), 16);
+        let mut expanded = [0u8; 176];
+        expanded[..16].copy_from_slice(key);
+        let mut generated = 16;
+        let mut rcon_index = 1;
+        let mut temp = [0u8; 4];
+
+        while generated < expanded.len() {
+            temp.copy_from_slice(&expanded[generated - 4..generated]);
+            if generated % 16 == 0 {
+                temp.rotate_left(1);
+                for byte in &mut temp {
+                    *byte = AES_SBOX[*byte as usize];
+                }
+                temp[0] ^= AES_RCON[rcon_index];
+                rcon_index += 1;
+            }
+            for byte in temp {
+                expanded[generated] = expanded[generated - 16] ^ byte;
+                generated += 1;
+            }
+        }
+
+        expanded
+    }
+
+    fn aes_128_encrypt_block(block: &[u8; 16], round_keys: &[u8; 176]) -> [u8; 16] {
+        let mut state = *block;
+        aes_add_round_key(&mut state, &round_keys[0..16]);
+        for round in 1..10 {
+            aes_sub_bytes(&mut state);
+            aes_shift_rows(&mut state);
+            aes_mix_columns(&mut state);
+            aes_add_round_key(&mut state, &round_keys[round * 16..(round + 1) * 16]);
+        }
+        aes_sub_bytes(&mut state);
+        aes_shift_rows(&mut state);
+        aes_add_round_key(&mut state, &round_keys[160..176]);
+        state
+    }
+
+    fn aes_add_round_key(state: &mut [u8; 16], round_key: &[u8]) {
+        for i in 0..16 {
+            state[i] ^= round_key[i];
+        }
+    }
+
+    fn aes_sub_bytes(state: &mut [u8; 16]) {
+        for byte in state {
+            *byte = AES_SBOX[*byte as usize];
+        }
+    }
+
+    fn aes_shift_rows(state: &mut [u8; 16]) {
+        let original = *state;
+        state[1] = original[5];
+        state[5] = original[9];
+        state[9] = original[13];
+        state[13] = original[1];
+        state[2] = original[10];
+        state[6] = original[14];
+        state[10] = original[2];
+        state[14] = original[6];
+        state[3] = original[15];
+        state[7] = original[3];
+        state[11] = original[7];
+        state[15] = original[11];
+    }
+
+    fn aes_mix_columns(state: &mut [u8; 16]) {
+        for column in state.chunks_exact_mut(4) {
+            let a0 = column[0];
+            let a1 = column[1];
+            let a2 = column[2];
+            let a3 = column[3];
+            column[0] = aes_xtime(a0) ^ (aes_xtime(a1) ^ a1) ^ a2 ^ a3;
+            column[1] = a0 ^ aes_xtime(a1) ^ (aes_xtime(a2) ^ a2) ^ a3;
+            column[2] = a0 ^ a1 ^ aes_xtime(a2) ^ (aes_xtime(a3) ^ a3);
+            column[3] = (aes_xtime(a0) ^ a0) ^ a1 ^ a2 ^ aes_xtime(a3);
+        }
+    }
+
+    fn aes_xtime(byte: u8) -> u8 {
+        if byte & 0x80 == 0 {
+            byte << 1
+        } else {
+            (byte << 1) ^ 0x1b
+        }
+    }
+
+    const AES_RCON: [u8; 11] = [
+        0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36,
+    ];
+
+    const AES_SBOX: [u8; 256] = [
+        0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab,
+        0x76, 0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4,
+        0x72, 0xc0, 0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71,
+        0xd8, 0x31, 0x15, 0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2,
+        0xeb, 0x27, 0xb2, 0x75, 0x09, 0x83, 0x2c, 0x1a, 0x1b, 0x6e, 0x5a, 0xa0, 0x52, 0x3b, 0xd6,
+        0xb3, 0x29, 0xe3, 0x2f, 0x84, 0x53, 0xd1, 0x00, 0xed, 0x20, 0xfc, 0xb1, 0x5b, 0x6a, 0xcb,
+        0xbe, 0x39, 0x4a, 0x4c, 0x58, 0xcf, 0xd0, 0xef, 0xaa, 0xfb, 0x43, 0x4d, 0x33, 0x85, 0x45,
+        0xf9, 0x02, 0x7f, 0x50, 0x3c, 0x9f, 0xa8, 0x51, 0xa3, 0x40, 0x8f, 0x92, 0x9d, 0x38, 0xf5,
+        0xbc, 0xb6, 0xda, 0x21, 0x10, 0xff, 0xf3, 0xd2, 0xcd, 0x0c, 0x13, 0xec, 0x5f, 0x97, 0x44,
+        0x17, 0xc4, 0xa7, 0x7e, 0x3d, 0x64, 0x5d, 0x19, 0x73, 0x60, 0x81, 0x4f, 0xdc, 0x22, 0x2a,
+        0x90, 0x88, 0x46, 0xee, 0xb8, 0x14, 0xde, 0x5e, 0x0b, 0xdb, 0xe0, 0x32, 0x3a, 0x0a, 0x49,
+        0x06, 0x24, 0x5c, 0xc2, 0xd3, 0xac, 0x62, 0x91, 0x95, 0xe4, 0x79, 0xe7, 0xc8, 0x37, 0x6d,
+        0x8d, 0xd5, 0x4e, 0xa9, 0x6c, 0x56, 0xf4, 0xea, 0x65, 0x7a, 0xae, 0x08, 0xba, 0x78, 0x25,
+        0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a, 0x70, 0x3e,
+        0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e, 0xe1,
+        0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
+        0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb,
+        0x16,
+    ];
 
     #[tokio::test]
     async fn create_request_uses_distinct_session_encryption_keys() {
@@ -1603,6 +1930,58 @@ mod tests {
         )
         .expect("assert strict live evidence");
         assert!(proven);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn encrypted_direct_post_runtime_accepts_wallet_jwe_a128gcm_with_party_info() {
+        let root = std::env::temp_dir().join(format!("augenmass-runtime-{}", Uuid::new_v4()));
+        let state = age_only_state_for_runtime_proof(root.clone()).await;
+        let (sid, _) = create_request(&state).await.expect("request");
+        let _ = get_request_object(State(state.clone()), Path(sid.to_string()))
+            .await
+            .expect("request object");
+        let (issuer_jwk, _) = runtime_issuer_jwk_signed_by_anchor();
+        let (body, encrypted) = encrypted_runtime_direct_post_body_with_shape(
+            &state,
+            sid,
+            &issuer_jwk,
+            None,
+            RuntimeJweShape::WalletA128GcmWithPartyInfo,
+        )
+        .await;
+        let protected = encrypted.split('.').next().expect("protected JWE header");
+        let header: Value = serde_json::from_slice(
+            &BASE64_URL_SAFE_NO_PAD
+                .decode(protected)
+                .expect("decode protected JWE header"),
+        )
+        .expect("protected JWE header JSON");
+        assert_eq!(header["alg"], "ECDH-ES");
+        assert_eq!(header["enc"], "A128GCM");
+        assert!(header["apu"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty()));
+        assert!(header["apv"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty()));
+
+        let (status, Json(value)) =
+            receive_response(State(state.clone()), Path(sid.to_string()), body)
+                .await
+                .expect("wallet-shaped encrypted response accepted");
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(value["status"], "verified");
+        assert!(!state.encryption_keys.lock().await.contains_key(&sid));
+        let trace = state.trace.get(sid).await.expect("trace");
+        let codes: Vec<&str> = trace.events.iter().map(|event| event.code).collect();
+        assert!(codes.contains(&"RESPONSE_DECRYPTED"), "codes: {codes:?}");
+        assert!(codes.contains(&"VERIFIED"), "codes: {codes:?}");
+        let trace_text = serde_json::to_string(&trace).expect("trace JSON");
+        assert!(!trace_text.contains("Runtime Secret"));
+        assert!(!trace_text.contains(&encrypted));
 
         let _ = fs::remove_dir_all(root);
     }
