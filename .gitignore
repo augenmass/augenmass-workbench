@@ -16,3 +16,8 @@ secrets*.md
 # stray dir from a background harvest run whose path arg did not resolve; the
 # repos were relocated to ../external/. Never track it.
 /undefined/
+# agent scratch and exported session transcripts (root-anchored so tracked
+# fixtures under subdirs, e.g. fixtures/offers/*.txt, stay tracked).
+/.claude/
+/plans/
+/*.txt
