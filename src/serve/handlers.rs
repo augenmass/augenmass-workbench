@@ -1455,19 +1455,19 @@ mod tests {
         let count = shared_key_len.div_ceil(32);
         for i in 0..count {
             let mut hasher = sha2::Sha256::new();
-            hasher.update(&((i + 1) as u32).to_be_bytes());
+            hasher.update(((i + 1) as u32).to_be_bytes());
             hasher.update(derived_key);
-            hasher.update(&(alg.len() as u32).to_be_bytes());
+            hasher.update((alg.len() as u32).to_be_bytes());
             hasher.update(alg.as_bytes());
-            hasher.update(&(apu.map_or(0, <[u8]>::len) as u32).to_be_bytes());
+            hasher.update((apu.map_or(0, <[u8]>::len) as u32).to_be_bytes());
             if let Some(value) = apu {
                 hasher.update(value);
             }
-            hasher.update(&(apv.map_or(0, <[u8]>::len) as u32).to_be_bytes());
+            hasher.update((apv.map_or(0, <[u8]>::len) as u32).to_be_bytes());
             if let Some(value) = apv {
                 hasher.update(value);
             }
-            hasher.update(&((shared_key_len * 8) as u32).to_be_bytes());
+            hasher.update(((shared_key_len * 8) as u32).to_be_bytes());
             shared_key.extend(hasher.finalize());
         }
         shared_key.truncate(shared_key_len);
