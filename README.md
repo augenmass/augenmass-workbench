@@ -25,10 +25,10 @@ The strongest demo path is still skill first, CLI underneath: ask the agent what
 
 ## Install the skill
 
-Current install status: private/local release. Install the skill/plugin from the
-private Claude Code marketplace if your account has access, or from this checked
-out repository in Codex. The first experience should be a conversation with the
-skill, not a terminal manual.
+This repository is public and Apache-2.0 licensed. There is no curated public
+Claude Code marketplace listing yet, so install the skill/plugin from this
+repository itself, in Claude Code or Codex. The first experience should be a
+conversation with the skill, not a terminal manual.
 
 ```
 /plugin marketplace add augenmass/augenmass-workbench
@@ -43,10 +43,10 @@ codex plugin marketplace add .
 codex plugin add augenmass-workbench@augenmass
 ```
 
-These install proofs are local/private today: the Claude Code path resolves only
-for accounts with repository access, and the Codex commands install from the
-checked-out local repository. Once the repository is published, the same plugin
-metadata can back a public marketplace install.
+Both commands install directly from this public repository: the Claude Code path
+adds the marketplace by its public repo reference; the Codex commands install
+from the checked-out local repository. The only piece not yet in place is a
+curated public Claude Code marketplace listing.
 
 ## First run in an agent
 
