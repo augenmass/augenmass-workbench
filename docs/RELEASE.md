@@ -107,6 +107,44 @@ release. Tag pushes spend runner minutes and should happen only after explicit
 approval. On manual dispatch, it publishes workflow artifacts only. Tag builds
 fail unless the tag name matches `v$(Cargo.toml version)`.
 
+## v0.3.0 release proof
+
+Published release `v0.3.0` is available at:
+
+```text
+https://github.com/augenmass/augenmass-workbench/releases/tag/v0.3.0
+```
+
+The signed tag `v0.3.0` points at commit
+`ee6956b0d62d59890822bba448ad669b12809db9`, the merged, GPG-signed head of the
+reviewed branch. The tag release run `28899942757` passed all four native build,
+package, and archive-smoke jobs (Linux x64, Windows x64, macOS Apple Silicon,
+macOS Intel) and the publish job.
+
+The release carries twelve assets: four native CLI archives plus a `.sha256`
+checksum and a `.manifest.json` sidecar for each. Every archive manifest records
+`gitCommit` `ee6956b0d62d59890822bba448ad669b12809db9`, `gitDirty` `false`,
+`layoutOnly` `false`, and `nativeExecution` `true`, so each binary is a native
+build of the tagged commit with no local modifications. The archives are:
+
+```text
+augenmass-v0.3.0-x86_64-unknown-linux-gnu.tar.gz
+augenmass-v0.3.0-x86_64-pc-windows-msvc.zip
+augenmass-v0.3.0-x86_64-apple-darwin.tar.gz
+augenmass-v0.3.0-aarch64-apple-darwin.tar.gz
+```
+
+The committed plugin bundle under `plugins/augenmass-workbench/bin` was rebuilt
+from these release archives by `scripts/assemble-plugin-bundle.sh`, which checks
+every archive and binary hash against its sidecar and rejects layout-only or
+non-native manifests before copying. The release archive is the canonical binary
+source; the plugin bundle is assembled from it.
+
+macOS notarization was not performed for v0.3.0, so the published archives are
+unsigned, consistent with the loose CLI archive limitation noted in the next
+section. Verify the release checksum and approve the binary locally if Gatekeeper
+or Windows blocks it.
+
 ## macOS signing and notarization
 
 macOS notarization is local and manual-only for now; it does not run from normal
