@@ -89,7 +89,19 @@ pub fn issuer_trusted_at(presentation: &str, anchors: &TrustAnchors, now_unix: i
     let Ok(leaf_der) = BASE64_STANDARD.decode(leaf_b64) else {
         return false;
     };
-    let Ok(leaf) = Certificate::from_der(&leaf_der) else {
+    leaf_der_trusted_at(&leaf_der, anchors, now_unix)
+}
+
+/// Whether a DER-encoded leaf certificate is signed by a trust anchor, with both
+/// the leaf and the anchor inside their validity windows at `now_unix`.
+///
+/// This is the certificate-level trust check shared by the SD-JWT issuer path
+/// ([`issuer_trusted_at`], which first pulls the leaf from the presentation's
+/// `x5c`) and the JAR path ([`crate::jar`], which already holds the leaf DER
+/// from the request's JOSE `x5c`). Like the rest of this module it is a single
+/// leaf-signed-by-anchor check, not full RFC 5280 path validation.
+pub fn leaf_der_trusted_at(leaf_der: &[u8], anchors: &TrustAnchors, now_unix: i64) -> bool {
+    let Ok(leaf) = Certificate::from_der(leaf_der) else {
         return false;
     };
     anchors.certs.iter().any(|anchor| {

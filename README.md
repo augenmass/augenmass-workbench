@@ -182,6 +182,19 @@ augenmass verify presentation fixtures/presentations/erica-vp-VALID.sdjwt \
 # VERIFIED  (vct: urn:eudi:pid:de:1, holder binding: true)
 ```
 
+Verify a signed authorization request (JAR): prove it was signed by the key in
+its `x5c` leaf, that the `client_id` binds to that leaf, and, with `--anchor`,
+that the leaf chains to a trust anchor:
+
+```sh
+augenmass verify request fixtures/requests/eudiplo-request.jwt \
+  --anchor fixtures/certs/eudiplo-verifier-leaf.pem \
+  --now 1780435200
+# VERIFIED: the request is signed by the key in its x5c leaf.
+#   client_id binding: matches the x5c leaf
+#   trust anchored: yes (the leaf chains to a supplied anchor)
+```
+
 Compute the `x509_hash` client_id binding from a JAR's x5c leaf:
 
 ```sh
@@ -255,6 +268,7 @@ PROPORTIONALITY (the core IP)
 
 CRYPTO
 - `verify presentation <p> --nonce --aud [--vct --now --max-age --trust-anchor --status-token --status-key]`: full SD-JWT VC plus KB-JWT verification.
+- `verify request <jar> [--anchor --now]`: verify a JWT-Secured Authorization Request (JAR) signature: prove it was signed by the key in its `x5c` leaf (ES256, `none`/alg-confusion rejected), that an `x509_hash` `client_id` binds to that leaf, and, with `--anchor`, that the leaf chains to a trust anchor. Exits 1 when not verified.
 - `verify trust <p> --anchor`: check whether the issuer chains to a trust anchor.
 - `verify status <p> --token --key`: check a presentation's revocation status against a status-list token.
 - `verify status-list --token --key --index`: verify a status-list token and read one index.

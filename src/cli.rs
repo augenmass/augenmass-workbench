@@ -159,6 +159,17 @@ enum ValidateCmd {
 enum VerifyCmd {
     /// Verify an SD-JWT VC presentation (issuer sig, KB-JWT, nonce/aud, vct).
     Presentation(VerifyPresentationArgs),
+    /// Verify a JWT-Secured Authorization Request (JAR): signature, x5c leaf, client_id binding.
+    Request {
+        /// The JAR (compact JWS): file path, inline value, or `-`.
+        input: String,
+        /// Trust anchor PEM: if supplied, the x5c leaf must chain to it.
+        #[arg(long)]
+        anchor: Option<String>,
+        /// Verification clock (Unix seconds); omit to use the system clock.
+        #[arg(long)]
+        now: Option<i64>,
+    },
     /// Check whether a presentation's issuer chains to a trust anchor.
     Trust {
         /// Presentation: file path, inline value, or `-`.
@@ -693,6 +704,20 @@ fn run_verify(what: VerifyCmd, fmt: OutputFormat) -> Result<bool> {
                     trust_anchor_pem,
                     status_token,
                     status_key_pem,
+                },
+                fmt,
+            )
+        }
+        VerifyCmd::Request { input, anchor, now } => {
+            let anchor_pem = match &anchor {
+                Some(v) => Some(read_input(v)?),
+                None => None,
+            };
+            verify::verify_request(
+                verify::RequestArgs {
+                    request: read_input(&input)?,
+                    now,
+                    anchor_pem,
                 },
                 fmt,
             )

@@ -674,6 +674,103 @@ fn verify_trust_wrong_anchor() {
         .stdout(contains("UNTRUSTED"));
 }
 
+// --- verify request (JAR signature) ----------------------------------------
+
+const JAR_FIXTURE: &str = "fixtures/requests/eudiplo-request.jwt";
+
+#[test]
+fn verify_request_valid_fixture_succeeds() {
+    bin()
+        .args(["verify", "request", JAR_FIXTURE, "--now", NOW])
+        .assert()
+        .success()
+        .stdout(contains("VERIFIED").and(contains("client_id binding: matches")));
+}
+
+#[test]
+fn verify_request_self_anchor_is_trusted() {
+    bin()
+        .args([
+            "verify",
+            "request",
+            JAR_FIXTURE,
+            "--anchor",
+            "fixtures/certs/eudiplo-verifier-leaf.pem",
+            "--now",
+            NOW,
+        ])
+        .assert()
+        .success()
+        .stdout(contains("trust anchored: yes"));
+}
+
+#[test]
+fn verify_request_wrong_anchor_is_untrusted() {
+    bin()
+        .args([
+            "verify",
+            "request",
+            JAR_FIXTURE,
+            "--anchor",
+            "fixtures/certs/erica-trust-anchor.pem",
+            "--now",
+            NOW,
+        ])
+        .assert()
+        .failure()
+        .stdout(contains("UntrustedIssuer"));
+}
+
+#[test]
+fn verify_request_tampered_signature_is_rejected() {
+    // Flip the final signature character; the token stays a well-formed 3-segment
+    // JWS but its signature no longer matches the signing input.
+    let jwt = fs::read_to_string(JAR_FIXTURE).expect("read JAR fixture");
+    let jwt = jwt.trim();
+    let last = jwt.chars().last().unwrap();
+    let flipped = if last == 'A' { 'B' } else { 'A' };
+    let tampered: String = jwt[..jwt.len() - 1].chars().chain([flipped]).collect();
+    bin()
+        .args(["verify", "request", &tampered, "--now", NOW])
+        .assert()
+        .failure()
+        .stdout(contains("JarSignature"));
+}
+
+#[test]
+fn verify_request_expired_without_clock_is_rejected() {
+    // The captured fixture's exp is in the past relative to any real run, so the
+    // system clock (no --now) must fail it closed.
+    bin()
+        .args(["verify", "request", JAR_FIXTURE])
+        .assert()
+        .failure()
+        .stdout(contains("JarExpired"));
+}
+
+#[test]
+fn verify_request_json_contract() {
+    let assert = bin()
+        .args([
+            "--json",
+            "verify",
+            "request",
+            JAR_FIXTURE,
+            "--anchor",
+            "fixtures/certs/eudiplo-verifier-leaf.pem",
+            "--now",
+            NOW,
+        ])
+        .assert()
+        .success();
+    let out = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    let v: serde_json::Value = serde_json::from_str(&out).expect("verify request emits valid JSON");
+    assert_eq!(v["verified"], serde_json::json!(true));
+    assert_eq!(v["clientIdBound"], serde_json::json!(true));
+    assert_eq!(v["trustAnchored"], serde_json::json!(true));
+    assert_eq!(v["alg"], serde_json::json!("ES256"));
+}
+
 // --- verify status / revocation --------------------------------------------
 
 #[test]

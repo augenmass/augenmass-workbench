@@ -39,6 +39,9 @@ verify:
     # cryptographic verification against the committed ERICA fixtures
     cargo run --quiet -- verify presentation fixtures/presentations/erica-vp-VALID.sdjwt --nonce b4ba2623-76a2-486b-a1f6-f1656025d07b --aud https://self-issued.me/v2 --now 1780435200
     cargo run --quiet -- verify trust fixtures/presentations/erica-vp-VALID.sdjwt --anchor fixtures/certs/erica-trust-anchor.pem --now 1780435200
+    # JAR signature verification: the captured request is signed by its x5c leaf and chains to a self-anchor; a wrong anchor is untrusted
+    cargo run --quiet -- verify request fixtures/requests/eudiplo-request.jwt --anchor fixtures/certs/eudiplo-verifier-leaf.pem --now 1780435200
+    sh -c 'if cargo run --quiet -- verify request fixtures/requests/eudiplo-request.jwt --anchor fixtures/certs/erica-trust-anchor.pem --now 1780435200; then exit 1; else exit 0; fi'
     # the x509_hash binding matches the captured leaf
     cargo run --quiet -- x509-hash fixtures/certs/access-leaf.pem --client-id x509_hash:VE3qp3vLVkU8JyVmXkjL7CSDVxVoTFdTv5fAEwmjKOI
     # the wallet-interaction debugger wires up (help exits without binding a port)

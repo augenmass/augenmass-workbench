@@ -50,6 +50,22 @@ pub enum RejectKind {
     /// The status-list token could not be used to decide the credential's
     /// status (wrong `typ`, undecodable list, or index out of range).
     StatusListUnavailable,
+    /// The JAR (JWT-Secured Authorization Request) is not a well-formed signed
+    /// compact JWS (`header.payload.signature`).
+    MalformedJar,
+    /// The JAR `alg` is not an accepted signature algorithm. Only `ES256` is
+    /// accepted; `none` and any other value (an alg-confusion attempt) are
+    /// rejected before any key or signature handling.
+    JarAlgUnsupported,
+    /// The JAR signature did not verify against the public key in its `x5c` leaf.
+    JarSignature,
+    /// The JAR `client_id` uses the `x509_hash` scheme but its value does not
+    /// bind to the verified `x5c` leaf certificate.
+    JarClientIdMismatch,
+    /// The JAR is past its `exp` at the verification clock.
+    JarExpired,
+    /// The JAR is before its `nbf` at the verification clock.
+    JarNotYetValid,
 }
 
 /// A verification failure: a stable [`RejectKind`] plus a human-readable reason.

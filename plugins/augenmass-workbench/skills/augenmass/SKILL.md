@@ -81,6 +81,7 @@ The central idea is Augenmaß: a sense of proportion. A relying party should ask
 - Audit a request for over-ask: lint a DCQL request against a purpose baseline and the legal basis (eIDAS, GDPR, ARF) before anyone is asked for data.
 - Gate a registration body before a write: catch over-ask plus registrar schema mistakes (claims[].path shape, credentials vs provided_attestations, purpose shape, privacy_policy URL, support_uri).
 - Verify a presentation cryptographically: issuer signature, KB-JWT, nonce and aud, vct, freshness, trust anchoring, and revocation status.
+- Verify a signed request (JAR) cryptographically with `verify request`: the ES256 signature over the request object (`none` and alg-confusion rejected), the `x509_hash` client_id binding to the `x5c` leaf, and, with `--anchor`, that the leaf chains to a trust anchor. This is the request-side counterpart to `verify presentation`; `doctor` only lints JAR shape.
 - Compute (or check) the x509_hash client_id binding for a JAR or certificate.
 - Generate a proportionate registration body or a DCQL query from claim paths.
 - Diagnose a verifier signed request / JAR: x5c shape, client_id x509_hash, content type.
@@ -164,6 +165,7 @@ For a live-wallet debugging report:
 | Audit a request for over-ask | `$AUGENMASS audit --request {minimal\|overask\|FILE} --purpose <id> [--cert FILE]` |
 | List or show purpose baselines and legal basis | `$AUGENMASS baselines [<id>]` |
 | Verify a presentation cryptographically | `$AUGENMASS verify presentation <p> --nonce <n> --aud <a> [--vct --now --max-age --trust-anchor --status-token --status-key]` |
+| Verify a signed request / JAR cryptographically | `$AUGENMASS verify request <jar> [--anchor <pem> --now <secs>]` |
 | Check issuer chains to a trust anchor | `$AUGENMASS verify trust <p> --anchor <pem>` |
 | Check a presentation's revocation status | `$AUGENMASS verify status <p> --token <t> --key <k>` |
 | Verify a status-list token and read an index | `$AUGENMASS verify status-list --token <t> --key <k> --index <i>` |

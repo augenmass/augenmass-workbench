@@ -92,6 +92,14 @@ MAC-versus-signature `DeviceAuth` options) makes this the largest item.
 
 ## 2. Full JAR signature verification
 
+Status: implemented as `verify request` (`augenmass_core::jar`). The paragraphs
+below are the original scoping; the shipped command verifies the ES256 signature
+over the request object against the `x5c` leaf (rejecting `none` and
+alg-confusion), checks the `x509_hash` `client_id` binding, and, with `--anchor`,
+chains the leaf to a trust anchor. Deferred for a later pass: non-ES256
+algorithms, key resolution other than the `x5c` leaf (`kid`/`jwks`/DID), full RFC
+5280 path validation, and `client_id` schemes other than `x509_hash`.
+
 Verify the signature on a JWT-Secured Authorization Request (JAR), not just decode
 and lint it.
 

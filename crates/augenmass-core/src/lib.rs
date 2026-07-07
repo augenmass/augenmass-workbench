@@ -20,6 +20,7 @@ pub mod crypto;
 pub mod disclosure;
 pub mod error;
 pub mod inspector;
+pub mod jar;
 pub mod pid;
 pub mod regcert;
 pub mod status;
@@ -32,6 +33,7 @@ pub const PID_VCT: &str = "urn:eudi:pid:de:1";
 pub use disclosure::{DisclosedClaim, RevealedView};
 pub use error::{RejectKind, RejectReason, VerifyResult};
 pub use inspector::{analyze, ClaimStatus, OverAskReport};
+pub use jar::{verify_jar, JarOptions, VerifiedJar};
 pub use regcert::{
     decode_registration_jwt, scope_from_payload, RegisteredCredential, RegisteredScope,
 };
@@ -39,7 +41,7 @@ pub use status::{
     check_presentation_status, check_status_list_token, status_ref_from_claims, CredentialStatus,
     StatusListRef,
 };
-pub use trust::{issuer_trusted, issuer_trusted_at, TrustAnchors};
+pub use trust::{issuer_trusted, issuer_trusted_at, leaf_der_trusted_at, TrustAnchors};
 pub use verify::{
     verify_pid_presentation, verify_pid_presentation_at, verify_pid_presentation_full,
     verify_pid_presentation_with_age, RequestBinding, StatusInput, TrustOptions, VerifiedPid,

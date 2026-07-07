@@ -96,7 +96,7 @@ When in doubt about command behavior, do not guess. Run the binary:
 
 UNDERSTAND: `inspect <input>`, `decode {jwt|sd-jwt|regcert|request|offer|status-list|mdoc} <input>`.
 PROPORTIONALITY: `check <body>`, `audit --request {minimal|overask|FILE} --purpose <id> [--cert FILE]`, `baselines [<id>]`.
-CRYPTO: `verify {presentation|trust|status|status-list}`, `x509-hash <input> [--client-id]`.
+CRYPTO: `verify {presentation|request|trust|status|status-list}`, `x509-hash <input> [--client-id]`.
 PRODUCE: `generate {regbody|dcql}`.
 DIAGNOSE: `doctor <request>`, `validate dcql <input>`.
 DEBUG: `serve`.

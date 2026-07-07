@@ -3,6 +3,7 @@
 //! deterministic when a verification clock is pinned with `--now`.
 
 use anyhow::{Context, Result};
+use augenmass_core::jar::{verify_jar, JarOptions};
 use augenmass_core::status::{
     check_presentation_status, check_status_list_token, CredentialStatus, StatusListRef,
 };
@@ -13,6 +14,7 @@ use augenmass_core::verify::{
 use augenmass_core::PID_VCT;
 use serde_json::{json, Value};
 
+use crate::commands::decode::client_id_scheme;
 use crate::output::{emit, OutputFormat};
 use crate::x509util::signer_jwk_from_pem;
 
@@ -115,6 +117,125 @@ pub fn verify_presentation(args: PresentationArgs, format: OutputFormat) -> Resu
     }
 }
 
+/// Inputs for `verify request` (JAR signature verification).
+pub struct RequestArgs {
+    pub request: String,
+    pub now: Option<i64>,
+    pub anchor_pem: Option<String>,
+}
+
+/// `verify request`: prove a JWT-Secured Authorization Request (JAR) was signed
+/// by the key in its `x5c` leaf, that an `x509_hash` `client_id` binds to that
+/// leaf, and (with `--anchor`) that the leaf chains to a trust anchor. Returns
+/// true if the request verified.
+pub fn verify_request(args: RequestArgs, format: OutputFormat) -> Result<bool> {
+    let anchors = match &args.anchor_pem {
+        Some(pem) => Some(TrustAnchors::from_pem(pem).context("load trust anchor PEM")?),
+        None => None,
+    };
+    let now = now_or_clock(args.now);
+    let options = JarOptions {
+        anchors: anchors.as_ref(),
+        now_unix: now,
+    };
+
+    match verify_jar(args.request.trim(), &options) {
+        Ok(v) => {
+            let scheme = v.client_id.as_deref().and_then(client_id_scheme);
+            let json = json!({
+                "verified": true,
+                "alg": v.alg,
+                "typ": v.typ,
+                "clientId": v.client_id,
+                "clientIdScheme": scheme,
+                "clientIdBound": v.client_id_bound,
+                "leafX509Hash": v.leaf_x509_hash,
+                "leafSubject": v.leaf_subject,
+                "leafIssuer": v.leaf_issuer,
+                "selfSigned": v.self_signed,
+                "anchorsSupplied": v.anchors_supplied,
+                "trustAnchored": v.trust_anchored,
+                "iat": v.iat,
+                "nbf": v.nbf,
+                "exp": v.exp,
+            });
+
+            let mut text = String::new();
+            text.push_str("VERIFIED: the request is signed by the key in its x5c leaf.\n");
+            text.push_str(&format!("  alg: {}\n", v.alg));
+            if let Some(typ) = &v.typ {
+                text.push_str(&format!("  typ: {typ}\n"));
+            }
+            if let Some(cid) = &v.client_id {
+                text.push_str(&format!("  client_id: {cid}\n"));
+            }
+            match v.client_id_bound {
+                Some(true) => {
+                    text.push_str("  client_id binding: matches the x5c leaf\n");
+                }
+                // A mismatch is a hard rejection, so `Some(false)` never reaches here.
+                _ => {
+                    let label = scheme.unwrap_or("unknown");
+                    text.push_str(&format!(
+                        "  client_id binding: not checked (client_id scheme is {label}, not x509_hash)\n"
+                    ));
+                }
+            }
+            text.push_str(&format!("  leaf subject: {}\n", v.leaf_subject));
+            text.push_str(&format!("  leaf issuer:  {}\n", v.leaf_issuer));
+            if v.trust_anchored {
+                text.push_str("  trust anchored: yes (the leaf chains to a supplied anchor)\n");
+            } else if v.self_signed {
+                text.push_str(
+                    "  trust anchored: no; the leaf is self-issued, so the signature proves \
+                     self-consistency only. Supply --anchor to establish third-party trust.\n",
+                );
+            } else {
+                text.push_str(
+                    "  trust anchored: no anchor supplied; the signature verifies against the \
+                     x5c leaf but is not chained to a trust anchor. Supply --anchor to check.\n",
+                );
+            }
+            text.push_str(&format!(
+                "  request window: {} (verification clock {now})\n",
+                window_summary(v.iat, v.nbf, v.exp)
+            ));
+            emit(format, &json, &text)?;
+            Ok(true)
+        }
+        Err(reason) => {
+            let kind = format!("{:?}", reason.kind);
+            let json = json!({
+                "verified": false,
+                "rejectKind": kind,
+                "reason": reason.reason,
+            });
+            let text = format!("REJECTED [{kind}]: {}\n", reason.reason);
+            emit(format, &json, &text)?;
+            Ok(false)
+        }
+    }
+}
+
+/// A compact `iat / nbf / exp` summary for the human report.
+fn window_summary(iat: Option<i64>, nbf: Option<i64>, exp: Option<i64>) -> String {
+    let mut parts = Vec::new();
+    if let Some(iat) = iat {
+        parts.push(format!("iat {iat}"));
+    }
+    if let Some(nbf) = nbf {
+        parts.push(format!("nbf {nbf}"));
+    }
+    if let Some(exp) = exp {
+        parts.push(format!("exp {exp}"));
+    }
+    if parts.is_empty() {
+        "no iat/nbf/exp claims".to_string()
+    } else {
+        parts.join(", ")
+    }
+}
+
 /// `verify trust`: does the presentation's issuer chain to a trust anchor?
 pub fn verify_trust(
     presentation: &str,
@@ -207,5 +328,166 @@ fn value_str(value: &Value) -> String {
     match value {
         Value::String(s) => s.clone(),
         other => other.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod jar_tests {
+    //! Minted-token coverage for `verify request`. These complement the
+    //! fixture-based engine tests in `augenmass_core::jar`: only a freshly signed
+    //! token (we hold the private key) can exercise a *valid* signature paired
+    //! with a bad `client_id` binding, a substituted signing key, or a real
+    //! CA-issued (non-self-signed) leaf chaining to an anchor.
+
+    use augenmass_core::crypto::leaf_cert_hash;
+    use augenmass_core::error::RejectKind;
+    use augenmass_core::jar::{verify_jar, JarOptions};
+    use augenmass_core::trust::TrustAnchors;
+    use base64::prelude::*;
+    use p256::ecdsa::signature::Signer;
+    use p256::pkcs8::DecodePrivateKey;
+    use rcgen::{
+        BasicConstraints, CertificateParams, DnType, IsCa, KeyPair, PKCS_ECDSA_P256_SHA256,
+    };
+    use serde_json::json;
+
+    const NOW: i64 = 1_780_435_200;
+
+    fn p256_key() -> KeyPair {
+        KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).expect("generate P-256 key")
+    }
+
+    fn cert_pem(der: &[u8]) -> String {
+        format!(
+            "-----BEGIN CERTIFICATE-----\n{}\n-----END CERTIFICATE-----\n",
+            BASE64_STANDARD.encode(der)
+        )
+    }
+
+    fn signing_key(kp: &KeyPair) -> p256::ecdsa::SigningKey {
+        let secret =
+            p256::SecretKey::from_pkcs8_der(&kp.serialize_der()).expect("PKCS#8 private key");
+        p256::ecdsa::SigningKey::from_bytes(&secret.to_bytes()).expect("signing key")
+    }
+
+    /// Assemble a compact ES256 JAR: `x5c_der` goes in the header, `client_id` in
+    /// the payload, and the signature is made by `signer` over the signing input.
+    fn mint(client_id: &str, x5c_der: &[u8], signer: &KeyPair, exp: i64) -> String {
+        let header = json!({
+            "typ": "oauth-authz-req+jwt",
+            "alg": "ES256",
+            "x5c": [BASE64_STANDARD.encode(x5c_der)],
+        });
+        let payload = json!({
+            "response_type": "vp_token",
+            "client_id": client_id,
+            "nonce": "b4ba2623-76a2-486b-a1f6-f1656025d07b",
+            "iat": exp - 3600,
+            "exp": exp,
+        });
+        let h = BASE64_URL_SAFE_NO_PAD.encode(serde_json::to_vec(&header).unwrap());
+        let p = BASE64_URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload).unwrap());
+        let signing_input = format!("{h}.{p}");
+        let sig: p256::ecdsa::Signature = signing_key(signer).sign(signing_input.as_bytes());
+        let s = BASE64_URL_SAFE_NO_PAD.encode(sig.to_bytes());
+        format!("{signing_input}.{s}")
+    }
+
+    fn self_signed(kp: &KeyPair, cn: &str) -> Vec<u8> {
+        let mut params = CertificateParams::default();
+        params.distinguished_name.push(DnType::CommonName, cn);
+        params
+            .self_signed(kp)
+            .expect("self-sign leaf")
+            .der()
+            .as_ref()
+            .to_vec()
+    }
+
+    fn opts_now() -> JarOptions<'static> {
+        JarOptions {
+            anchors: None,
+            now_unix: NOW,
+        }
+    }
+
+    #[test]
+    fn minted_valid_token_verifies_and_binds() {
+        let kp = p256_key();
+        let der = self_signed(&kp, "Minted Verifier");
+        let client_id = format!("x509_hash:{}", leaf_cert_hash(&der));
+        let token = mint(&client_id, &der, &kp, NOW + 60);
+
+        let v = verify_jar(&token, &opts_now()).expect("minted token must verify");
+        assert_eq!(v.client_id_bound, Some(true));
+        assert!(v.self_signed);
+        assert!(!v.trust_anchored);
+    }
+
+    #[test]
+    fn minted_valid_signature_with_wrong_client_id_binding_rejects() {
+        // The signature is authentic, but the client_id points at a different
+        // certificate hash: the binding is decorative and must be caught.
+        let kp = p256_key();
+        let der = self_signed(&kp, "Minted Verifier");
+        let wrong = "x509_hash:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        let token = mint(wrong, &der, &kp, NOW + 60);
+
+        let err = verify_jar(&token, &opts_now()).expect_err("mismatched binding must reject");
+        assert_eq!(err.kind, RejectKind::JarClientIdMismatch);
+    }
+
+    #[test]
+    fn minted_valid_signature_with_substituted_x5c_key_rejects() {
+        // Sign with `signer`, but advertise a different key's certificate in x5c.
+        // The signature is valid over the signing input, yet cannot verify under
+        // the substituted leaf key: the leaf is not the true signer.
+        let signer = p256_key();
+        let other = p256_key();
+        let other_der = self_signed(&other, "Not The Signer");
+        let client_id = format!("x509_hash:{}", leaf_cert_hash(&other_der));
+        let token = mint(&client_id, &other_der, &signer, NOW + 60);
+
+        let err = verify_jar(&token, &opts_now()).expect_err("substituted key must reject");
+        assert_eq!(err.kind, RejectKind::JarSignature);
+    }
+
+    #[test]
+    fn minted_leaf_chains_to_ca_anchor() {
+        // A genuine two-link chain: a CA-issued (not self-signed) leaf verifies
+        // and chains to the CA anchor.
+        let ca_kp = p256_key();
+        let mut ca_params = CertificateParams::default();
+        ca_params
+            .distinguished_name
+            .push(DnType::CommonName, "Minted PID Root");
+        ca_params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        let ca_cert = ca_params.self_signed(&ca_kp).expect("self-sign CA");
+
+        let leaf_kp = p256_key();
+        let mut leaf_params = CertificateParams::default();
+        leaf_params
+            .distinguished_name
+            .push(DnType::CommonName, "Minted PID Issuer");
+        let leaf_cert = leaf_params
+            .signed_by(&leaf_kp, &ca_cert, &ca_kp)
+            .expect("CA-sign leaf");
+        let leaf_der = leaf_cert.der().as_ref().to_vec();
+
+        let client_id = format!("x509_hash:{}", leaf_cert_hash(&leaf_der));
+        let token = mint(&client_id, &leaf_der, &leaf_kp, NOW + 60);
+
+        let anchors = TrustAnchors::from_pem(&cert_pem(ca_cert.der().as_ref())).unwrap();
+        let v = verify_jar(
+            &token,
+            &JarOptions {
+                anchors: Some(&anchors),
+                now_unix: NOW,
+            },
+        )
+        .expect("CA-chained leaf must verify and be trusted");
+        assert!(v.trust_anchored);
+        assert!(!v.self_signed);
+        assert_eq!(v.client_id_bound, Some(true));
     }
 }
