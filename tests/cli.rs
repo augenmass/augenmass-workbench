@@ -1128,6 +1128,80 @@ fn evidence_prove_trust_status_accepts_redacted_bundle() {
 }
 
 #[test]
+fn evidence_prove_trust_status_accepts_inline_pem_anchor() {
+    let source = status_evidence_source_session();
+    let bundle_dir = test_temp_dir("augenmass-cli-status-inline-anchor-bundle");
+    let bundle = bundle_dir.join("bundle.json");
+    let anchor_pem = fs::read_to_string("fixtures/certs/synthetic-pid-anchor.pem")
+        .expect("read synthetic PID anchor fixture");
+
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    bin()
+        .args(["evidence", "prove-trust-status", bundle.to_str().unwrap()])
+        .arg(format!("--trust-anchor={anchor_pem}"))
+        .args([
+            "--status-token",
+            "fixtures/status/status-list-CLEAR.jwt",
+            "--status-key",
+            STATUS_KEY,
+        ])
+        .assert()
+        .success();
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
+}
+
+#[test]
+fn evidence_prove_trust_status_inline_status_key_reaches_signer() {
+    let source = status_evidence_source_session();
+    let bundle_dir = test_temp_dir("augenmass-cli-status-inline-key-bundle");
+    let bundle = bundle_dir.join("bundle.json");
+    let status_key_pem = fs::read_to_string("fixtures/certs/synthetic-pid-anchor.pem")
+        .expect("read synthetic PID anchor fixture");
+
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            bundle.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    bin()
+        .args([
+            "evidence",
+            "prove-trust-status",
+            bundle.to_str().unwrap(),
+            "--trust-anchor",
+            "fixtures/certs/synthetic-pid-anchor.pem",
+            "--status-token",
+            "fixtures/status/status-list-CLEAR.jwt",
+        ])
+        .arg(format!("--status-key={status_key_pem}"))
+        .assert()
+        .failure()
+        .stderr(contains("input file not found").not())
+        .stdout(contains("status-list token"));
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
+}
+
+#[test]
 fn evidence_prove_trust_status_rejects_mixed_presentations() {
     let valid = fs::read_to_string("fixtures/presentations/synthetic-pid-with-status.sdjwt")
         .expect("read status presentation fixture");

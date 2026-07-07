@@ -1675,6 +1675,9 @@ fn safe_artifact_label(filename: &str) -> &'static str {
 }
 
 fn read_text_arg(arg: &str) -> Result<String> {
+    if arg.contains("-----BEGIN ") {
+        return Ok(arg.to_string());
+    }
     let path = Path::new(arg);
     if path.is_file() {
         fs::read_to_string(path).with_context(|| format!("read {arg}"))
