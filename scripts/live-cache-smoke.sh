@@ -11,10 +11,27 @@ resolve_bin() {
   fi
 }
 
+pick_free_port() {
+  # Pick a loopback TCP port nothing is currently listening on. A stray
+  # `cache serve` left behind on a fixed port co-binds (SO_REUSEPORT) and splits
+  # our requests, which flakes the MISS/HIT/STALE assertions. Callers can still
+  # pin a port via AUGENMASS_SMOKE_PORT.
+  local candidate
+  for _ in $(seq 1 50); do
+    candidate=$(( (RANDOM % 20000) + 20000 ))
+    if ! (exec 3<>"/dev/tcp/127.0.0.1/${candidate}") 2>/dev/null; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+  echo "could not find a free loopback port for the cache smoke" >&2
+  return 1
+}
+
 BIN="$(resolve_bin)"
 RP="${AUGENMASS_SMOKE_RP:-2af138a8-59ea-4a84-aea3-666cafdb1369}"
 BLOCKED_RP="${AUGENMASS_SMOKE_BLOCKED_RP:-blocked-rp-smoke}"
-PORT="${AUGENMASS_SMOKE_PORT:-18983}"
+PORT="${AUGENMASS_SMOKE_PORT:-$(pick_free_port)}"
 ADMIN="${AUGENMASS_SMOKE_ADMIN_TOKEN:-local-smoke-token}"
 BASE="http://127.0.0.1:${PORT}/api"
 WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/augenmass-live-cache-smoke.XXXXXX")"
@@ -24,11 +41,21 @@ HEADERS="${WORKDIR}/headers"
 BODY="${WORKDIR}/body"
 PID=""
 
-cleanup() {
+stop_server() {
+  # The bundled `augenmass` launcher runs the real binary as a child (it inspects
+  # the exit status afterwards instead of exec-ing it), so signalling ${PID} alone
+  # reaps only the launcher and orphans the server, leaking the listen port into
+  # the next step or run. Signal the launcher's child first, then the launcher.
   if [ -n "${PID}" ]; then
+    pkill -P "${PID}" 2>/dev/null || true
     kill "${PID}" 2>/dev/null || true
     wait "${PID}" 2>/dev/null || true
+    PID=""
   fi
+}
+
+cleanup() {
+  stop_server
   rm -rf "${WORKDIR}"
 }
 trap cleanup EXIT
@@ -59,6 +86,7 @@ cache_header() {
 require curl
 require awk
 require grep
+require pkill
 
 if [ ! -x "${BIN}" ]; then
   echo "smoke binary is not executable: ${BIN}" >&2
@@ -114,9 +142,7 @@ grep -q "schema-metadata/vocabularies" "${BODY}"
 grep -q "registration-certificates?rp=${RP}" "${BODY}"
 echo "cache warm: $(sed -n '1p' "${BODY}")"
 
-kill "${PID}" 2>/dev/null || true
-wait "${PID}" 2>/dev/null || true
-PID=""
+stop_server
 
 "${BIN}" cache serve \
   --db "${DB}" \
