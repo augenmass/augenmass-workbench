@@ -19,6 +19,7 @@ pub mod state;
 pub mod trace;
 pub mod view;
 
+use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
@@ -101,6 +102,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
             EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| EnvFilter::new("warn,augenmass=info")),
         )
+        .with_ansi(std::io::stdout().is_terminal())
         .try_init();
 
     // The public URL is baked into the request_uri, response_uri, QR, and every

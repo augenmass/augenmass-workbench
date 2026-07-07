@@ -6,6 +6,7 @@ mod registry;
 mod routes;
 mod tunnel;
 
+use std::io::IsTerminal;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -29,6 +30,7 @@ async fn main() -> anyhow::Result<()> {
             EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| EnvFilter::new("warn,augenmass_relay=info")),
         )
+        .with_ansi(std::io::stdout().is_terminal())
         .try_init();
 
     let config = RelayConfig::from_env()?;
