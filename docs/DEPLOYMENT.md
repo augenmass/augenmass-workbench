@@ -266,6 +266,39 @@ rejection, and local trace redaction.
 Do not claim phone-wallet ingress is ready until the hosted proof passes against
 the actual public domain.
 
+### Deploying with `railway up`
+
+Both Railway services are tarball deploys: `source.repo` is `null` on each, so
+there is no GitHub autodeploy. Every release is an explicit `railway up` from a
+local checkout of the tagged commit.
+
+`railway up` builds whatever `railway.json` resolves at the repository root and
+has no `--config` or `--dockerfile` flag. The root `railway.json` is the cache
+manifest (`Dockerfile`, health check `/api/health`), so a plain
+`railway up --service <relay-service>` builds the cache image for the relay
+service and then fails the relay's `/healthz` health check.
+
+To deploy the relay, put the relay manifest at the root first, ideally in a
+throwaway worktree so the tracked `railway.json` is never dirtied:
+
+```sh
+git worktree add ../augenmass-relay-deploy <tag-or-commit>
+cd ../augenmass-relay-deploy
+cp railway.relay.json railway.json
+railway up --service <relay-service>
+cd -
+git worktree remove ../augenmass-relay-deploy
+```
+
+The cache service deploys normally with the committed root manifest:
+
+```sh
+railway up --service cache
+```
+
+As of 2026-07-08 both services were redeployed to v0.3.0 content (commit
+`88c03d0`) and reported healthy.
+
 ## Docker or VPS
 
 The cache Docker image builds the release binary with the lockfile, installs
