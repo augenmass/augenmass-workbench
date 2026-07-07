@@ -296,6 +296,11 @@ The cache service deploys normally with the committed root manifest:
 railway up --service cache
 ```
 
+Health endpoints to verify after each deploy:
+
+- cache: `https://cache.augenmass.tech/api/health`
+- relay: `https://wallet.augenmass.tech/healthz`
+
 As of 2026-07-08 both services were redeployed to v0.3.0 content (commit
 `88c03d0`) and reported healthy.
 
