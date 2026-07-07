@@ -82,6 +82,15 @@ from the same `v0.3.0` release workflow artifacts.
 - The hosted relay is suitable for controlled demos and operator use; a broader
   public service needs operational policy, monitoring, and abuse controls.
 - The proof bundles are sensitive and intentionally not committed.
+- The token-status-list signer is operator-supplied trust material. The status
+  signer used by `serve --status-signer` and `evidence prove-trust-status
+  --status-key` is not cryptographically bound to the issuer trust anchor
+  (`--trust-anchor`): the verifier trusts whatever signer the operator passes, so
+  a signer that matches a forged status list will verify it. This is intentional
+  and real-world-consistent (the Bundesdruckerei preprod PID provider signs its
+  status list with a key deliberately separate from the issuer root); anchoring
+  the status signer to the issuer is a later step. See the code caveat in
+  `crates/augenmass-core/src/status.rs:21-27`.
 
 ## [0.2.0]
 

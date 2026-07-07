@@ -401,6 +401,7 @@ Common gotchas:
 - `--public-url` is baked into the `request_uri` and `response_uri`, so it must match how the wallet reaches the tool. For a phone wallet on another device, `127.0.0.1` will not work: bind `--host 0.0.0.0` and set a `--public-url` reachable from the phone, for example `http://192.0.2.10:8080/` (it must end in `/`).
 - A static or fixture wallet response cannot be replayed against a running server. Each run generates a fresh ephemeral encryption key and nonce, so the wallet must encrypt to this run's key and echo this run's nonce.
 - `--live-status` only takes effect when a `--trust-anchor` is also set. Use `--status-signer` when the status-list token is signed by a dedicated revocation/status certificate rather than the issuer trust root.
+- The status signer is operator-supplied trust material. `--status-signer` (and evidence's `--status-key`) is not cryptographically bound to `--trust-anchor`, so the verifier trusts whatever signer you pass and a signer that matches a forged status list will verify it. This is intentional and real-world-consistent (the Bundesdruckerei preprod PID provider signs its status list with a key deliberately separate from the issuer root); you vouch for the key you supply. See the code caveat in `crates/augenmass-core/src/status.rs:21-27`.
 
 ## CI notes
 
