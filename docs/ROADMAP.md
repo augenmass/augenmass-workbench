@@ -10,10 +10,11 @@ item gets its own numbered, parallelization-annotated plan when it is scheduled.
 artifact (SD-JWT VC, ISO 18013-5 mdoc, WRPRC registration certificate,
 OpenID4VP request / JAR, OpenID4VCI credential offer, token status list, DCQL),
 the over-ask engine (`check`, `audit`, `baselines`), end-to-end SD-JWT VC
-cryptographic verification (`verify presentation`, `verify trust`,
-`verify status`, `verify status-list`, `x509-hash`), guard-railed registrar
-writes (`register`, `list`, `clone`, `cache`), the live wallet-interaction
-debugger (`serve`), local evidence bundles (`evidence`), and the hosted relay and
+cryptographic verification plus request verification (`verify presentation`,
+`verify request`, `verify trust`, `verify status`, `verify status-list`,
+`x509-hash`), guard-railed registrar writes (`register`, `list`, `clone`,
+`cache`), the live wallet-interaction debugger (`serve`), local evidence bundles
+(`evidence`), and the hosted relay and
 cached-sandbox surfaces. The items below extend that base.
 
 Two properties of the engine shape the whole roadmap. `augenmass-core` is
@@ -92,6 +93,16 @@ MAC-versus-signature `DeviceAuth` options) makes this the largest item.
 
 ## 2. Full JAR signature verification
 
+Status: implemented as `verify request` (`augenmass_core::jar`). The paragraphs
+below are the original scoping; the shipped command verifies the ES256 signature
+over the request object against the `x5c` leaf (rejecting `none` and
+alg-confusion), requires an `x509_hash` `client_id` binding, and, with
+`--anchor`, checks that the leaf chains directly to a trust anchor. Deferred
+follow-ups are tracked as issues: low-S ES256 enforcement in #4, shared
+verifying-key extraction in #5, and rejection-rendering cleanup in #6. Other
+future scope remains non-ES256 algorithms, key resolution other than the `x5c`
+leaf (`kid`/`jwks`/DID), and full RFC 5280 path validation.
+
 Verify the signature on a JWT-Secured Authorization Request (JAR), not just decode
 and lint it.
 
@@ -100,8 +111,8 @@ shape, the `client_id` `x509_hash` binding, `response_mode`), and `x509-hash`
 computes the binding from the `x5c` leaf, but nothing verifies the JWS signature
 over the request object itself. This item adds the verifier-request-side analog of
 `verify presentation`: prove the request was actually signed by the key in its
-`x5c` leaf, that the leaf chains to a trust anchor, and that the `client_id` binds
-to that leaf.
+`x5c` leaf, that the leaf chains directly to a trust anchor when one is supplied,
+and that the `x509_hash` `client_id` binds to that leaf.
 
 Why it matters: a wallet, and a wallet debugger, must not act on an authorization
 request it cannot authenticate. The `x509_hash` `client_id` scheme ties the

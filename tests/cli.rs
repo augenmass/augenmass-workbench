@@ -6,8 +6,12 @@
 
 use assert_cmd::Command;
 use augenmass_core::crypto::{encrypt_jwe, generate_response_encryption_key_pair};
+use base64::prelude::*;
+use p256::ecdsa::signature::Signer;
+use p256::pkcs8::DecodePrivateKey;
 use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
+use rcgen::{CertificateParams, DnType, KeyPair, PKCS_ECDSA_P256_SHA256};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -672,6 +676,165 @@ fn verify_trust_wrong_anchor() {
         .assert()
         .failure()
         .stdout(contains("UNTRUSTED"));
+}
+
+// --- verify request (JAR signature) ----------------------------------------
+
+const JAR_FIXTURE: &str = "fixtures/requests/eudiplo-request.jwt";
+
+fn p256_key() -> KeyPair {
+    KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).expect("generate P-256 key")
+}
+
+fn signing_key(kp: &KeyPair) -> p256::ecdsa::SigningKey {
+    let secret = p256::SecretKey::from_pkcs8_der(&kp.serialize_der()).expect("PKCS#8 private key");
+    p256::ecdsa::SigningKey::from_bytes(&secret.to_bytes()).expect("signing key")
+}
+
+fn self_signed(kp: &KeyPair, cn: &str) -> Vec<u8> {
+    let mut params = CertificateParams::default();
+    params.distinguished_name.push(DnType::CommonName, cn);
+    params
+        .self_signed(kp)
+        .expect("self-sign leaf")
+        .der()
+        .as_ref()
+        .to_vec()
+}
+
+fn mint_request_without_client_id() -> String {
+    let now = NOW.parse::<i64>().expect("NOW parses");
+    let kp = p256_key();
+    let der = self_signed(&kp, "CLI Minted Verifier");
+    let header = json!({
+        "typ": "oauth-authz-req+jwt",
+        "alg": "ES256",
+        "x5c": [BASE64_STANDARD.encode(&der)],
+    });
+    let payload = json!({
+        "response_type": "vp_token",
+        "nonce": NONCE,
+        "iat": now - 3600,
+        "exp": now + 60,
+    });
+    let h = BASE64_URL_SAFE_NO_PAD.encode(serde_json::to_vec(&header).unwrap());
+    let p = BASE64_URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload).unwrap());
+    let signing_input = format!("{h}.{p}");
+    let sig: p256::ecdsa::Signature = signing_key(&kp).sign(signing_input.as_bytes());
+    let s = BASE64_URL_SAFE_NO_PAD.encode(sig.to_bytes());
+    format!("{signing_input}.{s}")
+}
+
+#[test]
+fn verify_request_valid_fixture_succeeds() {
+    bin()
+        .args(["verify", "request", JAR_FIXTURE, "--now", NOW])
+        .assert()
+        .success()
+        .stdout(contains("VERIFIED").and(contains("client_id binding: matches")));
+}
+
+#[test]
+fn verify_request_self_anchor_is_trusted() {
+    bin()
+        .args([
+            "verify",
+            "request",
+            JAR_FIXTURE,
+            "--anchor",
+            "fixtures/certs/eudiplo-verifier-leaf.pem",
+            "--now",
+            NOW,
+        ])
+        .assert()
+        .success()
+        .stdout(contains(
+            "trust anchored: yes, but the verified leaf is self-issued",
+        ));
+}
+
+#[test]
+fn verify_request_missing_client_id_rejects() {
+    let token = mint_request_without_client_id();
+
+    bin()
+        .args(["verify", "request", &token, "--now", NOW])
+        .assert()
+        .failure()
+        .stdout(contains("JarClientIdUnbound").and(contains(
+            "request has no client_id, so x509_hash binding cannot be established",
+        )));
+}
+
+#[test]
+fn verify_request_wrong_anchor_is_untrusted() {
+    bin()
+        .args([
+            "verify",
+            "request",
+            JAR_FIXTURE,
+            "--anchor",
+            "fixtures/certs/erica-trust-anchor.pem",
+            "--now",
+            NOW,
+        ])
+        .assert()
+        .failure()
+        .stdout(contains("UntrustedIssuer"));
+}
+
+#[test]
+fn verify_request_tampered_signature_is_rejected() {
+    // Flip the final signature character; the token stays a well-formed 3-segment
+    // JWS but its signature no longer matches the signing input.
+    let jwt = fs::read_to_string(JAR_FIXTURE).expect("read JAR fixture");
+    let jwt = jwt.trim();
+    let last = jwt.chars().last().unwrap();
+    let flipped = if last == 'A' { 'B' } else { 'A' };
+    let tampered: String = jwt[..jwt.len() - 1].chars().chain([flipped]).collect();
+    bin()
+        .args(["verify", "request", &tampered, "--now", NOW])
+        .assert()
+        .failure()
+        .stdout(contains("JarSignature"));
+}
+
+#[test]
+fn verify_request_expired_without_clock_is_rejected() {
+    // The captured fixture's exp is in the past relative to any real run, so the
+    // system clock (no --now) must fail it closed.
+    bin()
+        .args(["verify", "request", JAR_FIXTURE])
+        .assert()
+        .failure()
+        .stdout(contains("JarExpired"));
+}
+
+#[test]
+fn verify_request_json_contract() {
+    let assert = bin()
+        .args([
+            "--json",
+            "verify",
+            "request",
+            JAR_FIXTURE,
+            "--anchor",
+            "fixtures/certs/eudiplo-verifier-leaf.pem",
+            "--now",
+            NOW,
+        ])
+        .assert()
+        .success();
+    let out = String::from_utf8(assert.get_output().stdout.clone()).expect("utf8");
+    let v: serde_json::Value = serde_json::from_str(&out).expect("verify request emits valid JSON");
+    assert_eq!(v["verified"], serde_json::json!(true));
+    assert_eq!(v["clientIdBound"], serde_json::json!(true));
+    assert_eq!(v["trustAnchored"], serde_json::json!(true));
+    assert_eq!(v["alg"], serde_json::json!("ES256"));
+    // Integral NumericDates render as JSON integers, absent claims as null.
+    assert_eq!(v["iat"], serde_json::json!(1_780_434_972_i64));
+    assert_eq!(v["exp"], serde_json::json!(1_780_438_572_i64));
+    assert_eq!(v["nbf"], serde_json::Value::Null);
 }
 
 // --- verify status / revocation --------------------------------------------

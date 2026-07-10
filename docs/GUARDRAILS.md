@@ -9,7 +9,7 @@ This page shows local placements first: a pre-commit hook and a local verificati
 - `check <body>` exits 1 on an over-ask or a blocking format error, 0 when the body is clean and ready to register.
 - `audit --request <file> --purpose <id>` exits 1 on an over-ask against the named purpose baseline.
 - `validate dcql <input>` exits 1 on a blocking DCQL error (duplicate ids, dangling `credential_sets` references, claim paths whose shape does not match the credential format).
-- `verify presentation`, `verify trust`, `verify status` exit 1 when not verified, untrusted, or revoked.
+- `verify presentation`, `verify request`, `verify trust`, `verify status` exit 1 when not verified, unbound, untrusted, or revoked.
 - `x509-hash <input> --client-id <id>` exits 1 when the claimed client_id does not match the leaf certificate.
 
 Read-only commands that only describe local inputs (`inspect`, `decode`, `baselines`, `generate`) exit 0 when inputs are valid; network reads such as `list` can fail if the target is unavailable.

@@ -235,7 +235,7 @@ pub fn decode_request(input: &str) -> Result<Decoded> {
     Ok(Decoded { json, text })
 }
 
-fn client_id_scheme(client_id: &str) -> Option<&'static str> {
+pub(crate) fn client_id_scheme(client_id: &str) -> Option<&'static str> {
     if client_id.starts_with("x509_hash:") {
         Some("x509_hash")
     } else if client_id.starts_with("x509_san_dns:") {
