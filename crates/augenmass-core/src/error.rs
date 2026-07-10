@@ -59,6 +59,9 @@ pub enum RejectKind {
     JarAlgUnsupported,
     /// The JAR signature did not verify against the public key in its `x5c` leaf.
     JarSignature,
+    /// The JAR `client_id` is missing or does not use the `x509_hash` scheme, so
+    /// no binding to the verified `x5c` leaf can be established.
+    JarClientIdUnbound,
     /// The JAR `client_id` uses the `x509_hash` scheme but its value does not
     /// bind to the verified `x5c` leaf certificate.
     JarClientIdMismatch,

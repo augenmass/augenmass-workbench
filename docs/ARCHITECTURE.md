@@ -56,6 +56,9 @@ The engine re-exports its public surface from
 - `verify`: SD-JWT VC plus KB-JWT verification (issuer signature, holder
   binding, nonce, audience, vct, freshness), with the clock-injectable
   `_at`/`_full` variants.
+- `jar`: JWT-Secured Authorization Request verification, including ES256,
+  `x5c`, strict `x509_hash` client_id binding, direct anchor checks, and
+  request time windows.
 - `status`: token-status-list revocation. Fail-closed and offline: an
   unreadable or unverifiable status token is treated as not-cleared, not as
   cleared.
@@ -67,9 +70,9 @@ The engine re-exports its public surface from
 
 v1 of the Workbench used only `inspector`, `regcert`, and `pid` (it was a
 generate/check/doctor/register/list/clone tool). v2 surfaces the entire engine:
-`disclosure`, `verify`, `status`, `trust`, and `crypto` are all now reachable
-from the CLI, plus net-new offline decoders for the artifact types the engine
-did not previously expose at the command line.
+`disclosure`, `verify`, `jar`, `status`, `trust`, and `crypto` are all now
+reachable from the CLI, plus net-new offline decoders for the artifact types the
+engine did not previously expose at the command line.
 
 ## The CLI source map (`src/`)
 
@@ -88,6 +91,7 @@ augenmass-workbench/
         pid.rs                German PID model + DCQL builders
         disclosure.rs         SD-JWT disclosed claims
         verify.rs             SD-JWT VC + KB-JWT verification
+        jar.rs                JAR signature + x509_hash client_id binding
         status.rs             token status list (fail-closed, offline)
         trust.rs              X.509 leaf chains-to-anchor
         crypto.rs             JWE decrypt, x5c to JWK, x509_hash
@@ -215,7 +219,7 @@ work as gates in a pipeline without parsing output:
 
 - `check`: exit 1 on over-ask or a blocking format error; exit 0 if clean.
 - `audit`: exit 1 on over-ask; exit 0 otherwise.
-- `verify presentation`, `verify trust`, `verify status`, `verify status-list`:
+- `verify presentation`, `verify request`, `verify trust`, `verify status`, `verify status-list`:
   exit 1 if not verified, untrusted, revoked, or on error; exit 0 on success.
 - `x509-hash --client-id`: exit 1 on mismatch.
 - `doctor`: exit 1 if it has findings.

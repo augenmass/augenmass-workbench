@@ -20,9 +20,9 @@ Add `--json` to any read-only command for machine-readable output suited to CI a
 | --- | --- | --- | --- |
 | `*.sdjwt`, `...~...~...` | SD-JWT VC presentation | `inspect` / `decode sd-jwt` | `verify presentation`, `verify trust`, `verify status` |
 | `rc-wrp+jwt` payload | WRPRC registration certificate | `inspect` / `decode regcert` | `audit --cert ...` |
-| `oauth-authz-req+jwt` | OpenID4VP authorization request / JAR | `inspect` / `decode request` | `doctor`, `x509-hash` |
+| `oauth-authz-req+jwt` | OpenID4VP authorization request / JAR | `inspect` / `decode request` | `verify request`, `doctor`, `x509-hash` |
 | `openid-credential-offer://` | OpenID4VCI credential offer | `inspect` / `decode offer` | (none; offline decode) |
-| `openid4vp://` | OpenID4VP request URI | `inspect` / `decode offer` | (resolve `request_uri` then `doctor`) |
+| `openid4vp://` | OpenID4VP request URI | `inspect` / `decode offer` | (resolve `request_uri` then `verify request` or `doctor`) |
 | `statuslist+jwt` | Token status list | `inspect` / `decode status-list` | `verify status-list` |
 | ISO 18013-5 CBOR, hex, or base64 | mdoc / mso_mdoc credential | `inspect` / `decode mdoc` | decode only |
 | DCQL JSON | DCQL query | `inspect` | `audit --request FILE ...` |
@@ -123,6 +123,16 @@ augenmass doctor fixtures/requests/eudiplo-request.jwt
 ```
 
 `doctor` flags the JAR-specific mistakes that make a wallet reject a verifier's request. It exits 1 when it finds blocking issues. Pair it with `x509-hash` to confirm the `client_id` binding (see the X.509 section).
+
+Verify it with:
+
+```
+augenmass verify request fixtures/requests/eudiplo-request.jwt \
+  --anchor fixtures/certs/eudiplo-verifier-leaf.pem \
+  --now 1780435200
+```
+
+`verify request` checks the ES256 signature over the compact JWS, proves the `x509_hash` `client_id` binds to the `x5c` leaf, and, with `--anchor`, checks that the leaf chains directly to the supplied anchor. Missing `client_id` or any scheme other than `x509_hash` rejects with `JarClientIdUnbound`. A self-issued leaf can be pinned by supplying that leaf as anchor material, but that does not by itself establish third-party trust.
 
 Common gotchas:
 
@@ -405,4 +415,4 @@ Common gotchas:
 
 ## CI notes
 
-Every command in this guide exits non-zero on the "bad" outcome, so you can wire them straight into a pipeline: `check` and `audit` exit 1 on over-ask (and `check` also on blocking format errors); `verify presentation`, `verify trust`, `verify status`, and `verify status-list` exit 1 when not verified, untrusted, revoked, or on error; `x509-hash --client-id` exits 1 on mismatch; `doctor` exits 1 on findings; `register` refuses (exit 1) on over-ask without `--force` and bails on blocking format errors. Add `--json` for structured output an agent or CI step can parse.
+Every command in this guide exits non-zero on the "bad" outcome, so you can wire them straight into a pipeline: `check` and `audit` exit 1 on over-ask (and `check` also on blocking format errors); `verify presentation`, `verify request`, `verify trust`, `verify status`, and `verify status-list` exit 1 when not verified, untrusted, revoked, or on error; `x509-hash --client-id` exits 1 on mismatch; `doctor` exits 1 on findings; `register` refuses (exit 1) on over-ask without `--force` and bails on blocking format errors. Add `--json` for structured output an agent or CI step can parse.

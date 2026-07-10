@@ -159,11 +159,11 @@ enum ValidateCmd {
 enum VerifyCmd {
     /// Verify an SD-JWT VC presentation (issuer sig, KB-JWT, nonce/aud, vct).
     Presentation(VerifyPresentationArgs),
-    /// Verify a JWT-Secured Authorization Request (JAR): signature, x5c leaf, client_id binding.
+    /// Verify a JWT-Secured Authorization Request (JAR): signature, x5c leaf, x509_hash client_id binding.
     Request {
         /// The JAR (compact JWS): file path, inline value, or `-`.
         input: String,
-        /// Trust anchor PEM: if supplied, the x5c leaf must chain to it.
+        /// Trust anchor PEM: if supplied, the x5c leaf must chain directly to it.
         #[arg(long)]
         anchor: Option<String>,
         /// Verification clock (Unix seconds); omit to use the system clock.

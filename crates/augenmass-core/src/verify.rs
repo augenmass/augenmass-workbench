@@ -36,6 +36,24 @@ use crate::status::{
 };
 use crate::trust::{issuer_trusted_at, TrustAnchors};
 
+/// Read an RFC 7519 NumericDate claim. Missing claims are optional, but present
+/// claims must be JSON numbers. Integer and fractional seconds are both valid.
+pub(crate) fn numeric_date_claim(
+    claims: &Value,
+    name: &str,
+    malformed: RejectKind,
+) -> VerifyResult<Option<f64>> {
+    match claims.get(name) {
+        None => Ok(None),
+        Some(value) => value.as_f64().map(Some).ok_or_else(|| {
+            reject(
+                malformed,
+                format!("{name} is present but not a numeric date"),
+            )
+        }),
+    }
+}
+
 /// The request-bound values a presentation must echo back (OID4VP holder binding).
 #[derive(Debug, Clone)]
 pub struct RequestBinding {
@@ -127,19 +145,22 @@ pub fn verify_pid_presentation_at(
             format!("issuer payload not JSON: {e}"),
         )
     })?;
-    if let Some(exp) = claims.get("exp").and_then(|v| v.as_i64()) {
-        if now_unix >= exp {
+    if let Some(exp) = numeric_date_claim(&claims, "exp", RejectKind::MalformedSdJwt)? {
+        if now_unix as f64 >= exp {
             return Err(reject(
                 RejectKind::CredentialExpired,
-                format!("credential expired at {exp}"),
+                format!("credential expired at {}", format_numeric_date(exp)),
             ));
         }
     }
-    if let Some(nbf) = claims.get("nbf").and_then(|v| v.as_i64()) {
-        if now_unix < nbf {
+    if let Some(nbf) = numeric_date_claim(&claims, "nbf", RejectKind::MalformedSdJwt)? {
+        if (now_unix as f64) < nbf {
             return Err(reject(
                 RejectKind::CredentialNotYetValid,
-                format!("credential is not valid before {nbf}"),
+                format!(
+                    "credential is not valid before {}",
+                    format_numeric_date(nbf)
+                ),
             ));
         }
     }
@@ -363,6 +384,16 @@ fn now_unix() -> i64 {
         .unwrap_or(0)
 }
 
+/// Render a NumericDate for human-facing output: integral values print without
+/// a trailing `.0`, fractional values keep their full precision.
+pub fn format_numeric_date(value: f64) -> String {
+    if value.fract().abs() < f64::EPSILON {
+        format!("{value:.0}")
+    } else {
+        value.to_string()
+    }
+}
+
 /// A [`DateTimeProvider`] fixed at a given Unix time, so the verification clock
 /// is injectable: the real wall clock in production, the capture time in tests.
 struct FixedTime(i64);
@@ -394,6 +425,46 @@ mod tests {
         RequestBinding {
             nonce: NONCE.to_string(),
             aud: AUD.to_string(),
+        }
+    }
+
+    #[test]
+    fn numeric_date_claim_accepts_absent_integer_and_fractional_values() {
+        let claims = serde_json::json!({
+            "integer": 1_780_435_200,
+            "fractional": 1_780_435_200.5,
+        });
+
+        assert_eq!(
+            numeric_date_claim(&claims, "missing", RejectKind::MalformedSdJwt).unwrap(),
+            None
+        );
+        assert_eq!(
+            numeric_date_claim(&claims, "integer", RejectKind::MalformedSdJwt).unwrap(),
+            Some(1_780_435_200.0)
+        );
+        assert_eq!(
+            numeric_date_claim(&claims, "fractional", RejectKind::MalformedSdJwt).unwrap(),
+            Some(1_780_435_200.5)
+        );
+    }
+
+    #[test]
+    fn numeric_date_claim_rejects_present_non_numbers() {
+        let claims = serde_json::json!({
+            "string": "1780435200",
+            "bool": true,
+            "object": { "value": 1780435200 },
+        });
+
+        for name in ["string", "bool", "object"] {
+            let err = numeric_date_claim(&claims, name, RejectKind::MalformedSdJwt)
+                .expect_err("present non-number must reject");
+            assert_eq!(err.kind, RejectKind::MalformedSdJwt);
+            assert_eq!(
+                err.reason,
+                format!("{name} is present but not a numeric date")
+            );
         }
     }
 

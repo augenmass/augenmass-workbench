@@ -9,7 +9,7 @@ use augenmass_core::status::{
 };
 use augenmass_core::trust::{issuer_trusted_at, TrustAnchors};
 use augenmass_core::verify::{
-    verify_pid_presentation_full, RequestBinding, StatusInput, TrustOptions,
+    format_numeric_date, verify_pid_presentation_full, RequestBinding, StatusInput, TrustOptions,
 };
 use augenmass_core::PID_VCT;
 use serde_json::{json, Value};
@@ -126,8 +126,8 @@ pub struct RequestArgs {
 
 /// `verify request`: prove a JWT-Secured Authorization Request (JAR) was signed
 /// by the key in its `x5c` leaf, that an `x509_hash` `client_id` binds to that
-/// leaf, and (with `--anchor`) that the leaf chains to a trust anchor. Returns
-/// true if the request verified.
+/// leaf, and (with `--anchor`) that the leaf chains directly to a trust anchor.
+/// Returns true if the request verified.
 pub fn verify_request(args: RequestArgs, format: OutputFormat) -> Result<bool> {
     let anchors = match &args.anchor_pem {
         Some(pem) => Some(TrustAnchors::from_pem(pem).context("load trust anchor PEM")?),
@@ -141,23 +141,23 @@ pub fn verify_request(args: RequestArgs, format: OutputFormat) -> Result<bool> {
 
     match verify_jar(args.request.trim(), &options) {
         Ok(v) => {
-            let scheme = v.client_id.as_deref().and_then(client_id_scheme);
+            let scheme = client_id_scheme(&v.client_id);
             let json = json!({
                 "verified": true,
                 "alg": v.alg,
                 "typ": v.typ,
                 "clientId": v.client_id,
                 "clientIdScheme": scheme,
-                "clientIdBound": v.client_id_bound,
+                "clientIdBound": true,
                 "leafX509Hash": v.leaf_x509_hash,
                 "leafSubject": v.leaf_subject,
                 "leafIssuer": v.leaf_issuer,
                 "selfSigned": v.self_signed,
                 "anchorsSupplied": v.anchors_supplied,
                 "trustAnchored": v.trust_anchored,
-                "iat": v.iat,
-                "nbf": v.nbf,
-                "exp": v.exp,
+                "iat": numeric_date_json(v.iat),
+                "nbf": numeric_date_json(v.nbf),
+                "exp": numeric_date_json(v.exp),
             });
 
             let mut text = String::new();
@@ -166,24 +166,17 @@ pub fn verify_request(args: RequestArgs, format: OutputFormat) -> Result<bool> {
             if let Some(typ) = &v.typ {
                 text.push_str(&format!("  typ: {typ}\n"));
             }
-            if let Some(cid) = &v.client_id {
-                text.push_str(&format!("  client_id: {cid}\n"));
-            }
-            match v.client_id_bound {
-                Some(true) => {
-                    text.push_str("  client_id binding: matches the x5c leaf\n");
-                }
-                // A mismatch is a hard rejection, so `Some(false)` never reaches here.
-                _ => {
-                    let label = scheme.unwrap_or("unknown");
-                    text.push_str(&format!(
-                        "  client_id binding: not checked (client_id scheme is {label}, not x509_hash)\n"
-                    ));
-                }
-            }
+            text.push_str(&format!("  client_id: {}\n", v.client_id));
+            text.push_str("  client_id binding: matches the x5c leaf\n");
             text.push_str(&format!("  leaf subject: {}\n", v.leaf_subject));
             text.push_str(&format!("  leaf issuer:  {}\n", v.leaf_issuer));
-            if v.trust_anchored {
+            if v.trust_anchored && v.self_signed {
+                text.push_str(
+                    "  trust anchored: yes, but the verified leaf is self-issued; this pins \
+                     trust to the supplied anchor material and does not by itself establish \
+                     third-party trust.\n",
+                );
+            } else if v.trust_anchored {
                 text.push_str("  trust anchored: yes (the leaf chains to a supplied anchor)\n");
             } else if v.self_signed {
                 text.push_str(
@@ -218,21 +211,37 @@ pub fn verify_request(args: RequestArgs, format: OutputFormat) -> Result<bool> {
 }
 
 /// A compact `iat / nbf / exp` summary for the human report.
-fn window_summary(iat: Option<i64>, nbf: Option<i64>, exp: Option<i64>) -> String {
+fn window_summary(iat: Option<f64>, nbf: Option<f64>, exp: Option<f64>) -> String {
     let mut parts = Vec::new();
     if let Some(iat) = iat {
-        parts.push(format!("iat {iat}"));
+        parts.push(format!("iat {}", format_numeric_date(iat)));
     }
     if let Some(nbf) = nbf {
-        parts.push(format!("nbf {nbf}"));
+        parts.push(format!("nbf {}", format_numeric_date(nbf)));
     }
     if let Some(exp) = exp {
-        parts.push(format!("exp {exp}"));
+        parts.push(format!("exp {}", format_numeric_date(exp)));
     }
     if parts.is_empty() {
         "no iat/nbf/exp claims".to_string()
     } else {
         parts.join(", ")
+    }
+}
+
+fn numeric_date_json(value: Option<f64>) -> Value {
+    match value {
+        None => Value::Null,
+        Some(value)
+            if value.fract().abs() < f64::EPSILON
+                && value >= i64::MIN as f64
+                // `i64::MAX as f64` rounds up to 2^63, which is not a valid
+                // i64, so exactly that value must stay on the f64 path.
+                && value < i64::MAX as f64 =>
+        {
+            json!(value as i64)
+        }
+        Some(value) => json!(value),
     }
 }
 
@@ -349,7 +358,7 @@ mod jar_tests {
     use rcgen::{
         BasicConstraints, CertificateParams, DnType, IsCa, KeyPair, PKCS_ECDSA_P256_SHA256,
     };
-    use serde_json::json;
+    use serde_json::{json, Value};
 
     const NOW: i64 = 1_780_435_200;
 
@@ -370,21 +379,45 @@ mod jar_tests {
         p256::ecdsa::SigningKey::from_bytes(&secret.to_bytes()).expect("signing key")
     }
 
-    /// Assemble a compact ES256 JAR: `x5c_der` goes in the header, `client_id` in
-    /// the payload, and the signature is made by `signer` over the signing input.
-    fn mint(client_id: &str, x5c_der: &[u8], signer: &KeyPair, exp: i64) -> String {
+    /// Assemble a compact ES256 JAR: `x5c_der` goes in the header, optional
+    /// binding and time claims go in the payload, and the signature is made by
+    /// `signer` over the signing input.
+    fn mint(
+        client_id: Option<&str>,
+        x5c_der: &[u8],
+        signer: &KeyPair,
+        exp: Value,
+        nbf: Option<Value>,
+    ) -> String {
+        mint_with_iat(client_id, x5c_der, signer, json!(NOW - 3600), exp, nbf)
+    }
+
+    fn mint_with_iat(
+        client_id: Option<&str>,
+        x5c_der: &[u8],
+        signer: &KeyPair,
+        iat: Value,
+        exp: Value,
+        nbf: Option<Value>,
+    ) -> String {
         let header = json!({
             "typ": "oauth-authz-req+jwt",
             "alg": "ES256",
             "x5c": [BASE64_STANDARD.encode(x5c_der)],
         });
-        let payload = json!({
+        let mut payload = json!({
             "response_type": "vp_token",
-            "client_id": client_id,
             "nonce": "b4ba2623-76a2-486b-a1f6-f1656025d07b",
-            "iat": exp - 3600,
+            "iat": iat,
             "exp": exp,
         });
+        let payload_obj = payload.as_object_mut().expect("payload object");
+        if let Some(client_id) = client_id {
+            payload_obj.insert("client_id".to_string(), json!(client_id));
+        }
+        if let Some(nbf) = nbf {
+            payload_obj.insert("nbf".to_string(), nbf);
+        }
         let h = BASE64_URL_SAFE_NO_PAD.encode(serde_json::to_vec(&header).unwrap());
         let p = BASE64_URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload).unwrap());
         let signing_input = format!("{h}.{p}");
@@ -416,10 +449,10 @@ mod jar_tests {
         let kp = p256_key();
         let der = self_signed(&kp, "Minted Verifier");
         let client_id = format!("x509_hash:{}", leaf_cert_hash(&der));
-        let token = mint(&client_id, &der, &kp, NOW + 60);
+        let token = mint(Some(&client_id), &der, &kp, json!(NOW + 60), None);
 
         let v = verify_jar(&token, &opts_now()).expect("minted token must verify");
-        assert_eq!(v.client_id_bound, Some(true));
+        assert_eq!(v.client_id, client_id);
         assert!(v.self_signed);
         assert!(!v.trust_anchored);
     }
@@ -431,10 +464,117 @@ mod jar_tests {
         let kp = p256_key();
         let der = self_signed(&kp, "Minted Verifier");
         let wrong = "x509_hash:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-        let token = mint(wrong, &der, &kp, NOW + 60);
+        let token = mint(Some(wrong), &der, &kp, json!(NOW + 60), None);
 
         let err = verify_jar(&token, &opts_now()).expect_err("mismatched binding must reject");
         assert_eq!(err.kind, RejectKind::JarClientIdMismatch);
+    }
+
+    #[test]
+    fn minted_valid_signature_without_client_id_rejects() {
+        let kp = p256_key();
+        let der = self_signed(&kp, "Minted Verifier");
+        let token = mint(None, &der, &kp, json!(NOW + 60), None);
+
+        let err = verify_jar(&token, &opts_now()).expect_err("missing client_id must reject");
+        assert_eq!(err.kind, RejectKind::JarClientIdUnbound);
+        assert_eq!(
+            err.reason,
+            "request has no client_id, so x509_hash binding cannot be established"
+        );
+    }
+
+    #[test]
+    fn minted_valid_signature_with_non_x509_client_id_rejects() {
+        let kp = p256_key();
+        let der = self_signed(&kp, "Minted Verifier");
+        let token = mint(
+            Some("redirect_uri:https://example.test/callback"),
+            &der,
+            &kp,
+            json!(NOW + 60),
+            None,
+        );
+
+        let err = verify_jar(&token, &opts_now()).expect_err("non-x509 client_id must reject");
+        assert_eq!(err.kind, RejectKind::JarClientIdUnbound);
+        assert!(err.reason.contains("scheme 'redirect_uri'"));
+    }
+
+    #[test]
+    fn minted_future_nbf_rejects() {
+        let kp = p256_key();
+        let der = self_signed(&kp, "Minted Verifier");
+        let client_id = format!("x509_hash:{}", leaf_cert_hash(&der));
+        let token = mint(
+            Some(&client_id),
+            &der,
+            &kp,
+            json!(NOW + 60),
+            Some(json!(NOW + 1)),
+        );
+
+        let err = verify_jar(&token, &opts_now()).expect_err("future nbf must reject");
+        assert_eq!(err.kind, RejectKind::JarNotYetValid);
+    }
+
+    #[test]
+    fn minted_past_nbf_verifies() {
+        let kp = p256_key();
+        let der = self_signed(&kp, "Minted Verifier");
+        let client_id = format!("x509_hash:{}", leaf_cert_hash(&der));
+        let token = mint(
+            Some(&client_id),
+            &der,
+            &kp,
+            json!(NOW + 60),
+            Some(json!(NOW - 1)),
+        );
+
+        let v = verify_jar(&token, &opts_now()).expect("past nbf must verify");
+        assert_eq!(v.nbf, Some((NOW - 1) as f64));
+    }
+
+    #[test]
+    fn minted_fractional_just_past_exp_rejects() {
+        let kp = p256_key();
+        let der = self_signed(&kp, "Minted Verifier");
+        let client_id = format!("x509_hash:{}", leaf_cert_hash(&der));
+        let token = mint(Some(&client_id), &der, &kp, json!(NOW as f64 - 0.5), None);
+
+        let err = verify_jar(&token, &opts_now()).expect_err("past fractional exp must reject");
+        assert_eq!(err.kind, RejectKind::JarExpired);
+    }
+
+    #[test]
+    fn minted_string_exp_rejects_as_malformed() {
+        let kp = p256_key();
+        let der = self_signed(&kp, "Minted Verifier");
+        let client_id = format!("x509_hash:{}", leaf_cert_hash(&der));
+        let token = mint(Some(&client_id), &der, &kp, json!("1780435260"), None);
+
+        let err = verify_jar(&token, &opts_now()).expect_err("string exp must reject");
+        assert_eq!(err.kind, RejectKind::MalformedJar);
+    }
+
+    #[test]
+    fn minted_string_iat_still_verifies() {
+        // `iat` is informational: a non-numeric value is dropped, not rejected,
+        // unlike `exp`/`nbf` which gate validity and parse strictly.
+        let kp = p256_key();
+        let der = self_signed(&kp, "Minted Verifier");
+        let client_id = format!("x509_hash:{}", leaf_cert_hash(&der));
+        let token = mint_with_iat(
+            Some(&client_id),
+            &der,
+            &kp,
+            json!("not-a-date"),
+            json!(NOW + 60),
+            None,
+        );
+
+        let v = verify_jar(&token, &opts_now()).expect("string iat must not reject");
+        assert_eq!(v.iat, None);
     }
 
     #[test]
@@ -446,7 +586,7 @@ mod jar_tests {
         let other = p256_key();
         let other_der = self_signed(&other, "Not The Signer");
         let client_id = format!("x509_hash:{}", leaf_cert_hash(&other_der));
-        let token = mint(&client_id, &other_der, &signer, NOW + 60);
+        let token = mint(Some(&client_id), &other_der, &signer, json!(NOW + 60), None);
 
         let err = verify_jar(&token, &opts_now()).expect_err("substituted key must reject");
         assert_eq!(err.kind, RejectKind::JarSignature);
@@ -475,7 +615,7 @@ mod jar_tests {
         let leaf_der = leaf_cert.der().as_ref().to_vec();
 
         let client_id = format!("x509_hash:{}", leaf_cert_hash(&leaf_der));
-        let token = mint(&client_id, &leaf_der, &leaf_kp, NOW + 60);
+        let token = mint(Some(&client_id), &leaf_der, &leaf_kp, json!(NOW + 60), None);
 
         let anchors = TrustAnchors::from_pem(&cert_pem(ca_cert.der().as_ref())).unwrap();
         let v = verify_jar(
@@ -488,6 +628,6 @@ mod jar_tests {
         .expect("CA-chained leaf must verify and be trusted");
         assert!(v.trust_anchored);
         assert!(!v.self_signed);
-        assert_eq!(v.client_id_bound, Some(true));
+        assert_eq!(v.client_id, client_id);
     }
 }

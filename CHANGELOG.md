@@ -17,17 +17,19 @@ imply wall-clock timing for releases.
   first v0.4.0 roadmap item. It proves the request was signed by the key in its
   `x5c` leaf (ES256 only; `none` and any alg-confusion attempt are rejected
   before any key handling), that an `x509_hash` `client_id` binds to that leaf,
-  and, with `--anchor`, that the leaf chains to a trust anchor within its
-  validity window. `--now` pins the verification clock (anchor windows and the
-  request `exp`/`nbf`); it exits 1 when not verified, unbound, untrusted, or
+  and, with `--anchor`, that the leaf chains directly to a trust anchor within
+  its validity window. Missing `client_id` or any scheme other than `x509_hash`
+  rejects with `JarClientIdUnbound`; a mismatched `x509_hash` value rejects with
+  `JarClientIdMismatch`. `--now` pins the verification clock (anchor windows and
+  the request `exp`/`nbf`); it exits 1 when not verified, unbound, untrusted, or
   expired, and emits `--json`. The check lives in the pure engine as
   `augenmass_core::jar` (a new module beside `verify` and `trust`), reusing the
   P-256 primitives and `trust::leaf_der_trusted_at` (a new leaf-DER anchoring
   helper shared with the SD-JWT issuer path). New fixture:
   `fixtures/certs/eudiplo-verifier-leaf.pem` (the captured request's self-signed
   leaf, used as a self-anchor). Deferred: non-ES256 algorithms, key resolution
-  other than the `x5c` leaf, full RFC 5280 path validation, and `client_id`
-  schemes other than `x509_hash`.
+  other than the `x5c` leaf, full RFC 5280 path validation, and support for any
+  client identity scheme beyond `x509_hash`.
 
 ## [0.3.0]
 

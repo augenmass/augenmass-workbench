@@ -47,6 +47,7 @@ Commands exit non-zero on the "bad" outcome so they slot into CI without extra p
 | `check` | over-ask or a blocking format error | clean |
 | `audit` | over-ask vs the purpose baseline | within baseline |
 | `verify presentation` | not verified (signature, KB-JWT, nonce/aud, vct, freshness, or any requested trust/status check fails) | verified |
+| `verify request` | not verified (signature, `x5c`, `client_id` binding, trust anchor, or request time window fails) | verified |
 | `verify trust` | issuer does not chain to an anchor, or the validity window fails | trusted |
 | `verify status` | revoked, or an error resolving status (fail-closed) | valid |
 | `verify status-list` | the read index is revoked, or verification errors | the index is valid |
@@ -624,6 +625,66 @@ augenmass verify presentation fixtures/presentations/synthetic-pid-with-status.s
   --status-token fixtures/status/status-list-CLEAR.jwt \
   --status-key fixtures/status/status-list-verify-key.pub.pem
 ```
+
+## `verify request`
+
+Verify a JWT-Secured Authorization Request (JAR): the ES256 signature over the original compact JWS signing input, the `x5c` leaf key, the `x509_hash` `client_id` binding, and, with `--anchor`, a direct leaf-to-anchor trust check. Missing `client_id` or any scheme other than `x509_hash` rejects with `JarClientIdUnbound`.
+
+```
+Usage: augenmass verify request [OPTIONS] <INPUT>
+```
+
+Arguments:
+
+- `<INPUT>`: the JAR (compact JWS) as a file path, inline value, or `-`.
+
+Options:
+
+- `--anchor <ANCHOR>`: trust anchor PEM. If supplied, the `x5c` leaf must chain directly to it.
+- `--now <NOW>`: verification clock in Unix seconds; omit to use the system clock.
+- `--json`, `-h, --help`.
+
+Exit code: 1 if any check fails, including an unsupported algorithm, bad signature, missing or malformed `x5c`, missing or non-`x509_hash` `client_id`, mismatched binding, untrusted leaf, expired request, or not-yet-valid request. Exit 0 if verified.
+
+Verified with the committed self-issued fixture leaf as the supplied anchor, exit 0:
+
+```
+augenmass verify request fixtures/requests/eudiplo-request.jwt \
+  --anchor fixtures/certs/eudiplo-verifier-leaf.pem \
+  --now 1780435200
+```
+
+```
+VERIFIED: the request is signed by the key in its x5c leaf.
+  alg: ES256
+  typ: oauth-authz-req+jwt
+  client_id: x509_hash:7zvIjJaM1KQPpN7IZBuVLuh8anw1gcbZ0a6Wj3M9i4w
+  client_id binding: matches the x5c leaf
+  leaf subject: CN=Verifier Fixture Tenant,C=DE
+  leaf issuer:  CN=Verifier Fixture Tenant,C=DE
+  trust anchored: yes, but the verified leaf is self-issued; this pins trust to the supplied anchor material and does not by itself establish third-party trust.
+  request window: iat 1780434972, exp 1780438572 (verification clock 1780435200)
+```
+
+Without `--anchor`, the signature and binding still verify but issuer trust is not established:
+
+```
+augenmass verify request fixtures/requests/eudiplo-request.jwt --now 1780435200
+```
+
+```
+VERIFIED: the request is signed by the key in its x5c leaf.
+  alg: ES256
+  typ: oauth-authz-req+jwt
+  client_id: x509_hash:7zvIjJaM1KQPpN7IZBuVLuh8anw1gcbZ0a6Wj3M9i4w
+  client_id binding: matches the x5c leaf
+  leaf subject: CN=Verifier Fixture Tenant,C=DE
+  leaf issuer:  CN=Verifier Fixture Tenant,C=DE
+  trust anchored: no; the leaf is self-issued, so the signature proves self-consistency only. Supply --anchor to establish third-party trust.
+  request window: iat 1780434972, exp 1780438572 (verification clock 1780435200)
+```
+
+JSON output keeps the `clientIdBound` field for compatibility. On success it is always `true`; unbound requests reject instead of returning a partial success.
 
 ## `verify trust`
 

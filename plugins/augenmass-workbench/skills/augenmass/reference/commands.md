@@ -95,7 +95,7 @@ Everything here actually checks cryptography (still offline; no network). `verif
 | Same, deterministic clock, specific vct, tighter freshness. | `$AUGENMASS verify presentation <p> --nonce <NONCE> --aud <AUD> --now <SECS> --vct <VCT> --max-age <SECS>` | 1 if not verified |
 | Verify a presentation and anchor the issuer to a trust anchor. | `$AUGENMASS verify presentation <p> --nonce <NONCE> --aud <AUD> --trust-anchor <PEM>` | 1 if not verified / untrusted |
 | Verify a presentation and check revocation in one shot. | `$AUGENMASS verify presentation <p> --nonce <NONCE> --aud <AUD> --status-token <TOKEN> --status-key <PEM>` | 1 if not verified / revoked |
-| Verify a signed request (JAR): signature over the request, x5c leaf, client_id binding. | `$AUGENMASS verify request <jar> --now <SECS>` | 1 if not verified |
+| Verify a signed request (JAR): signature over the request, x5c leaf, x509_hash client_id binding. | `$AUGENMASS verify request <jar> --now <SECS>` | 1 if not verified |
 | Same, and anchor the x5c leaf to a trust anchor. | `$AUGENMASS verify request <jar> --anchor <PEM> --now <SECS>` | 1 if not verified / untrusted |
 | Does the issuer chain to this trust anchor? | `$AUGENMASS verify trust <p> --anchor <PEM>` | 1 if untrusted |
 | Is this presentation revoked, per a status-list token? | `$AUGENMASS verify status <p> --token <TOKEN> --key <PEM>` | 1 if revoked / error |
@@ -105,7 +105,7 @@ Everything here actually checks cryptography (still offline; no network). `verif
 
 `verify presentation` requires `--nonce` and `--aud`. Optional flags: `--vct` (defaults to German PID), `--max-age` (KB-JWT freshness window in seconds, default 300), `--now` (verification clock in Unix seconds; omit for the system clock), `--trust-anchor`, plus the paired `--status-token`/`--status-key`. `verify trust` requires `--anchor` and accepts `--now`. `verify status` requires `--token` and `--key`. `verify status-list` requires `--token`, `--key`, and `--index`.
 
-`verify request` takes a JAR (a compact JWS) as a file/inline/`-`. It proves the request was signed by the key in its `x5c` leaf (ES256 only; `none` and any alg-confusion attempt are rejected before any key handling), that an `x509_hash` `client_id` binds to that leaf, and, with `--anchor <PEM>`, that the leaf chains to a trust anchor. `--now` pins the clock for the anchor validity window and the request `exp`/`nbf`; omit it and the system clock treats a past-dated fixture as expired. It is the crypto counterpart to `doctor`, which only lints JAR shape. Deferred: non-ES256 algorithms, key resolution other than the `x5c` leaf (no `kid`/`jwks`/DID), full RFC 5280 path validation, and `client_id` schemes other than `x509_hash`.
+`verify request` takes a JAR (a compact JWS) as a file/inline/`-`. It proves the request was signed by the key in its `x5c` leaf (ES256 only; `none` and any alg-confusion attempt are rejected before any key handling), that an `x509_hash` `client_id` binds to that leaf, and, with `--anchor <PEM>`, that the leaf chains directly to a trust anchor. Missing `client_id` or any scheme other than `x509_hash` rejects with `JarClientIdUnbound`; a mismatched `x509_hash` value rejects with `JarClientIdMismatch`. `--now` pins the clock for the anchor validity window and the request `exp`/`nbf`; omit it and the system clock treats a past-dated fixture as expired. It is the crypto counterpart to `doctor`, which only lints JAR shape. Deferred: non-ES256 algorithms, key resolution other than the `x5c` leaf (no `kid`/`jwks`/DID), and full RFC 5280 path validation.
 
 `x509-hash` input is a JAR (its x5c leaf), a PEM certificate, or base64 DER, given as a file/inline/`-`. The client_id format is `x509_hash:<base64url(SHA-256(leaf-cert-DER))>`. Use this command to compute the value a signed request must set as its `client_id`.
 
@@ -122,6 +122,9 @@ $AUGENMASS verify presentation fixtures/presentations/erica-vp-VALID.sdjwt \
 $AUGENMASS verify request fixtures/requests/eudiplo-request.jwt \
   --anchor fixtures/certs/eudiplo-verifier-leaf.pem \
   --now 1780435200
+# VERIFIED: the request is signed by the key in its x5c leaf.
+#   client_id binding: matches the x5c leaf
+#   trust anchored: yes, but the verified leaf is self-issued; this pins trust to the supplied anchor material and does not by itself establish third-party trust.
 
 # Read index 42 of a status list (revoked in the REVOKED fixture). Exits 1.
 $AUGENMASS verify status-list \
@@ -268,7 +271,7 @@ $AUGENMASS list
 | `check` | no over-ask, no blocking format error | over-ask or a blocking format error |
 | `audit` | within the purpose baseline | over-ask |
 | `verify presentation` | verified | not verified |
-| `verify request` | signed by the x5c leaf (and, with `--anchor`, trusted) | not verified / untrusted / expired |
+| `verify request` | signed by the x5c leaf, bound to x509_hash, and, with `--anchor`, trusted | not verified / unbound / untrusted / expired |
 | `verify trust` | trusted (chains to anchor) | untrusted |
 | `verify status` | not revoked | revoked or error |
 | `verify status-list` | index not revoked | index revoked or error |

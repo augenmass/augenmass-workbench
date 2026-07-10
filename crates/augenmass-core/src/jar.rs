@@ -4,7 +4,7 @@
 //! but verify nothing. This module is the request-side analogue of
 //! [`crate::verify`] (which verifies an SD-JWT VC presentation): it proves the
 //! OpenID4VP Authorization Request was actually signed by the key in its `x5c`
-//! leaf, optionally that the leaf chains to a trust anchor, and that an
+//! leaf, optionally that the leaf chains directly to a trust anchor, and that an
 //! `x509_hash` `client_id` binds to that leaf. Every check fails closed, and the
 //! verification clock is injectable so fixture tests stay deterministic.
 //!
@@ -22,8 +22,8 @@
 //!   constraints, signer-cert revocation) is deferred, matching the honest scope
 //!   already documented in [`crate::trust`].
 //! - `client_id` binding: the `x509_hash` scheme only. Other schemes
-//!   (`x509_san_dns`, `redirect_uri`, `did`, pre-registered) are reported by the
-//!   caller but not bound here.
+//!   (`x509_san_dns`, `redirect_uri`, `did`, pre-registered) reject because
+//!   success means the request identity is bound to the verified leaf.
 //!
 //! A leaf with no supplied anchor still verifies its signature, exactly as
 //! [`crate::verify::verify_pid_presentation_at`] trusts the SD-JWT `x5c` leaf
@@ -42,6 +42,7 @@ use x509_cert::Certificate;
 use crate::crypto::leaf_cert_hash;
 use crate::error::{RejectKind, RejectReason, VerifyResult};
 use crate::trust::{leaf_der_trusted_at, TrustAnchors};
+use crate::verify::{format_numeric_date, numeric_date_claim};
 
 /// The only JOSE signature algorithm this verifier accepts.
 const ES256: &str = "ES256";
@@ -65,14 +66,15 @@ pub struct JarOptions<'a> {
 /// (when anchors were supplied) that the leaf chained to one of them. The fields
 /// carry what a caller needs to render the result and to reason about how much
 /// trust the signature actually establishes.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone)]
 pub struct VerifiedJar {
     /// The JOSE `alg` (always `ES256` on success).
     pub alg: String,
     /// The JOSE `typ`, if present (e.g. `oauth-authz-req+jwt`).
     pub typ: Option<String>,
-    /// The request `client_id`, if present.
-    pub client_id: Option<String>,
+    /// The request `client_id`, proven to use `x509_hash` and bind to the
+    /// verified `x5c` leaf.
+    pub client_id: String,
     /// The `x509_hash` binding computed from the verified `x5c` leaf DER.
     pub leaf_x509_hash: String,
     /// The leaf certificate subject distinguished name.
@@ -82,10 +84,6 @@ pub struct VerifiedJar {
     /// True when the leaf is self-issued (subject == issuer): its signature then
     /// only proves self-consistency, never third-party trust.
     pub self_signed: bool,
-    /// `Some(true)` when `client_id` uses the `x509_hash` scheme and binds to the
-    /// verified leaf; `None` when `client_id` uses another scheme (nothing to
-    /// bind here). A mismatch is a hard rejection, so `Some(false)` never occurs.
-    pub client_id_bound: Option<bool>,
     /// Whether the caller supplied trust anchors (so `trust_anchored` is
     /// meaningful rather than "not checked").
     pub anchors_supplied: bool,
@@ -93,15 +91,11 @@ pub struct VerifiedJar {
     /// anchors were supplied.
     pub trust_anchored: bool,
     /// The request `iat`, if present.
-    pub iat: Option<i64>,
+    pub iat: Option<f64>,
     /// The request `exp`, if present.
-    pub exp: Option<i64>,
+    pub exp: Option<f64>,
     /// The request `nbf`, if present.
-    pub nbf: Option<i64>,
-    /// The verified `x5c` leaf certificate DER, so a caller can render further
-    /// certificate detail without re-decoding the token. Not serialized.
-    #[serde(skip)]
-    pub leaf_der: Vec<u8>,
+    pub nbf: Option<f64>,
 }
 
 /// Verify a JAR's signature (and, per [`JarOptions`], its trust anchoring and
@@ -112,7 +106,8 @@ pub struct VerifiedJar {
 /// 2. the `alg` is `ES256` (rejects `none` and any confusion algorithm first);
 /// 3. the `x5c` leaf yields a usable P-256 key;
 /// 4. the ES256 signature verifies over `base64url(header).base64url(payload)`;
-/// 5. an `x509_hash` `client_id`, if present, binds to the verified leaf;
+/// 5. the `client_id` is present, uses `x509_hash`, and binds to the verified
+///    leaf (anything else rejects);
 /// 6. if anchors were supplied, the leaf chains to one within validity;
 /// 7. the request `exp`/`nbf`, if present, hold at the verification clock.
 pub fn verify_jar(token: &str, opts: &JarOptions) -> VerifyResult<VerifiedJar> {
@@ -208,24 +203,32 @@ pub fn verify_jar(token: &str, opts: &JarOptions) -> VerifyResult<VerifiedJar> {
     let client_id = payload
         .get("client_id")
         .and_then(Value::as_str)
-        .map(str::to_string);
+        .ok_or_else(|| {
+            reject(
+                RejectKind::JarClientIdUnbound,
+                "request has no client_id, so x509_hash binding cannot be established",
+            )
+        })?;
 
     // 5. client_id binding (x509_hash scheme only).
-    let client_id_bound = match &client_id {
-        Some(cid) if cid.starts_with(X509_HASH_PREFIX) => {
-            let expected = format!("{X509_HASH_PREFIX}{leaf_x509_hash}");
-            if *cid != expected {
-                return Err(reject(
-                    RejectKind::JarClientIdMismatch,
-                    format!(
-                        "client_id '{cid}' does not bind to the x5c leaf (expected '{expected}')"
-                    ),
-                ));
-            }
-            Some(true)
-        }
-        _ => None,
-    };
+    if !client_id.starts_with(X509_HASH_PREFIX) {
+        return Err(reject(
+            RejectKind::JarClientIdUnbound,
+            format!(
+                "client_id uses scheme '{}', not x509_hash, so binding to the x5c leaf cannot be established",
+                client_id_scheme_name(client_id)
+            ),
+        ));
+    }
+    let expected = format!("{X509_HASH_PREFIX}{leaf_x509_hash}");
+    if client_id != expected {
+        return Err(reject(
+            RejectKind::JarClientIdMismatch,
+            format!(
+                "client_id '{client_id}' does not bind to the x5c leaf (expected '{expected}')"
+            ),
+        ));
+    }
 
     // 6. Trust anchoring (optional).
     let anchors_supplied = opts.anchors.is_some();
@@ -243,26 +246,30 @@ pub fn verify_jar(token: &str, opts: &JarOptions) -> VerifyResult<VerifiedJar> {
     };
 
     // 7. Request validity window (optional claims).
-    let exp = payload.get("exp").and_then(Value::as_i64);
-    let nbf = payload.get("nbf").and_then(Value::as_i64);
-    let iat = payload.get("iat").and_then(Value::as_i64);
+    let exp = numeric_date_claim(&payload, "exp", RejectKind::MalformedJar)?;
+    let nbf = numeric_date_claim(&payload, "nbf", RejectKind::MalformedJar)?;
+    // `iat` is informational and gates nothing, so a non-numeric value is
+    // ignored rather than rejected; only `exp`/`nbf` parse strictly.
+    let iat = payload.get("iat").and_then(Value::as_f64);
     if let Some(exp) = exp {
-        if opts.now_unix >= exp {
+        if opts.now_unix as f64 >= exp {
             return Err(reject(
                 RejectKind::JarExpired,
                 format!(
-                    "request expired at {exp} (verification clock {})",
+                    "request expired at {} (verification clock {})",
+                    format_numeric_date(exp),
                     opts.now_unix
                 ),
             ));
         }
     }
     if let Some(nbf) = nbf {
-        if opts.now_unix < nbf {
+        if (opts.now_unix as f64) < nbf {
             return Err(reject(
                 RejectKind::JarNotYetValid,
                 format!(
-                    "request is not valid before {nbf} (verification clock {})",
+                    "request is not valid before {} (verification clock {})",
+                    format_numeric_date(nbf),
                     opts.now_unix
                 ),
             ));
@@ -275,19 +282,25 @@ pub fn verify_jar(token: &str, opts: &JarOptions) -> VerifyResult<VerifiedJar> {
             .get("typ")
             .and_then(Value::as_str)
             .map(str::to_string),
-        client_id,
+        client_id: client_id.to_string(),
         leaf_x509_hash,
         leaf_subject: cert.tbs_certificate.subject.to_string(),
         leaf_issuer: cert.tbs_certificate.issuer.to_string(),
         self_signed: cert.tbs_certificate.subject == cert.tbs_certificate.issuer,
-        client_id_bound,
         anchors_supplied,
         trust_anchored,
         iat,
         exp,
         nbf,
-        leaf_der,
     })
+}
+
+fn client_id_scheme_name(client_id: &str) -> &str {
+    client_id
+        .split_once(':')
+        .map(|(scheme, _)| scheme)
+        .filter(|scheme| !scheme.is_empty())
+        .unwrap_or("unknown")
 }
 
 /// Decode a base64url-no-pad JWS segment into JSON.
@@ -368,13 +381,12 @@ mod tests {
         let v = verify_jar(fixture(), &no_anchor()).expect("real captured JAR must verify");
         assert_eq!(v.alg, ES256);
         assert_eq!(v.typ.as_deref(), Some("oauth-authz-req+jwt"));
-        assert_eq!(v.client_id_bound, Some(true));
         assert!(v.self_signed, "the eudiplo fixture leaf is self-issued");
         assert!(!v.trust_anchored);
         assert!(!v.anchors_supplied);
         assert_eq!(
-            v.client_id.as_deref(),
-            Some("x509_hash:7zvIjJaM1KQPpN7IZBuVLuh8anw1gcbZ0a6Wj3M9i4w")
+            v.client_id,
+            "x509_hash:7zvIjJaM1KQPpN7IZBuVLuh8anw1gcbZ0a6Wj3M9i4w"
         );
     }
 

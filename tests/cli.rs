@@ -6,8 +6,12 @@
 
 use assert_cmd::Command;
 use augenmass_core::crypto::{encrypt_jwe, generate_response_encryption_key_pair};
+use base64::prelude::*;
+use p256::ecdsa::signature::Signer;
+use p256::pkcs8::DecodePrivateKey;
 use predicates::prelude::PredicateBooleanExt;
 use predicates::str::contains;
+use rcgen::{CertificateParams, DnType, KeyPair, PKCS_ECDSA_P256_SHA256};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -678,6 +682,49 @@ fn verify_trust_wrong_anchor() {
 
 const JAR_FIXTURE: &str = "fixtures/requests/eudiplo-request.jwt";
 
+fn p256_key() -> KeyPair {
+    KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256).expect("generate P-256 key")
+}
+
+fn signing_key(kp: &KeyPair) -> p256::ecdsa::SigningKey {
+    let secret = p256::SecretKey::from_pkcs8_der(&kp.serialize_der()).expect("PKCS#8 private key");
+    p256::ecdsa::SigningKey::from_bytes(&secret.to_bytes()).expect("signing key")
+}
+
+fn self_signed(kp: &KeyPair, cn: &str) -> Vec<u8> {
+    let mut params = CertificateParams::default();
+    params.distinguished_name.push(DnType::CommonName, cn);
+    params
+        .self_signed(kp)
+        .expect("self-sign leaf")
+        .der()
+        .as_ref()
+        .to_vec()
+}
+
+fn mint_request_without_client_id() -> String {
+    let now = NOW.parse::<i64>().expect("NOW parses");
+    let kp = p256_key();
+    let der = self_signed(&kp, "CLI Minted Verifier");
+    let header = json!({
+        "typ": "oauth-authz-req+jwt",
+        "alg": "ES256",
+        "x5c": [BASE64_STANDARD.encode(&der)],
+    });
+    let payload = json!({
+        "response_type": "vp_token",
+        "nonce": NONCE,
+        "iat": now - 3600,
+        "exp": now + 60,
+    });
+    let h = BASE64_URL_SAFE_NO_PAD.encode(serde_json::to_vec(&header).unwrap());
+    let p = BASE64_URL_SAFE_NO_PAD.encode(serde_json::to_vec(&payload).unwrap());
+    let signing_input = format!("{h}.{p}");
+    let sig: p256::ecdsa::Signature = signing_key(&kp).sign(signing_input.as_bytes());
+    let s = BASE64_URL_SAFE_NO_PAD.encode(sig.to_bytes());
+    format!("{signing_input}.{s}")
+}
+
 #[test]
 fn verify_request_valid_fixture_succeeds() {
     bin()
@@ -701,7 +748,22 @@ fn verify_request_self_anchor_is_trusted() {
         ])
         .assert()
         .success()
-        .stdout(contains("trust anchored: yes"));
+        .stdout(contains(
+            "trust anchored: yes, but the verified leaf is self-issued",
+        ));
+}
+
+#[test]
+fn verify_request_missing_client_id_rejects() {
+    let token = mint_request_without_client_id();
+
+    bin()
+        .args(["verify", "request", &token, "--now", NOW])
+        .assert()
+        .failure()
+        .stdout(contains("JarClientIdUnbound").and(contains(
+            "request has no client_id, so x509_hash binding cannot be established",
+        )));
 }
 
 #[test]

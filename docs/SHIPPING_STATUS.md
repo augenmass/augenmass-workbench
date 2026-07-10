@@ -336,8 +336,8 @@ These are good to show on stage or in a recording:
 - `check` and `audit`: block over-asking and explain the minimal alternative.
 - `doctor`: catch verifier/JAR mistakes such as `x5c` shape and `client_id`
   binding problems.
-- `verify presentation`, `verify trust`, and `verify status-list`: prove good
-  fixtures and reject hostile ones.
+- `verify presentation`, `verify request`, `verify trust`, and
+  `verify status-list`: prove good fixtures and reject hostile ones.
 - `serve`: live verifier-in-a-box with redacted traces by default.
 - `serve --relay augenmass`: hosted phone-wallet ingress. The public relay
   carries only `/request/<session>` and `/response/<session>`; trace, inspect,
