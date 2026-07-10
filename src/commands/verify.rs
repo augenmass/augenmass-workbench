@@ -170,25 +170,7 @@ pub fn verify_request(args: RequestArgs, format: OutputFormat) -> Result<bool> {
             text.push_str("  client_id binding: matches the x5c leaf\n");
             text.push_str(&format!("  leaf subject: {}\n", v.leaf_subject));
             text.push_str(&format!("  leaf issuer:  {}\n", v.leaf_issuer));
-            if v.trust_anchored && v.self_signed {
-                text.push_str(
-                    "  trust anchored: yes, but the verified leaf is self-issued; this pins \
-                     trust to the supplied anchor material and does not by itself establish \
-                     third-party trust.\n",
-                );
-            } else if v.trust_anchored {
-                text.push_str("  trust anchored: yes (the leaf chains to a supplied anchor)\n");
-            } else if v.self_signed {
-                text.push_str(
-                    "  trust anchored: no; the leaf is self-issued, so the signature proves \
-                     self-consistency only. Supply --anchor to establish third-party trust.\n",
-                );
-            } else {
-                text.push_str(
-                    "  trust anchored: no anchor supplied; the signature verifies against the \
-                     x5c leaf but is not chained to a trust anchor. Supply --anchor to check.\n",
-                );
-            }
+            text.push_str(trust_summary(v.trust_anchored, v.self_signed));
             text.push_str(&format!(
                 "  request window: {} (verification clock {now})\n",
                 window_summary(v.iat, v.nbf, v.exp)
@@ -206,6 +188,27 @@ pub fn verify_request(args: RequestArgs, format: OutputFormat) -> Result<bool> {
             let text = format!("REJECTED [{kind}]: {}\n", reason.reason);
             emit(format, &json, &text)?;
             Ok(false)
+        }
+    }
+}
+
+/// The `trust anchored:` line of the human report. Self-issued leaves carry a
+/// caveat in both directions: anchoring one only pins the supplied material.
+fn trust_summary(trust_anchored: bool, self_signed: bool) -> &'static str {
+    match (trust_anchored, self_signed) {
+        (true, true) => {
+            "  trust anchored: yes, but the verified leaf is self-issued; this pins \
+             trust to the supplied anchor material and does not by itself establish \
+             third-party trust.\n"
+        }
+        (true, false) => "  trust anchored: yes (the leaf chains to a supplied anchor)\n",
+        (false, true) => {
+            "  trust anchored: no; the leaf is self-issued, so the signature proves \
+             self-consistency only. Supply --anchor to establish third-party trust.\n"
+        }
+        (false, false) => {
+            "  trust anchored: no anchor supplied; the signature verifies against the \
+             x5c leaf but is not chained to a trust anchor. Supply --anchor to check.\n"
         }
     }
 }
@@ -629,5 +632,40 @@ mod jar_tests {
         assert!(v.trust_anchored);
         assert!(!v.self_signed);
         assert_eq!(v.client_id, client_id);
+    }
+}
+
+#[cfg(test)]
+mod render_tests {
+    use super::{numeric_date_json, trust_summary};
+    use serde_json::{json, Value};
+
+    #[test]
+    fn numeric_date_json_renders_integral_as_integer_and_fractional_as_float() {
+        assert_eq!(numeric_date_json(None), Value::Null);
+        assert_eq!(numeric_date_json(Some(1_780_434_972.0)), json!(1_780_434_972_i64));
+        assert_eq!(numeric_date_json(Some(1_780_434_972.5)), json!(1_780_434_972.5));
+    }
+
+    #[test]
+    fn numeric_date_json_handles_i64_cast_boundaries() {
+        // `i64::MAX as f64` rounds up to 2^63, which no i64 can hold: it must
+        // stay a float instead of saturating to i64::MAX.
+        assert!(numeric_date_json(Some(i64::MAX as f64)).is_f64());
+        // The largest f64 below 2^63 and exactly -2^63 are valid i64 values.
+        let below_max = f64::from_bits((i64::MAX as f64).to_bits() - 1);
+        assert_eq!(numeric_date_json(Some(below_max)), json!(below_max as i64));
+        assert_eq!(numeric_date_json(Some(i64::MIN as f64)), json!(i64::MIN));
+    }
+
+    #[test]
+    fn trust_summary_distinguishes_all_four_cases() {
+        assert!(trust_summary(true, true)
+            .contains("trust anchored: yes, but the verified leaf is self-issued"));
+        assert!(trust_summary(true, false)
+            .contains("trust anchored: yes (the leaf chains to a supplied anchor)"));
+        assert!(trust_summary(false, true)
+            .contains("trust anchored: no; the leaf is self-issued"));
+        assert!(trust_summary(false, false).contains("trust anchored: no anchor supplied"));
     }
 }

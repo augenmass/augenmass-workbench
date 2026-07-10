@@ -831,6 +831,10 @@ fn verify_request_json_contract() {
     assert_eq!(v["clientIdBound"], serde_json::json!(true));
     assert_eq!(v["trustAnchored"], serde_json::json!(true));
     assert_eq!(v["alg"], serde_json::json!("ES256"));
+    // Integral NumericDates render as JSON integers, absent claims as null.
+    assert_eq!(v["iat"], serde_json::json!(1_780_434_972_i64));
+    assert_eq!(v["exp"], serde_json::json!(1_780_438_572_i64));
+    assert_eq!(v["nbf"], serde_json::Value::Null);
 }
 
 // --- verify status / revocation --------------------------------------------
