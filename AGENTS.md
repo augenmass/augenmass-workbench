@@ -35,7 +35,7 @@ cargo build
 cargo test
 ```
 
-`cargo test` runs unit tests plus integration suites that drive the real binary against the committed fixtures. At this writing, that includes 46 unit tests under `src/` and `crates/`, 43 CLI integration tests, 5 demo-proof integration tests, 9 cache integration tests, and 1 serve integration test. There is a `just verify` convenience target that wraps the build, the test run, and smoke checks; `cargo build` and `cargo test` are the canonical path and always work.
+`cargo test` runs unit tests plus integration suites that drive the real binary against the committed fixtures. `cargo test --workspace` currently runs 201 tests, all passing (measured 2026-08-13): 116 unit tests under `src/` and `crates/`, 64 CLI integration tests, 15 cache integration tests, 5 demo-proof integration tests, and 1 serve integration test. There is a `just verify` convenience target that wraps the build, the test run, and smoke checks; `cargo build` and `cargo test` are the canonical path and always work.
 
 For presentation and skill wording changes, run the focused proof gate too:
 

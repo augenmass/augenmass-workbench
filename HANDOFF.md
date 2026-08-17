@@ -8,7 +8,7 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
 - Repo: `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench`, its own git repo on `main`.
 - A working, fully-tested Rust CLI `augenmass` (v0.2.0) plus a Claude Code skill, cache backend, Docker image, and full docs.
 - Build green, zero warnings, clippy clean, `cargo fmt --check` clean.
-- Tests at last shipping pass: 45 unit + 43 CLI integration + 8 cache integration + 5 demo-proof integration + 1 serve integration, all passing against real committed offline fixtures.
+- Tests: 201 at last shipping pass (measured 2026-08-13), 116 unit + 64 CLI integration + 15 cache integration + 5 demo-proof integration + 1 serve integration, all passing against real committed offline fixtures. Same item-by-item breakdown as `AGENTS.md`; keep the two in step.
 - Every command verified by hand against the real fixtures (verification, revocation, x509_hash, over-ask, the guarded clone write/read loop, the live serve flow).
 - HEADLINE capability built: `augenmass serve`, a live wallet-interaction debugger (P2 done), since hardened to be safe-by-default (the P0 security PR) with an `evidence` export/verify/replay group built on top.
 - Recent `main` history includes the foundation, serve debugger, serve hardening, mdoc decode,
