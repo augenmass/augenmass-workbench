@@ -7,7 +7,7 @@ This page collects phrasings that work well, grouped by who is asking. Each one 
 ## If you are building a relying party
 
 "Is this registration over-asking?"
-The skill runs `check` on the registration body and returns a per-claim diff: which requested claims exceed the stated purpose, and the legal basis the finding rests on (eIDAS Art. 5b(3), GDPR Art. 5(1)(c), EUDI ARF RPRC_07). It exits non-zero on an over-ask, so the same question works in CI.
+The skill runs `check` on the registration body and returns a per-claim diff: which requested claims exceed the stated purpose, and the legal basis the finding rests on (eIDAS Art. 5b(3), GDPR Art. 5(1)(c), EUDI ARF RPRC_21). It exits non-zero on an over-ask, so the same question works in CI.
 
 "Audit this request against an event check-in purpose."
 The skill runs `audit` against the named purpose baseline and reports the over-ask, if any.

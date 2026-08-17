@@ -70,7 +70,7 @@ Purpose baseline ids for `--purpose` and `baselines <id>`: `age_gate_18`, `event
 The legal basis cited on every over-ask finding:
 1. eIDAS Regulation (EU) 2024/1183, Art. 5b(3): relying parties shall not request users to provide data other than that indicated for their intended use.
 2. GDPR (EU) 2016/679, Art. 5(1)(c): data minimisation (adequate, relevant and limited to what is necessary).
-3. EUDI ARF, registration certificate, RPRC_07: the wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
+3. EUDI ARF, registration certificate, RPRC_21: the wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
 
 What `check` catches in a registration body: `claims[].path` must be an array of segments, not a string (`["age_equal_or_over","18"]`, not `"age_equal_or_over.18"`); use `credentials`, not `provided_attestations`; `purpose` is a list of `{lang, content}`, not a bare string; `privacy_policy` must be a valid URL; `support_uri` is any non-empty contact string (do not over-validate it as a URL).
 

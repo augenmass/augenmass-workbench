@@ -138,7 +138,7 @@ just bundle                # release build -> plugins/augenmass-workbench/bin/au
 - `access-leaf.pem` x509_hash = `VE3qp3vLVkU8JyVmXkjL7CSDVxVoTFdTv5fAEwmjKOI`.
   eudiplo JAR client_id = `x509_hash:7zvIjJaM1KQPpN7IZBuVLuh8anw1gcbZ0a6Wj3M9i4w`.
 - Over-ask legal basis (verbatim from the engine): eIDAS (EU) 2024/1183 Art. 5b(3); GDPR
-  (EU) 2016/679 Art. 5(1)(c); EUDI ARF registration certificate RPRC_07.
+  (EU) 2016/679 Art. 5(1)(c); EUDI ARF registration certificate RPRC_21.
 - Curated baselines: age_gate_18, event_checkin, car_rental, bank_kyc (taste judgments).
 - Our relying party (write only under it): "Hackathon - Reza", id `2af138a8-59ea-4a84-aea3-666cafdb1369`.
 - Sandbox: Keycloak resource-owner password grant, working client_id `swagger`. Env in `.env.example`.

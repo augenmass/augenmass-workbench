@@ -324,7 +324,7 @@ augenmass decode regcert fixtures/regcert/rc-by-id.json
 augenmass audit --request overask --purpose age_gate_18 --cert fixtures/regcert/rc-by-id.json
 ```
 
-Exit 1 means over-ask; the rendering cites eIDAS Art. 5b(3), GDPR Art. 5(1)(c), and ARF RPRC_07, and suggests the minimal request. To see the baselines and legal basis on their own:
+Exit 1 means over-ask; the rendering cites eIDAS Art. 5b(3), GDPR Art. 5(1)(c), and ARF RPRC_21, and suggests the minimal request. To see the baselines and legal basis on their own:
 
 ```
 augenmass baselines

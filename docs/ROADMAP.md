@@ -190,7 +190,7 @@ Why it matters: a request the tool can label but not analyze is a blind spot in
 the over-ask engine, the core IP. Converting PE to DCQL means a legacy request
 gets the same over-ask audit, the same DCQL validation, and the same
 minimal-request suggestion as a modern one, with the same cited legal basis
-(eIDAS Art. 5b(3), GDPR Art. 5(1)(c), ARF RPRC_07).
+(eIDAS Art. 5b(3), GDPR Art. 5(1)(c), ARF RPRC_21).
 
 What exists to build on:
 
@@ -263,7 +263,7 @@ that an over-ask should fail the build rather than reach the registrar. SARIF ma
 that finding first-class in the same dashboard a team already watches for security
 issues, instead of a non-zero exit and a log line. It raises the visibility of a
 proportionality violation to match its legal weight (eIDAS Art. 5b(3),
-GDPR Art. 5(1)(c), ARF RPRC_07).
+GDPR Art. 5(1)(c), ARF RPRC_21).
 
 What exists to build on:
 

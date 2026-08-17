@@ -43,7 +43,7 @@ The engine re-exports its public surface from
 
 - `inspector`: over-ask analysis (`analyze` returning an `OverAskReport`), the
   curated purpose `baselines`, and the verbatim `LEGAL_BASIS` text cited on
-  every finding (eIDAS Art. 5b(3), GDPR Art. 5(1)(c), EUDI ARF RPRC_07). This is
+  every finding (eIDAS Art. 5b(3), GDPR Art. 5(1)(c), EUDI ARF RPRC_21). This is
   the proportionality core: the same logic audits a verifier's request and gates
   a relying party's own registration body.
 - `regcert`: decodes a WRPRC registration certificate (typ `rc-wrp+jwt`),

@@ -152,7 +152,7 @@ Over-ask findings cite three sources, sourced from the engine's `LEGAL_BASIS`. C
 
 1. eIDAS Regulation (EU) 2024/1183, Art. 5b(3): "Relying parties shall not request users to provide data other than that indicated for their intended use."
 2. GDPR (EU) 2016/679, Art. 5(1)(c): data minimisation ("adequate, relevant and limited to what is necessary").
-3. EUDI ARF, registration certificate, RPRC_07: the wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
+3. EUDI ARF, registration certificate, RPRC_21: the wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
 
 The curated purpose baselines (`age_gate_18`, `event_checkin`, `car_rental`, `bank_kyc`) are taste judgments, not Rulebook derivations. Run `augenmass baselines` for the current set; do not hard-code a stale copy elsewhere.
 

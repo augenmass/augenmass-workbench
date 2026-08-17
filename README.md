@@ -101,7 +101,7 @@ The binaries that ship inside the plugin come from the same release archives as 
 
 The skill is the front door. You talk to it the way you would talk to a colleague who knows the EUDI ecosystem cold; it picks the right command, runs it, and explains the result, citing the legal basis when a finding turns on it.
 
-- "Is this registration over-asking?" It runs the over-ask engine and returns a per-claim diff: which requested claims exceed the stated purpose, and the basis (eIDAS Art. 5b(3), GDPR Art. 5(1)(c), EUDI ARF RPRC_07).
+- "Is this registration over-asking?" It runs the over-ask engine and returns a per-claim diff: which requested claims exceed the stated purpose, and the basis (eIDAS Art. 5b(3), GDPR Art. 5(1)(c), EUDI ARF RPRC_21).
 - "Generate a proportionate age-check body." You get only the over-18 attribute, never a raw birthdate.
 - "Register it, but refuse if it over-asks." It dry-runs first and writes only on your explicit go-ahead, and it will not write past an over-ask unless you force it.
 - "What is this token?" It sniffs the artifact and decodes it: an SD-JWT VC presentation, a JAR, a credential offer, an mdoc, a status list.
@@ -313,7 +313,7 @@ Over-ask is the central concern: a relying party must not request more personal 
 
 1. eIDAS Regulation (EU) 2024/1183, Art. 5b(3): "Relying parties shall not request users to provide data other than that indicated for their intended use."
 2. GDPR (EU) 2016/679, Art. 5(1)(c): data minimisation, personal data must be "adequate, relevant and limited to what is necessary".
-3. EUDI ARF, registration certificate, RPRC_07: the wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
+3. EUDI ARF, registration certificate, RPRC_21: the wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
 
 The curated purpose baselines (`age_gate_18`, `event_checkin`, `car_rental`, `bank_kyc`) are taste judgments, not Rulebook derivations. See `augenmass baselines`.
 

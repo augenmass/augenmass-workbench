@@ -24,7 +24,7 @@ It is against the rules. European law is explicit that a relying party must not 
 
 1. eIDAS Regulation (EU) 2024/1183, Art. 5b(3): "Relying parties shall not request users to provide data other than that indicated for their intended use."
 2. GDPR (EU) 2016/679, Art. 5(1)(c): personal data must be "adequate, relevant and limited to what is necessary" (data minimisation).
-3. EUDI ARF, registration certificate, RPRC_07: the wallet checks that requested attributes are within the registration certificate and notifies the user otherwise.
+3. EUDI ARF, registration certificate, RPRC_21: the wallet checks that requested attributes are within the registration certificate and notifies the user otherwise.
 
 It turns users into something trackable. A birthdate plus a name plus a place is enough to recognise the same person across unrelated services. Data that was never needed becomes a way to follow people around. Asking only for "over 18: yes" cannot do that.
 

@@ -2,7 +2,7 @@
 //!
 //! This is the differentiating layer. Detection of over-ask against the
 //! registered scope is already done elsewhere (EUDIPLO enforces it server-side;
-//! the wallet enforces it per ARF RPRC_07). The contribution here is a
+//! the wallet enforces it per ARF RPRC_21). The contribution here is a
 //! human-legible, purpose-aware, legally-grounded verdict, shifted left to the
 //! relying-party developer before they ship. It judges a request on two axes:
 //!
@@ -89,7 +89,7 @@ pub const LEGAL_BASIS: &[LegalRef] = &[
     },
     LegalRef {
         source: "EUDI ARF, registration certificate",
-        locator: "RPRC_07",
+        locator: "RPRC_21",
         text: "The wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.",
     },
 ];

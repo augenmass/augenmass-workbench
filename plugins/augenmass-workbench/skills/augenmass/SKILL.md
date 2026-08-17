@@ -107,7 +107,7 @@ Many of the people who care about over-ask are not engineers: auditors, privacy 
 
 - Name the gap in one sentence: "This registration asks for the user's full birthdate, but its stated purpose is only to check that they are over 18."
 - Say why it matters without jargon: the extra data is not needed, it can be used to track the person, and it is a liability to hold.
-- Cite the data-minimisation basis it rests on, verbatim, when it helps: eIDAS Art. 5b(3), GDPR Art. 5(1)(c), EUDI ARF RPRC_07.
+- Cite the data-minimisation basis it rests on, verbatim, when it helps: eIDAS Art. 5b(3), GDPR Art. 5(1)(c), EUDI ARF RPRC_21.
 - Offer the fix: "Ask only for the over-18 attribute. I can generate that body."
 
 Never paste raw tokens, certificates, claim values, or keys back to anyone. Decode, describe, and redact.
@@ -127,7 +127,7 @@ For an auditor or privacy reviewer:
 
 - Start with the purpose and the personal data requested.
 - Explain the over-ask in plain language before showing claim paths.
-- Cite eIDAS Art. 5b(3), GDPR Art. 5(1)(c), or EUDI ARF RPRC_07 only where the finding turns on it.
+- Cite eIDAS Art. 5b(3), GDPR Art. 5(1)(c), or EUDI ARF RPRC_21 only where the finding turns on it.
 - Separate "protocol invalid" from "proportionality concern" so a soft finding is not overstated.
 
 For a non-technical reviewer:

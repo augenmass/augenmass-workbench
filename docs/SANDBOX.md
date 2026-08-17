@@ -373,7 +373,7 @@ Legal basis:
     Relying parties shall not request users to provide data other than that indicated for their intended use.
   GDPR (EU) 2016/679, Art. 5(1)(c)
     Personal data shall be adequate, relevant and limited to what is necessary (data minimisation).
-  EUDI ARF, registration certificate, RPRC_07
+  EUDI ARF, registration certificate, RPRC_21
     The wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
 
 Refusing to write: this request over-asks (see above). Re-run with --yes --force to write it anyway.
