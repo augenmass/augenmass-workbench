@@ -15,6 +15,9 @@ pub struct ServeArgs {
     pub host: String,
     pub port: u16,
     pub upstream: String,
+    /// True when `upstream` is the built-in default because neither
+    /// `--upstream` nor `AUGENMASS_CACHE_UPSTREAM` was given.
+    pub upstream_is_default: bool,
     pub ttl_secs: u64,
     pub timeout_secs: u64,
     pub max_entries: usize,
@@ -55,6 +58,7 @@ pub async fn serve(args: ServeArgs) -> Result<()> {
         host: args.host,
         port: args.port,
         upstream: args.upstream,
+        upstream_is_default: args.upstream_is_default,
         ttl_secs: args.ttl_secs,
         timeout_secs: args.timeout_secs,
         max_entries: args.max_entries,

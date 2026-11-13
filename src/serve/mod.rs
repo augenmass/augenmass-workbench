@@ -94,6 +94,17 @@ pub struct ServeArgs {
     pub age_only: bool,
 }
 
+/// The startup line that names the source of the bundled registration
+/// certificate (its leaf names `C=DE, CN=German Registrar` as subject and
+/// issuer) and repeats the sandbox registrar notice.
+pub fn bundled_registration_line() -> String {
+    format!(
+        "  registration : bundled certificate {}, issued by the German sandbox registrar (C=DE, CN=German Registrar). {}",
+        state::BUNDLED_RC_SOURCE,
+        crate::config::SANDBOX_REGISTRAR_NOTICE
+    )
+}
+
 pub async fn run(args: ServeArgs) -> Result<()> {
     // Keep the human trace (printed by the trace store) readable: default the
     // tracing subscriber to warn so axum/tower info logs do not interleave.
@@ -255,6 +266,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         eprintln!("  scope        : relay carries only /request and /response; trace and evidence stay local");
     }
     eprintln!("  client_id    : {}", state.client_id);
+    eprintln!("{}", bundled_registration_line());
     eprintln!(
         "  cert         : {}",
         if state.ephemeral {
@@ -377,4 +389,22 @@ fn loopback_operator_url(addr: SocketAddr) -> Result<Url> {
 
 fn short_for_display(id: &str) -> &str {
     id.get(..8).unwrap_or(id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bundled_registration_line_names_source_and_notice() {
+        let line = bundled_registration_line();
+        assert_eq!(
+            line,
+            format!(
+                "  registration : bundled certificate fixtures/regcert/rc-by-id.json, issued by the German sandbox registrar (C=DE, CN=German Registrar). {}",
+                crate::config::SANDBOX_REGISTRAR_NOTICE
+            )
+        );
+        assert!(!line.contains('\n'));
+    }
 }

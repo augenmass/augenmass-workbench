@@ -167,17 +167,16 @@ pub fn inspect_page(report: &OverAskReport, ephemeral: bool) -> String {
         )
     };
 
-    let suggestion = report
-        .suggested_minimal
-        .as_ref()
-        .filter(|keys| !keys.is_empty())
-        .map(|keys| {
+    let suggestion: String = crate::render::suggestion_blocks(report)
+        .into_iter()
+        .map(|(heading, lines)| {
             format!(
-                "<p class=\"purpose\">Suggested minimal request: {}</p>",
-                esc(&keys.join(", "))
+                "<p class=\"purpose\">{} {}</p>",
+                esc(&heading),
+                esc(&lines.join("; "))
             )
         })
-        .unwrap_or_default();
+        .collect();
 
     let purpose = report
         .purpose
@@ -459,3 +458,63 @@ li.evt.info{border-left-color:var(--blue)}
 
 @media (max-width:560px){:root{--bd:3px;--off:6px}header h1{font-size:clamp(28px,9vw,44px)}}
 "#;
+
+#[cfg(test)]
+mod tests {
+    use augenmass_core::inspector::{self, baseline};
+    use openid4vp::core::dcql_query::DcqlQuery;
+
+    use super::inspect_page;
+
+    fn page(request: serde_json::Value, purpose: &str) -> String {
+        let query: DcqlQuery = serde_json::from_value(request).expect("DCQL");
+        let report = inspector::analyze(
+            augenmass_core::PID_VCT,
+            &query,
+            None,
+            baseline(purpose).as_ref(),
+            &[],
+        );
+        inspect_page(&report, true)
+    }
+
+    fn sd_jwt(paths: serde_json::Value) -> serde_json::Value {
+        let claims: Vec<serde_json::Value> = paths
+            .as_array()
+            .expect("paths")
+            .iter()
+            .map(|p| serde_json::json!({ "path": p }))
+            .collect();
+        serde_json::json!({ "credentials": [{
+            "id": "pid", "format": "dc+sd-jwt",
+            "meta": { "vct_values": ["urn:eudi:pid:de:1"] }, "claims": claims,
+        }]})
+    }
+
+    #[test]
+    fn suggestion_uses_the_request_spelling() {
+        let html = page(sd_jwt(serde_json::json!([["birthdate"]])), "age_gate_18");
+        assert!(
+            html.contains("Suggested minimal request (dc+sd-jwt, urn:eudi:pid:de:1), as claim paths: [\"age_equal_or_over\", \"18\"]"),
+            "{html}"
+        );
+        assert!(!html.contains("age_equal_or_over.18"), "{html}");
+
+        let html = page(
+            serde_json::json!({ "credentials": [{
+                "id": "pid-mdoc", "format": "mso_mdoc",
+                "meta": { "doctype_value": "eu.europa.ec.eudi.pid.1" },
+                "claims": [{ "path": ["eu.europa.ec.eudi.pid.1", "birth_date"] }],
+            }]}),
+            "age_gate_18",
+        );
+        assert!(
+            html.contains("[\"eu.europa.ec.eudi.pid.de.1\", \"age_over_18\"] (German PID only)"),
+            "{html}"
+        );
+
+        let html = page(sd_jwt(serde_json::json!([["sex"]])), "bank_kyc");
+        assert!(html.contains("[\"address\", \"street_address\"]"), "{html}");
+        assert!(!html.contains("address.resident_street"), "{html}");
+    }
+}

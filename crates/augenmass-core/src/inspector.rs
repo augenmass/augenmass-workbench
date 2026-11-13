@@ -101,7 +101,8 @@ pub const LEGAL_BASIS: &[LegalRef] = &[
     LegalRef {
         source: "EUDI ARF, registration certificate",
         locator: "RPRC_21",
-        text: "The wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.",
+        // Verbatim from ARF Annex 2.02, Topic 44, requirement RPRC_21.
+        text: "After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes.",
     },
 ];
 
@@ -128,8 +129,12 @@ pub struct OverAskReport {
     pub requested: Vec<ClaimVerdict>,
     /// Claims disclosed by the wallet that were not requested (over-disclosure).
     pub over_disclosed: Vec<String>,
-    /// Curated minimal request for the selected purpose, when known.
+    /// The selected purpose's baseline model keys, when known. These are
+    /// baseline model keys, not request paths; see `suggested_minimal_request`.
     pub suggested_minimal: Option<Vec<String>>,
+    /// The curated minimal request in the spelling of each requested
+    /// credential type, when a baseline is known ([`suggested_request`]).
+    pub suggested_minimal_request: Option<Vec<SuggestedCredential>>,
     /// The full PID model annotated disclosed-vs-withheld (when a presentation
     /// is available; otherwise `disclosed` is false throughout).
     pub claim_rows: Vec<ClaimRow>,
@@ -219,6 +224,24 @@ complete identification, identity verification, or AML compliance.";
 /// The ISO/IEC 18013-5 namespace (equal to the doctype) of the EU PID mdoc.
 pub const PID_MDOC_NAMESPACE: &str = "eu.europa.ec.eudi.pid.1";
 
+/// The national namespace of the German PID mdoc (German PID Rulebook,
+/// section "Additional national attributes of German PID"), which carries the
+/// German specific elements such as `age_over_NN`. The German mdoc PID uses
+/// the doctype [`PID_MDOC_NAMESPACE`] with this second namespace.
+pub const PID_DE_MDOC_NAMESPACE: &str = "eu.europa.ec.eudi.pid.de.1";
+
+/// The SD-JWT model key `age_equal_or_over.NN` for an mdoc element
+/// `age_over_NN`, where `NN` is one or more ASCII digits and nothing else
+/// (German PID Rulebook mapping table: `age_over_NN` to
+/// `age_equal_or_over.NN`).
+fn mdoc_age_over_key(element: &str) -> Option<String> {
+    let digits = element.strip_prefix("age_over_")?;
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    Some(format!("age_equal_or_over.{digits}"))
+}
+
 /// The claim-model key a requested claim path is judged under for purpose, or
 /// `None` when an `mso_mdoc` path has no claim-model key.
 ///
@@ -226,9 +249,10 @@ pub const PID_MDOC_NAMESPACE: &str = "eu.europa.ec.eudi.pid.1";
 /// format it belongs to (EU PID Rulebook, Annex 3.01, sections 3.1.2 and 4.1.1;
 /// the German PID Rulebook agrees).
 ///
-/// Every format other than `mso_mdoc` (the SD-JWT VC form) returns the dotted
-/// path unchanged (or `None` when a segment itself contains a dot, so a joined
-/// spelling never borrows a nested key), except these SD-JWT spellings:
+/// The SD-JWT VC formats (`dc+sd-jwt` and the earlier identifier `vc+sd-jwt`)
+/// return the dotted path unchanged (or `None` when a segment itself contains
+/// a dot, so a joined spelling never borrows a nested key), except these
+/// SD-JWT spellings:
 ///
 /// - the OIDC address members `address.street_address`, `address.locality`,
 ///   `address.postal_code`, `address.country` to the model keys
@@ -240,20 +264,31 @@ pub const PID_MDOC_NAMESPACE: &str = "eu.europa.ec.eudi.pid.1";
 ///   `fixtures/presentations/erica-pid-template-normal.json` carries to
 ///   `place_of_birth.locality` and `place_of_birth.country`.
 ///
-/// An `mso_mdoc` path maps only when it is exactly `[PID_MDOC_NAMESPACE,
-/// element]` and the element is one of:
+/// An `mso_mdoc` path maps only when it has exactly two segments,
+/// `[namespace, element]`, and either:
 ///
-/// - `given_name`, `family_name` (same name);
-/// - `birth_date` to `birthdate`, `nationality` to `nationalities`;
-/// - `resident_street`, `resident_city`, `resident_postal_code`,
-///   `resident_country` to `address.resident_*`; `resident_state` to
-///   `address.region`; `resident_address` to `address.formatted`;
-/// - the legacy text element `birth_place` (one string, as the EUDIPLO PID mdoc
-///   issues it) to `place_of_birth.locality`.
+/// - the namespace is [`PID_MDOC_NAMESPACE`] or [`PID_DE_MDOC_NAMESPACE`] and
+///   the element is `age_over_NN` (`NN` one or more ASCII digits), which maps
+///   to `age_equal_or_over.NN`, the key its SD-JWT counterpart is judged
+///   under (German PID Rulebook mapping table; the element is in the German
+///   namespace there); or
+/// - the namespace is [`PID_MDOC_NAMESPACE`] and the element is one of:
+///   - `given_name`, `family_name` (same name);
+///   - `birth_date` to `birthdate`, `nationality` to `nationalities`;
+///   - `resident_street`, `resident_city`, `resident_postal_code`,
+///     `resident_country` to `address.resident_*`; `resident_state` to
+///     `address.region`; `resident_address` to `address.formatted`;
+///   - the legacy text element `birth_place` (one string, as the EUDIPLO PID
+///     mdoc issues it) to `place_of_birth.locality`.
+///
+/// Every other format (`jwt_vc_json`, `ldp_vc`, or an unknown identifier)
+/// returns `None`: the purpose baselines do not model its claim paths, so it
+/// never borrows the SD-JWT VC spelling.
 ///
 /// Every other mdoc path (for example the Rulebook structured `place_of_birth`,
-/// which discloses the whole place structure, an element of another namespace,
-/// or a three-segment path) returns `None`: it is judged only against
+/// which discloses the whole place structure, any other element of the German
+/// namespace, an element of another namespace, or a three-segment path)
+/// returns `None`: it is judged only against
 /// [`PurposeBaseline::mdoc_elements`], never against a model key, so an mdoc
 /// path cannot borrow an SD-JWT spelling. This mapping is for purpose
 /// evaluation and the model lookup only; registration compares the typed
@@ -261,7 +296,7 @@ pub const PID_MDOC_NAMESPACE: &str = "eu.europa.ec.eudi.pid.1";
 /// raw path, so an alias never authorizes another path.
 pub fn canonical_claim_key(format: &ClaimFormatDesignation, path: &[String]) -> Option<String> {
     let raw = path.join(".");
-    if *format != ClaimFormatDesignation::MsoMDoc {
+    if is_sd_jwt_vc_format(format) {
         // A segment holding a dot (`["address.locality"]`) names a top-level
         // member with a dot in its name, not a nested claim; it has no model key.
         if path.iter().any(|seg| seg.contains('.')) {
@@ -278,9 +313,17 @@ pub fn canonical_claim_key(format: &ClaimFormatDesignation, path: &[String]) -> 
         };
         return Some(mapped.to_string());
     }
+    if *format != ClaimFormatDesignation::MsoMDoc {
+        return None;
+    }
     let [namespace, element] = path else {
         return None;
     };
+    if namespace == PID_MDOC_NAMESPACE || namespace == PID_DE_MDOC_NAMESPACE {
+        if let Some(key) = mdoc_age_over_key(element) {
+            return Some(key);
+        }
+    }
     if namespace != PID_MDOC_NAMESPACE {
         return None;
     }
@@ -301,22 +344,44 @@ pub fn canonical_claim_key(format: &ClaimFormatDesignation, path: &[String]) -> 
     Some(mapped.to_string())
 }
 
+/// The SD-JWT VC format identifiers: `dc+sd-jwt` (OpenID4VP 1.0 appendix
+/// B.3) and the earlier `vc+sd-jwt`, which `check` accepts as well.
+const SD_JWT_VC_FORMATS: &[&str] = &["dc+sd-jwt", "vc+sd-jwt"];
+
+fn is_sd_jwt_vc_format(format: &ClaimFormatDesignation) -> bool {
+    SD_JWT_VC_FORMATS.contains(&format.to_string().as_str())
+}
+
+/// True when the purpose baselines model the claim paths of this format: the
+/// SD-JWT VC formats and `mso_mdoc`.
+fn purpose_models_format(format: &str) -> bool {
+    SD_JWT_VC_FORMATS.contains(&format) || format == "mso_mdoc"
+}
+
 /// SD-JWT array claims whose element selectors (`null` for every element, an
 /// integer index for one) select within the array the model key names.
 const SD_JWT_ARRAY_CLAIMS: &[&str] = &["nationalities"];
 
 /// The path purpose is judged under: an SD-JWT element selector of a known
 /// array claim (`["nationalities", null]`, `["nationalities", 0]`) is judged as
-/// the array itself; every other path is its dotted segments.
-fn purpose_path(format: &ClaimFormatDesignation, segs: &[Seg]) -> Vec<String> {
-    if *format != ClaimFormatDesignation::MsoMDoc {
+/// the array itself; every other path is its dotted segments. A path with any
+/// other integer segment has none (`None`): an integer selects an array
+/// element (OpenID4VP 1.0 section 7), so `["age_equal_or_over", 18]` must not
+/// be judged as the member `"18"` of the age object.
+fn purpose_path(format: &ClaimFormatDesignation, segs: &[Seg]) -> Option<Vec<String>> {
+    if is_sd_jwt_vc_format(format) {
         if let [Seg::String(parent), Seg::Null | Seg::Integer(_)] = segs {
             if SD_JWT_ARRAY_CLAIMS.contains(&parent.as_str()) {
-                return vec![parent.clone()];
+                return Some(vec![parent.clone()]);
             }
         }
     }
-    segs.iter().map(seg_key).collect()
+    segs.iter()
+        .map(|s| match s {
+            Seg::Integer(_) => None,
+            _ => Some(seg_key(s)),
+        })
+        .collect()
 }
 
 /// Label and correlation flag for an `mso_mdoc` element path without a
@@ -478,7 +543,8 @@ fn requested_claims(query: &DcqlQuery) -> Vec<RequestedClaim> {
                 key: path.join("."),
                 segs: Some(segs.iter().map(path_seg).collect()),
                 cred: index,
-                model_key: canonical_claim_key(cred.format(), &purpose_path(cred.format(), segs)),
+                model_key: purpose_path(cred.format(), segs)
+                    .and_then(|path| canonical_claim_key(cred.format(), &path)),
                 mdoc_element,
                 wildcard_parent,
             });
@@ -542,6 +608,11 @@ fn seg_key(s: &Seg) -> String {
 /// Rationale for a request whose credential format and type are not registered.
 const UNREGISTERED_CREDENTIAL: &str =
     "No registered credential of this format and type in the relying party's registered scope.";
+
+/// Rationale for a claim of a credential format the purpose baselines do not
+/// model: the purpose verdict fails closed instead of borrowing the SD-JWT VC
+/// spelling.
+const UNMODELLED_FORMAT: &str = "Purpose not judged for this credential format: the purpose baselines model only SD-JWT VC (dc+sd-jwt, vc+sd-jwt) and mso_mdoc claim paths, so the claim counts as beyond the purpose.";
 
 /// Rationale for an `mso_mdoc` path that is not exactly two strings: a wallet
 /// aborts on it, and no registered path covers it.
@@ -648,6 +719,7 @@ pub fn analyze(
             ),
             (_, Some(false)) => {
                 let rationale = match in_registered {
+                    _ if !purpose_models_format(&cred.format) => UNMODELLED_FORMAT,
                     Some(true) => "Registered, but beyond what the stated purpose needs.",
                     None => "Beyond what the stated purpose needs; registration not evaluated.",
                     Some(false) => unreachable!("beyond-registration matched first"),
@@ -720,6 +792,7 @@ pub fn analyze(
         requested: verdicts,
         over_disclosed,
         suggested_minimal: baseline.map(|b| b.minimal_keys.clone()),
+        suggested_minimal_request: baseline.map(|b| suggested_request(b, query)),
         claim_rows,
         counts,
         legal_basis: LEGAL_BASIS.to_vec(),
@@ -755,6 +828,292 @@ fn verdict_line(c: &Counts) -> String {
             (false, false) => "Neither registration nor purpose evaluated.".to_string(),
         }
     }
+}
+
+// --- suggested minimal request in the request's own spelling ----------------
+
+/// The SD-JWT VC type of the EU PID (EU PID Rulebook, section 4.2, "the base
+/// type to be \"urn:eudi:pid:1\"").
+pub const EU_PID_VCT: &str = "urn:eudi:pid:1";
+
+/// The age groups of the German PID (German PID Rulebook, additional national
+/// attributes: "Age groups are 12, 13, 14, 16, 18, 21 and 65").
+pub const DE_PID_AGE_GROUPS: [&str; 7] = ["12", "13", "14", "16", "18", "21", "65"];
+
+/// Profile mark for a PID mdoc element that only the German PID carries.
+pub const GERMAN_PID_ONLY: &str = "German PID only";
+
+/// Profile mark for a PID mdoc element that the German PID does not carry.
+pub const NOT_IN_GERMAN_PID: &str = "not in the German PID";
+
+/// One path of a suggested minimal request, spelled for the requested
+/// credential's format: SD-JWT claim path segments, or `[namespace, element]`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct SuggestedPath {
+    pub path: Vec<String>,
+    /// [`GERMAN_PID_ONLY`] or [`NOT_IN_GERMAN_PID`] when the PID mdoc doctype
+    /// is shared by two profiles and only one carries the element.
+    pub profile_note: Option<String>,
+}
+
+/// The suggested minimal request for one requested credential type.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SuggestedCredential {
+    /// The id of the first selected credential query of this format and type.
+    pub credential_id: String,
+    pub format: String,
+    /// `meta.vct_values` (SD-JWT VC) or `[meta.doctype_value]` (mdoc).
+    pub types: Vec<String>,
+    /// True when a spelling table is known for this format and type.
+    pub known_type: bool,
+    /// The baseline claims spelled for this type, in baseline order.
+    pub paths: Vec<SuggestedPath>,
+    /// Labels of baseline claims with no known spelling for this type (for an
+    /// unknown type: every baseline claim).
+    pub not_suggested: Vec<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SpellingTable {
+    /// German PID, SD-JWT VC (`dc+sd-jwt`, vct `urn:eudi:pid:de:1`).
+    GermanSdJwt,
+    /// EU PID, SD-JWT VC (`dc+sd-jwt`, vct `urn:eudi:pid:1`).
+    EuSdJwt,
+    /// PID mdoc (doctype `eu.europa.ec.eudi.pid.1`, shared by the EU PID and
+    /// the German PID).
+    PidMdoc,
+}
+
+fn spelling_table(format: &str, types: &[String]) -> Option<SpellingTable> {
+    let all = |t: &str| !types.is_empty() && types.iter().all(|x| x == t);
+    if format == crate::pid::PID_FORMAT && all(crate::PID_VCT) {
+        Some(SpellingTable::GermanSdJwt)
+    } else if format == crate::pid::PID_FORMAT && all(EU_PID_VCT) {
+        Some(SpellingTable::EuSdJwt)
+    } else if format == regcert::FORMAT_MSO_MDOC && all(PID_MDOC_NAMESPACE) {
+        Some(SpellingTable::PidMdoc)
+    } else {
+        None
+    }
+}
+
+type Spelling = (
+    &'static str,
+    Option<&'static [&'static str]>,
+    Option<&'static [&'static str]>,
+    Option<(&'static str, Option<&'static str>)>,
+);
+
+/// Baseline model key, German PID SD-JWT path, EU PID SD-JWT path, and PID
+/// mdoc element in the namespace [`PID_MDOC_NAMESPACE`] with its profile mark.
+/// Sources: German PID Rulebook (mapping table; `place_of_birth` "Just
+/// locality is present"; `resident_address` "not included in the German
+/// PID"), BMI developer guide (`resident_house_number` not available in the
+/// German PID), EU PID Rulebook sections 3.1.2 and 4.1.1.
+const SPELLINGS: &[Spelling] = &[
+    (
+        "given_name",
+        Some(&["given_name"]),
+        Some(&["given_name"]),
+        Some(("given_name", None)),
+    ),
+    (
+        "family_name",
+        Some(&["family_name"]),
+        Some(&["family_name"]),
+        Some(("family_name", None)),
+    ),
+    (
+        "birthdate",
+        Some(&["birthdate"]),
+        Some(&["birthdate"]),
+        Some(("birth_date", None)),
+    ),
+    (
+        "place_of_birth.locality",
+        Some(&["place_of_birth", "locality"]),
+        Some(&["place_of_birth", "locality"]),
+        Some(("place_of_birth", None)),
+    ),
+    (
+        "place_of_birth.region",
+        None,
+        Some(&["place_of_birth", "region"]),
+        Some(("place_of_birth", None)),
+    ),
+    (
+        "place_of_birth.country",
+        None,
+        Some(&["place_of_birth", "country"]),
+        Some(("place_of_birth", None)),
+    ),
+    (
+        "nationalities",
+        Some(&["nationalities"]),
+        Some(&["nationalities"]),
+        Some(("nationality", None)),
+    ),
+    (
+        "address.resident_street",
+        Some(&["address", "street_address"]),
+        Some(&["address", "street_address"]),
+        Some(("resident_street", None)),
+    ),
+    (
+        "address.house_number",
+        None,
+        Some(&["address", "house_number"]),
+        None,
+    ),
+    (
+        "address.resident_city",
+        Some(&["address", "locality"]),
+        Some(&["address", "locality"]),
+        Some(("resident_city", None)),
+    ),
+    (
+        "address.resident_postal_code",
+        Some(&["address", "postal_code"]),
+        Some(&["address", "postal_code"]),
+        Some(("resident_postal_code", None)),
+    ),
+    (
+        "address.region",
+        Some(&["address", "region"]),
+        Some(&["address", "region"]),
+        Some(("resident_state", None)),
+    ),
+    (
+        "address.resident_country",
+        Some(&["address", "country"]),
+        Some(&["address", "country"]),
+        Some(("resident_country", None)),
+    ),
+    (
+        "address.formatted",
+        None,
+        Some(&["address", "formatted"]),
+        Some(("resident_address", Some(NOT_IN_GERMAN_PID))),
+    ),
+];
+
+fn owned(segs: &[&str]) -> Vec<String> {
+    segs.iter().map(|s| s.to_string()).collect()
+}
+
+/// The path a baseline model key is spelled as in `table`, or `None` when the
+/// type carries no such claim (or none is known).
+fn spelled(table: SpellingTable, key: &str) -> Option<SuggestedPath> {
+    let plain = |path: Vec<String>| SuggestedPath {
+        path,
+        profile_note: None,
+    };
+    if let Some(nn) = key.strip_prefix("age_equal_or_over.") {
+        if !DE_PID_AGE_GROUPS.contains(&nn) {
+            return None;
+        }
+        return match table {
+            SpellingTable::GermanSdJwt => Some(plain(owned(&["age_equal_or_over", nn]))),
+            // The EU PID Rulebook names no age attribute.
+            SpellingTable::EuSdJwt => None,
+            SpellingTable::PidMdoc => Some(SuggestedPath {
+                path: vec![PID_DE_MDOC_NAMESPACE.to_string(), format!("age_over_{nn}")],
+                profile_note: Some(GERMAN_PID_ONLY.to_string()),
+            }),
+        };
+    }
+    let (_, german, eu, mdoc) = SPELLINGS.iter().find(|(k, ..)| *k == key)?;
+    match table {
+        SpellingTable::GermanSdJwt => german.map(|p| plain(owned(p))),
+        SpellingTable::EuSdJwt => eu.map(|p| plain(owned(p))),
+        SpellingTable::PidMdoc => mdoc.map(|(element, note)| SuggestedPath {
+            path: owned(&[PID_MDOC_NAMESPACE, element]),
+            profile_note: note.map(str::to_string),
+        }),
+    }
+}
+
+/// The label a baseline claim is listed under when it is not spelled: the
+/// claim-model label, or the mdoc element label.
+fn baseline_label(model: &HashMap<String, String>, key: &str) -> String {
+    model.get(key).cloned().unwrap_or_else(|| key.to_string())
+}
+
+/// The curated minimal request of `baseline`, spelled for each selected
+/// requested credential type of `query` (OpenID4VP 1.0 section 6.4.2
+/// selection, as [`analyze`] uses it): one entry per distinct format and type,
+/// in request order. A known type (German PID SD-JWT, EU PID SD-JWT, PID mdoc)
+/// gets paths in its own spelling and the labels of baseline claims it has no
+/// spelling for; any other type gets no paths and every baseline label, so no
+/// internal model key is ever offered as a path.
+pub fn suggested_request(
+    baseline: &PurposeBaseline,
+    query: &DcqlQuery,
+) -> Vec<SuggestedCredential> {
+    let model: HashMap<String, String> = pid_claim_model()
+        .into_iter()
+        .map(|c| (c.key(), c.label))
+        .collect();
+    let creds = requested_credentials(query);
+    let selected = selected_credentials(query);
+    let mut out: Vec<SuggestedCredential> = Vec::new();
+    for (index, cred) in query.credentials().iter().enumerate() {
+        if !selected[index] {
+            continue;
+        }
+        let RequestedCredential { format, types } = &creds[index];
+        if out.iter().any(|s| &s.format == format && &s.types == types) {
+            continue;
+        }
+        let table = spelling_table(format, types);
+        let mut paths: Vec<SuggestedPath> = Vec::new();
+        let mut not_suggested: Vec<String> = Vec::new();
+        let push_label = |label: String, list: &mut Vec<String>| {
+            if !list.contains(&label) {
+                list.push(label);
+            }
+        };
+        for key in &baseline.minimal_keys {
+            match table.and_then(|t| spelled(t, key)) {
+                Some(p) => {
+                    if !paths.contains(&p) {
+                        paths.push(p);
+                    }
+                }
+                None => push_label(baseline_label(&model, key), &mut not_suggested),
+            }
+        }
+        for element in &baseline.mdoc_elements {
+            match table {
+                Some(SpellingTable::PidMdoc) => {
+                    let p = SuggestedPath {
+                        path: element.to_vec(),
+                        profile_note: None,
+                    };
+                    if !paths.contains(&p) {
+                        paths.push(p);
+                    }
+                }
+                // The SD-JWT tables spell the same claims from the model keys.
+                Some(_) => {}
+                None => {
+                    let label = mdoc_element_meta(element)
+                        .map(|(l, _)| l.to_string())
+                        .unwrap_or_else(|| element.join("/"));
+                    push_label(label, &mut not_suggested);
+                }
+            }
+        }
+        out.push(SuggestedCredential {
+            credential_id: cred.id().to_string(),
+            format: format.clone(),
+            types: types.clone(),
+            known_type: table.is_some(),
+            paths,
+            not_suggested,
+        });
+    }
+    out
 }
 
 #[cfg(test)]
@@ -1087,11 +1446,44 @@ mod tests {
                 Some(expected)
             );
         }
+        // The age element maps to its SD-JWT key in both PID namespaces.
+        for (segs, expected) in [
+            (
+                p(&[PID_MDOC_NAMESPACE, "age_over_18"]),
+                "age_equal_or_over.18",
+            ),
+            (
+                p(&[PID_DE_MDOC_NAMESPACE, "age_over_18"]),
+                "age_equal_or_over.18",
+            ),
+            (
+                p(&[PID_DE_MDOC_NAMESPACE, "age_over_21"]),
+                "age_equal_or_over.21",
+            ),
+        ] {
+            assert_eq!(
+                canonical_claim_key(&mdoc, &segs).as_deref(),
+                Some(expected),
+                "{segs:?}"
+            );
+        }
         // No model key for any other mdoc path: unknown elements, the
         // structured place_of_birth, SD-JWT spellings, other namespaces (even
-        // when the dotted key equals a model key), other shapes.
+        // when the dotted key equals a model key), other shapes, other
+        // elements of the German namespace, and near misses of the age
+        // element.
         for segs in [
-            p(&[PID_MDOC_NAMESPACE, "age_over_18"]),
+            p(&[PID_DE_MDOC_NAMESPACE, "given_name"]),
+            p(&[PID_DE_MDOC_NAMESPACE, "age_over_"]),
+            p(&[PID_DE_MDOC_NAMESPACE, "age_over_x"]),
+            p(&[PID_DE_MDOC_NAMESPACE, "age_over_18a"]),
+            p(&[PID_MDOC_NAMESPACE, "age_over_18a"]),
+            p(&[PID_DE_MDOC_NAMESPACE, "age_over_\u{ff11}\u{ff18}"]),
+            p(&[PID_DE_MDOC_NAMESPACE, "age_over_\u{0661}\u{0668}"]),
+            p(&[PID_DE_MDOC_NAMESPACE, "age_over_18", "x"]),
+            p(&[PID_DE_MDOC_NAMESPACE]),
+            p(&["eu.europa.ec.eudi.pid.de", "1.age_over_18"]),
+            p(&["org.iso.18013.5.1", "age_over_18"]),
             p(&[PID_MDOC_NAMESPACE, "place_of_birth"]),
             p(&[PID_MDOC_NAMESPACE, "street_address"]),
             p(&[PID_MDOC_NAMESPACE, "resident_house_number"]),
@@ -2174,5 +2566,549 @@ mod tests {
             assert_eq!(v.status, ClaimStatus::MinimalForPurpose);
         }
         assert_eq!(report.counts.correlatable_requested, 5);
+    }
+
+    // --- mdoc age_over_NN: the SD-JWT verdict in both PID namespaces --------
+
+    const PURPOSES: [&str; 4] = ["age_gate_18", "event_checkin", "car_rental", "bank_kyc"];
+    /// The German PID age groups (German PID Rulebook, national attributes).
+    const AGE_GROUPS: [&str; 7] = ["12", "13", "14", "16", "18", "21", "65"];
+
+    /// An `mso_mdoc` credential query with the given `meta` and raw paths.
+    fn mdoc_query_with_meta(meta: serde_json::Value, paths: &[serde_json::Value]) -> DcqlQuery {
+        let mut credential = serde_json::json!({
+            "id": "pid-mdoc",
+            "format": "mso_mdoc",
+            "claims": paths.iter().map(|p| serde_json::json!({ "path": p })).collect::<Vec<_>>(),
+        });
+        if !meta.is_null() {
+            credential["meta"] = meta;
+        }
+        query_json(serde_json::json!({ "credentials": [credential] }))
+    }
+
+    #[test]
+    fn mdoc_age_over_matches_sd_jwt_age_in_both_pid_namespaces() {
+        for purpose in PURPOSES {
+            for nn in AGE_GROUPS {
+                let sd_jwt = single_status(
+                    "dc+sd-jwt",
+                    serde_json::json!(["age_equal_or_over", nn]),
+                    purpose,
+                );
+                for ns in [PID_MDOC_NAMESPACE, PID_DE_MDOC_NAMESPACE] {
+                    let element = format!("age_over_{nn}");
+                    let mdoc = single_status("mso_mdoc", serde_json::json!([ns, element]), purpose);
+                    assert_eq!(mdoc, sd_jwt, "{purpose} {ns} {element}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn mdoc_age_over_fixed_cases() {
+        // The verdicts 0.4.0 got wrong: BeyondPurpose for the mdoc element
+        // while the SD-JWT claim was minimal.
+        for (ns, element, purpose) in [
+            (PID_MDOC_NAMESPACE, "age_over_18", "age_gate_18"),
+            (PID_DE_MDOC_NAMESPACE, "age_over_18", "age_gate_18"),
+            (PID_MDOC_NAMESPACE, "age_over_18", "event_checkin"),
+            (PID_DE_MDOC_NAMESPACE, "age_over_18", "event_checkin"),
+            (PID_MDOC_NAMESPACE, "age_over_21", "car_rental"),
+            (PID_DE_MDOC_NAMESPACE, "age_over_21", "car_rental"),
+        ] {
+            let query = json_paths_query("mso_mdoc", &[serde_json::json!([ns, element])]);
+            let report = analyze(PID_VCT, &query, None, baseline(purpose).as_ref(), &[]);
+            let v = &report.requested[0];
+            assert_eq!(
+                v.status,
+                ClaimStatus::MinimalForPurpose,
+                "{purpose} {ns} {element}"
+            );
+            assert!(!report.has_over_ask(), "{purpose} {ns} {element}");
+            assert_eq!(v.key, format!("{ns}.{element}"));
+            assert_eq!(
+                v.label,
+                format!("Age over {}", &element["age_over_".len()..])
+            );
+            let row = report
+                .claim_rows
+                .iter()
+                .find(|r| r.key == format!("age_equal_or_over.{}", &element["age_over_".len()..]))
+                .expect("age row");
+            assert!(row.requested);
+        }
+    }
+
+    #[test]
+    fn mdoc_age_over_non_string_segments_are_not_age() {
+        for path in [
+            serde_json::json!([PID_DE_MDOC_NAMESPACE, 18]),
+            serde_json::json!([PID_DE_MDOC_NAMESPACE, null]),
+        ] {
+            assert_eq!(
+                single_status("mso_mdoc", path.clone(), "age_gate_18"),
+                ClaimStatus::BeyondPurpose,
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn mdoc_age_over_with_birth_date_is_still_over_ask() {
+        let query = json_paths_query(
+            "mso_mdoc",
+            &[
+                serde_json::json!([PID_DE_MDOC_NAMESPACE, "age_over_18"]),
+                serde_json::json!([PID_MDOC_NAMESPACE, "birth_date"]),
+            ],
+        );
+        let report = analyze(PID_VCT, &query, None, baseline("age_gate_18").as_ref(), &[]);
+        assert_eq!(
+            status_of(&report, "eu.europa.ec.eudi.pid.de.1.age_over_18"),
+            ClaimStatus::MinimalForPurpose
+        );
+        assert_eq!(
+            status_of(&report, "eu.europa.ec.eudi.pid.1.birth_date"),
+            ClaimStatus::BeyondPurpose
+        );
+        assert!(report.has_over_ask());
+    }
+
+    #[test]
+    fn mdoc_age_alias_does_not_widen_registration() {
+        let mdoc_scope = |ns: &str| {
+            scope_json(serde_json::json!([{
+                "format": "mso_mdoc", "meta": { "doctype_value": PID_MDOC_NAMESPACE },
+                "claim": [{ "path": [ns, "age_over_18"] }],
+            }]))
+        };
+        // (a) Registered in the German namespace, requested in the EU one;
+        // (c) the converse.
+        for (registered_ns, requested_ns) in [
+            (PID_DE_MDOC_NAMESPACE, PID_MDOC_NAMESPACE),
+            (PID_MDOC_NAMESPACE, PID_DE_MDOC_NAMESPACE),
+        ] {
+            let registered = mdoc_scope(registered_ns);
+            let query = json_paths_query(
+                "mso_mdoc",
+                &[serde_json::json!([requested_ns, "age_over_18"])],
+            );
+            let report = analyze(
+                PID_VCT,
+                &query,
+                Some(&registered),
+                baseline("age_gate_18").as_ref(),
+                &[],
+            );
+            assert_eq!(
+                report.requested[0].status,
+                ClaimStatus::BeyondRegistration,
+                "registered {registered_ns}, requested {requested_ns}"
+            );
+            // The same namespace is covered.
+            let query = json_paths_query(
+                "mso_mdoc",
+                &[serde_json::json!([registered_ns, "age_over_18"])],
+            );
+            let report = analyze(
+                PID_VCT,
+                &query,
+                Some(&registered),
+                baseline("age_gate_18").as_ref(),
+                &[],
+            );
+            assert!(!report.has_over_ask(), "{:?}", report.requested);
+        }
+        // (b) Registered only as the SD-JWT claim: the mdoc element is outside.
+        let registered = scope("dc+sd-jwt", &[&["age_equal_or_over", "18"]]);
+        let query = json_paths_query(
+            "mso_mdoc",
+            &[serde_json::json!([PID_DE_MDOC_NAMESPACE, "age_over_18"])],
+        );
+        let report = analyze(
+            PID_VCT,
+            &query,
+            Some(&registered),
+            baseline("age_gate_18").as_ref(),
+            &[],
+        );
+        assert_eq!(report.requested[0].status, ClaimStatus::BeyondRegistration);
+    }
+
+    #[test]
+    fn mdoc_age_over_purpose_verdict_does_not_consult_doctype() {
+        // Purpose verdicts take format and path only, as for every other key
+        // in 0.4.0; the credential type is checked by registration coverage.
+        let path = [serde_json::json!([PID_DE_MDOC_NAMESPACE, "age_over_18"])];
+        let pid = mdoc_query_with_meta(
+            serde_json::json!({ "doctype_value": PID_MDOC_NAMESPACE }),
+            &path,
+        );
+        let mdl = mdoc_query_with_meta(
+            serde_json::json!({ "doctype_value": "org.iso.18013.5.1.mDL" }),
+            &path,
+        );
+        let untyped = mdoc_query_with_meta(serde_json::Value::Null, &path);
+        for query in [&pid, &mdl, &untyped] {
+            let report = analyze(PID_VCT, query, None, baseline("age_gate_18").as_ref(), &[]);
+            assert_eq!(report.requested[0].status, ClaimStatus::MinimalForPurpose);
+        }
+        let registered = scope_json(serde_json::json!([{
+            "format": "mso_mdoc", "meta": { "doctype_value": PID_MDOC_NAMESPACE },
+            "claim": [{ "path": [PID_DE_MDOC_NAMESPACE, "age_over_18"] }],
+        }]));
+        let report = analyze(
+            PID_VCT,
+            &pid,
+            Some(&registered),
+            baseline("age_gate_18").as_ref(),
+            &[],
+        );
+        assert!(!report.has_over_ask(), "{:?}", report.requested);
+        for query in [&mdl, &untyped] {
+            let report = analyze(
+                PID_VCT,
+                query,
+                Some(&registered),
+                baseline("age_gate_18").as_ref(),
+                &[],
+            );
+            assert_eq!(report.requested[0].status, ClaimStatus::BeyondRegistration);
+        }
+    }
+
+    // --- suggested minimal request in the request's spelling ---------------
+
+    fn typed_query(format: &str, meta: serde_json::Value, path: serde_json::Value) -> DcqlQuery {
+        query_json(serde_json::json!({ "credentials": [{
+            "id": "req", "format": format, "meta": meta, "claims": [{ "path": path }],
+        }]}))
+    }
+
+    fn suggestion(purpose: &str, query: &DcqlQuery) -> Vec<SuggestedCredential> {
+        let report = analyze(PID_VCT, query, None, baseline(purpose).as_ref(), &[]);
+        report.suggested_minimal_request.expect("baseline known")
+    }
+
+    fn paths_of(s: &SuggestedCredential) -> Vec<Vec<String>> {
+        s.paths.iter().map(|p| p.path.clone()).collect()
+    }
+
+    fn p(segs: &[&str]) -> Vec<String> {
+        segs.iter().map(|s| s.to_string()).collect()
+    }
+
+    const UNSPELLED_GERMAN_SD_JWT: [&str; 4] = [
+        "Place of birth (region)",
+        "Place of birth (country)",
+        "Resident house number",
+        "Resident address",
+    ];
+
+    #[test]
+    fn german_sd_jwt_suggestion_uses_german_claim_paths() {
+        let s = suggestion("bank_kyc", &pid::pid_query(&[&["given_name"]]));
+        assert_eq!(s.len(), 1);
+        let s = &s[0];
+        assert!(s.known_type);
+        assert_eq!(
+            (s.format.as_str(), s.types.clone()),
+            ("dc+sd-jwt", vec![PID_VCT.to_string()])
+        );
+        assert_eq!(
+            paths_of(s),
+            [
+                p(&["given_name"]),
+                p(&["family_name"]),
+                p(&["birthdate"]),
+                p(&["place_of_birth", "locality"]),
+                p(&["nationalities"]),
+                p(&["address", "street_address"]),
+                p(&["address", "locality"]),
+                p(&["address", "postal_code"]),
+                p(&["address", "region"]),
+                p(&["address", "country"]),
+            ]
+        );
+        assert!(s.paths.iter().all(|p| p.profile_note.is_none()));
+        assert_eq!(s.not_suggested, UNSPELLED_GERMAN_SD_JWT);
+
+        let s = &suggestion("age_gate_18", &pid::pid_query(&[&["birthdate"]]))[0];
+        assert_eq!(paths_of(s), [p(&["age_equal_or_over", "18"])]);
+        assert!(s.not_suggested.is_empty());
+    }
+
+    const PID_MDOC_BANK_KYC: &[(&str, &str, Option<&str>)] = &[
+        (PID_MDOC_NAMESPACE, "given_name", None),
+        (PID_MDOC_NAMESPACE, "family_name", None),
+        (PID_MDOC_NAMESPACE, "birth_date", None),
+        (PID_MDOC_NAMESPACE, "place_of_birth", None),
+        (PID_MDOC_NAMESPACE, "nationality", None),
+        (PID_MDOC_NAMESPACE, "resident_street", None),
+        (PID_MDOC_NAMESPACE, "resident_city", None),
+        (PID_MDOC_NAMESPACE, "resident_postal_code", None),
+        (PID_MDOC_NAMESPACE, "resident_state", None),
+        (PID_MDOC_NAMESPACE, "resident_country", None),
+        (
+            PID_MDOC_NAMESPACE,
+            "resident_address",
+            Some(NOT_IN_GERMAN_PID),
+        ),
+    ];
+
+    fn assert_pid_mdoc_bank_kyc(s: &SuggestedCredential) {
+        assert!(s.known_type);
+        let got: Vec<(Vec<String>, Option<String>)> = s
+            .paths
+            .iter()
+            .map(|p| (p.path.clone(), p.profile_note.clone()))
+            .collect();
+        let want: Vec<(Vec<String>, Option<String>)> = PID_MDOC_BANK_KYC
+            .iter()
+            .map(|(ns, e, note)| (p(&[ns, e]), note.map(str::to_string)))
+            .collect();
+        assert_eq!(got, want);
+        assert_eq!(s.not_suggested, ["Resident house number"]);
+    }
+
+    #[test]
+    fn pid_mdoc_suggestion_uses_elements_and_marks_profile_members() {
+        let s = suggestion("bank_kyc", &mdoc_pid_query(&["given_name"]));
+        assert_pid_mdoc_bank_kyc(&s[0]);
+
+        // A German style request does not change the suggestion: the request
+        // does not show which PID profile the wallet holds.
+        let query = json_paths_query(
+            "mso_mdoc",
+            &[
+                serde_json::json!([PID_MDOC_NAMESPACE, "given_name"]),
+                serde_json::json!([PID_DE_MDOC_NAMESPACE, "age_over_18"]),
+            ],
+        );
+        assert_pid_mdoc_bank_kyc(&suggestion("bank_kyc", &query)[0]);
+
+        let s = &suggestion("age_gate_18", &mdoc_pid_query(&["age_over_18"]))[0];
+        assert_eq!(
+            s.paths,
+            [SuggestedPath {
+                path: p(&[PID_DE_MDOC_NAMESPACE, "age_over_18"]),
+                profile_note: Some(GERMAN_PID_ONLY.to_string()),
+            }]
+        );
+        assert!(s.not_suggested.is_empty());
+    }
+
+    #[test]
+    fn eu_sd_jwt_suggestion_spells_every_bank_kyc_claim() {
+        let query = typed_query(
+            "dc+sd-jwt",
+            serde_json::json!({ "vct_values": [EU_PID_VCT] }),
+            serde_json::json!(["given_name"]),
+        );
+        let s = &suggestion("bank_kyc", &query)[0];
+        assert!(s.known_type);
+        assert_eq!(s.paths.len(), 14);
+        assert!(s.not_suggested.is_empty());
+        assert!(paths_of(s).contains(&p(&["address", "house_number"])));
+        assert!(paths_of(s).contains(&p(&["place_of_birth", "region"])));
+        // The EU PID names no age claim.
+        let s = &suggestion("age_gate_18", &query)[0];
+        assert!(s.paths.is_empty());
+        assert_eq!(s.not_suggested, ["Age over 18"]);
+    }
+
+    #[test]
+    fn unknown_type_suggestion_names_labels_only() {
+        for (format, meta) in [
+            (
+                "dc+sd-jwt",
+                serde_json::json!({ "vct_values": ["urn:example:membership:1"] }),
+            ),
+            (
+                "jwt_vc_json",
+                serde_json::json!({ "vct_values": [PID_VCT] }),
+            ),
+            ("vc+sd-jwt", serde_json::json!({ "vct_values": [PID_VCT] })),
+            (
+                "dc+sd-jwt",
+                serde_json::json!({ "vct_values": [PID_VCT, EU_PID_VCT] }),
+            ),
+            (
+                "mso_mdoc",
+                serde_json::json!({ "doctype_value": "org.iso.18013.5.1.mDL" }),
+            ),
+        ] {
+            let query = typed_query(format, meta.clone(), serde_json::json!(["x"]));
+            let s = &suggestion("age_gate_18", &query)[0];
+            assert!(!s.known_type, "{format} {meta}");
+            assert!(s.paths.is_empty(), "{format} {meta}");
+            assert_eq!(s.not_suggested, ["Age over 18"], "{format} {meta}");
+            let s = &suggestion("bank_kyc", &query)[0];
+            assert!(s.paths.is_empty());
+            // The mdoc place_of_birth element shares the label of the
+            // locality key and is listed once.
+            assert_eq!(s.not_suggested.len(), 14, "{:?}", s.not_suggested);
+            assert!(
+                s.not_suggested.iter().all(|l| !l.contains('.')),
+                "{:?}",
+                s.not_suggested
+            );
+        }
+    }
+
+    #[test]
+    fn suggestion_has_one_block_per_selected_type_in_request_order() {
+        let query = query_json(serde_json::json!({
+            "credentials": [
+                { "id": "sd", "format": "dc+sd-jwt", "meta": { "vct_values": [PID_VCT] },
+                  "claims": [{ "path": ["given_name"] }] },
+                { "id": "md", "format": "mso_mdoc", "meta": { "doctype_value": PID_MDOC_NAMESPACE },
+                  "claims": [{ "path": [PID_MDOC_NAMESPACE, "given_name"] }] },
+                { "id": "sd2", "format": "dc+sd-jwt", "meta": { "vct_values": [PID_VCT] },
+                  "claims": [{ "path": ["family_name"] }] },
+            ],
+        }));
+        let s = suggestion("age_gate_18", &query);
+        let ids: Vec<&str> = s.iter().map(|b| b.credential_id.as_str()).collect();
+        assert_eq!(ids, ["sd", "md"]);
+        assert_eq!(s[0].format, "dc+sd-jwt");
+        assert_eq!(s[1].format, "mso_mdoc");
+
+        // A credential query that no option names gives no block.
+        let mut value = serde_json::json!({
+            "credentials": [
+                { "id": "sd", "format": "dc+sd-jwt", "meta": { "vct_values": [PID_VCT] },
+                  "claims": [{ "path": ["given_name"] }] },
+                { "id": "md", "format": "mso_mdoc", "meta": { "doctype_value": PID_MDOC_NAMESPACE },
+                  "claims": [{ "path": [PID_MDOC_NAMESPACE, "given_name"] }] },
+            ],
+        });
+        value["credential_sets"] = serde_json::json!([{ "options": [["md"]] }]);
+        let s = suggestion("age_gate_18", &query_json(value));
+        let ids: Vec<&str> = s.iter().map(|b| b.credential_id.as_str()).collect();
+        assert_eq!(ids, ["md"]);
+
+        // No baseline, no suggestion.
+        let report = analyze(PID_VCT, &query, None, None, &[]);
+        assert!(report.suggested_minimal_request.is_none());
+    }
+
+    #[test]
+    fn suggested_paths_never_use_internal_model_keys() {
+        let internal = [
+            "address.resident_street",
+            "address.resident_city",
+            "address.resident_postal_code",
+            "address.resident_country",
+        ];
+        let queries = [
+            pid::pid_query(&[&["given_name"]]),
+            mdoc_pid_query(&["given_name"]),
+            typed_query(
+                "dc+sd-jwt",
+                serde_json::json!({ "vct_values": [EU_PID_VCT] }),
+                serde_json::json!(["given_name"]),
+            ),
+        ];
+        for purpose in PURPOSES {
+            for query in &queries {
+                for block in suggestion(purpose, query) {
+                    for sp in &block.paths {
+                        let dotted = sp.path.join(".");
+                        assert!(!internal.contains(&dotted.as_str()), "{purpose}: {dotted}");
+                        assert!(
+                            !sp.path
+                                .iter()
+                                .any(|s| s.starts_with("resident_") && block.format != "mso_mdoc"),
+                            "{purpose}: {dotted}"
+                        );
+                        // No segment is a dotted model key such as
+                        // `age_equal_or_over.18`; only an mdoc namespace has dots.
+                        assert!(
+                            sp.path.iter().all(|s| !s.contains('.')
+                                || (block.format == "mso_mdoc" && sp.path[0] == *s)),
+                            "{purpose}: {:?}",
+                            sp.path
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn sd_jwt_integer_segment_is_not_a_member_name() {
+        // An integer path segment selects an array element (OpenID4VP 1.0
+        // section 7), so `["age_equal_or_over", 18]` does not name the member
+        // "18" of the age object and gets no model key.
+        for (purpose, member) in [
+            ("age_gate_18", 18),
+            ("event_checkin", 18),
+            ("car_rental", 21),
+        ] {
+            for format in ["dc+sd-jwt", "vc+sd-jwt"] {
+                let integer = serde_json::json!(["age_equal_or_over", member]);
+                assert_eq!(
+                    single_status(format, integer, purpose),
+                    ClaimStatus::BeyondPurpose,
+                    "{purpose} {format}"
+                );
+                let string = serde_json::json!(["age_equal_or_over", member.to_string()]);
+                assert_eq!(
+                    single_status(format, string, purpose),
+                    ClaimStatus::MinimalForPurpose,
+                    "{purpose} {format}"
+                );
+            }
+        }
+        // The array element selectors of a known array claim still count.
+        assert_eq!(
+            single_status(
+                "dc+sd-jwt",
+                serde_json::json!(["nationalities", 0]),
+                "bank_kyc"
+            ),
+            ClaimStatus::MinimalForPurpose
+        );
+        // An integer segment below an object member is no model key either.
+        assert_eq!(
+            single_status("dc+sd-jwt", serde_json::json!(["address", 0]), "bank_kyc"),
+            ClaimStatus::BeyondPurpose
+        );
+    }
+
+    #[test]
+    fn unmodelled_format_gets_no_purpose_verdict() {
+        for format in ["org.example.format", "jwt_vc_json", "ldp_vc"] {
+            for purpose in PURPOSES {
+                let query = json_paths_query(
+                    format,
+                    &[
+                        serde_json::json!(["age_equal_or_over", "18"]),
+                        serde_json::json!(["given_name"]),
+                    ],
+                );
+                let report = analyze(PID_VCT, &query, None, baseline(purpose).as_ref(), &[]);
+                for v in &report.requested {
+                    assert_eq!(v.status, ClaimStatus::BeyondPurpose, "{format} {purpose}");
+                    assert_eq!(v.rationale, UNMODELLED_FORMAT, "{format} {purpose}");
+                }
+                assert!(report.has_over_ask(), "{format} {purpose}");
+                assert!(!report.claim_rows.iter().any(|r| r.requested), "{format}");
+            }
+        }
+        // Both SD-JWT VC format identifiers keep their purpose verdict.
+        for format in ["dc+sd-jwt", "vc+sd-jwt"] {
+            assert_eq!(
+                single_status(
+                    format,
+                    serde_json::json!(["age_equal_or_over", "18"]),
+                    "age_gate_18"
+                ),
+                ClaimStatus::MinimalForPurpose,
+                "{format}"
+            );
+        }
     }
 }

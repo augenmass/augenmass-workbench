@@ -1,0 +1,21 @@
+{
+  "name": "Example Wine Shop",
+  "purpose": [
+    { "lang": "en", "content": "Example Wine Shop: confirm the buyer is over 18" }
+  ],
+  "privacy_policy": "https://wine.example.org/privacy",
+  "support_uri": "support@wine.example.org",
+  "credentials": [
+    {
+      "format": "dc+sd-jwt",
+      "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+      "claim": [
+        { "path": ["given_name"] },
+        { "path": ["family_name"] },
+        { "path": ["birthdate"] },
+        { "path": ["nationalities", null] },
+        { "path": ["address"] }
+      ]
+    }
+  ]
+}
