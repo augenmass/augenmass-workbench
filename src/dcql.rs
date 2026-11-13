@@ -8,11 +8,36 @@ use openid4vp::core::dcql_query::DcqlQuery;
 use serde_json::{json, Value};
 
 /// Parse a DCQL query from a JSON string. Accepts a bare query object or a
-/// wrapper that carries the query under a `dcql_query` field.
+/// wrapper that carries the query under a `dcql_query` field. A query whose
+/// `credential_sets` carry an empty option is rejected as malformed.
 pub fn parse_dcql(input: &str) -> Result<DcqlQuery> {
     let value: Value = serde_json::from_str(input.trim()).context("DCQL is not JSON")?;
     let inner = value.get("dcql_query").cloned().unwrap_or(value);
-    serde_json::from_value(inner).context("parse DCQL query")
+    let query: DcqlQuery = serde_json::from_value(inner).context("parse DCQL query")?;
+    reject_empty_credential_set_options(&query)?;
+    Ok(query)
+}
+
+/// OpenID4VP 1.0 section 6.2: each element of a credential set's `options` is
+/// a non-empty array of credential query ids. The parser accepts an empty
+/// option, which names no credential; the audit would then select none and
+/// judge nothing, so the query is rejected instead.
+fn reject_empty_credential_set_options(query: &DcqlQuery) -> Result<()> {
+    let Some(sets) = query.credential_sets() else {
+        return Ok(());
+    };
+    for (i, set) in sets.iter().enumerate() {
+        for (k, option) in set.options().iter().enumerate() {
+            if option.is_empty() {
+                return Err(anyhow!(
+                    "malformed DCQL query: credential_sets[{i}].options[{k}] is an empty list; \
+                     each option must name at least one credential query id \
+                     (OpenID4VP 1.0 section 6.2)"
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Build a German-PID DCQL query from a list of claim paths.
@@ -113,6 +138,31 @@ mod tests {
             ["address", "resident_city"]
         );
         assert_eq!(parse_claim_path("given_name"), ["given_name"]);
+    }
+
+    #[test]
+    fn parse_dcql_rejects_an_empty_credential_set_option() {
+        let credentials = json!([
+            { "id": "a", "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:a:1"] } },
+            { "id": "b", "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:b:1"] } },
+        ]);
+        for sets in [
+            json!([{ "options": [[]] }]),
+            json!([{ "options": [["a"], []] }]),
+            json!([{ "options": [["a"]] }, { "options": [[]], "required": false }]),
+        ] {
+            let query = json!({ "credentials": credentials, "credential_sets": sets });
+            let err = parse_dcql(&query.to_string()).expect_err("empty option is malformed");
+            let message = format!("{err:#}");
+            assert!(message.contains("is an empty list"), "{message}");
+            assert!(message.contains("section 6.2"), "{message}");
+            let wrapped = json!({ "dcql_query": query });
+            assert!(parse_dcql(&wrapped.to_string()).is_err(), "{sets}");
+        }
+        let valid = json!({ "credentials": credentials,
+            "credential_sets": [{ "options": [["a"], ["a", "b"]] }] });
+        assert!(parse_dcql(&valid.to_string()).is_ok());
+        assert!(parse_dcql(&json!({ "credentials": credentials }).to_string()).is_ok());
     }
 
     #[test]

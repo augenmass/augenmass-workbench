@@ -404,27 +404,43 @@ supported desktop targets without a local source build.
 
 ## Cutting a release
 
-Run the local gate first:
+Run the plugin-free local gate first. Before the tag, the committed plugin
+bundle still carries the previous release, so the plugin checks
+(`plugin-bundle-freshness`, `codex-plugin-smoke`, `shipping-smoke`) run after the
+bundle refresh below, not here:
 
 ```sh
 just verify
 just ci-credit-guard
 just demo-run
 just install-smoke
-just plugin-bundle-freshness
-just codex-plugin-smoke
 just release-archive-smoke
 just release-zip-layout-smoke
 just docker-release-archive-smoke-linux
-just shipping-smoke
 just platform-smoke
 ```
 
-Refresh the plugin bundle from release archives after the release exists:
+Then tag from a clean tree:
+
+```sh
+git tag v0.4.0
+git push origin v0.4.0
+```
+
+That tag push starts the release workflow and spends runner minutes. For the
+presentation-prep phase, keep release proof local with
+`just docker-release-archive-smoke-linux` and do not push a `v*` tag unless the
+runner spend has been approved.
+
+Refresh the plugin bundle from release archives after the release exists, then
+run the plugin checks:
 
 ```sh
 just bundle
 git status --short
+just plugin-bundle-freshness
+just codex-plugin-smoke
+just shipping-smoke
 ```
 
 `just bundle` reads the native release archives and sidecars, rejects layout-only
@@ -435,18 +451,6 @@ version, and each committed target-binary hash. Set
 `AUGENMASS_STRICT_LOCAL_PLUGIN_BUILD=1` only when you explicitly want to compare
 the current-host target against a local rebuild; release-built binaries may not
 be byte-identical to a local build because build paths can differ.
-
-Then tag from a clean tree:
-
-```sh
-git tag v0.3.0
-git push origin v0.3.0
-```
-
-That tag push starts the release workflow and spends runner minutes. For the
-presentation-prep phase, keep release proof local with
-`just docker-release-archive-smoke-linux` and do not push a `v*` tag unless the
-runner spend has been approved.
 
 After the release workflow finishes, install or test the platform archive on a
 machine matching the target. The plugin marketplace bundle remains a separate

@@ -254,6 +254,11 @@ fn validate_credential_sets(query: &Value, ids: &HashSet<String>, findings: &mut
                     format!("credential_sets[{i}].options[{k}] is not an array of ids"),
                     "each option is an array of credential ids",
                 )),
+                Some(refs) if refs.is_empty() => findings.push(Finding::blocking(
+                    "DCQL-SET-OPTION-EMPTY",
+                    format!("credential_sets[{i}].options[{k}] is an empty list"),
+                    "each option must name at least one credential id (OpenID4VP 1.0 section 6.2)",
+                )),
                 Some(refs) => {
                     for r in refs {
                         if let Some(rid) = r.as_str() {
@@ -342,6 +347,14 @@ mod tests {
         assert!(ids.contains(&"DCQL-CRED-ID-DUPLICATE"), "{ids:?}");
         assert!(ids.contains(&"DCQL-MDOC-PATH"), "{ids:?}");
         assert!(ids.contains(&"DCQL-SET-REF-DANGLING"), "{ids:?}");
+    }
+
+    #[test]
+    fn empty_credential_set_option_blocks() {
+        let q = r#"{"credentials":[{"id":"a","format":"dc+sd-jwt"}],"credential_sets":[{"options":[["a"],[]]}]}"#;
+        assert!(block_ids(q).contains(&"DCQL-SET-OPTION-EMPTY"));
+        let ok = r#"{"credentials":[{"id":"a","format":"dc+sd-jwt"}],"credential_sets":[{"options":[["a"]]}]}"#;
+        assert!(block_ids(ok).is_empty());
     }
 
     #[test]
