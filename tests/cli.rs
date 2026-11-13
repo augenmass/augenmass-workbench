@@ -1591,6 +1591,38 @@ fn validate_dcql_bad_query_blocks() {
         .stdout(contains("DCQL-SET-REF-DANGLING"));
 }
 
+#[test]
+fn empty_credential_set_option_is_rejected_not_skipped() {
+    // Before, `options: [[]]` selected no credential, so the audit judged
+    // nothing and passed a request for an unregistered type with exit 0.
+    let request = r#"{"credentials":[{"id":"x","format":"dc+sd-jwt","meta":{"vct_values":["urn:example:other:1"]}}],"credential_sets":[{"options":[[]]}]}"#;
+    bin()
+        .args([
+            "audit",
+            "--request",
+            request,
+            "--purpose",
+            "bank_kyc",
+            "--cert",
+            NULL_SEGMENT_CERT,
+        ])
+        .assert()
+        .failure()
+        .stderr(contains(
+            "malformed DCQL query: credential_sets[0].options[0] is an empty list",
+        ));
+    bin()
+        .args(["inspect", request])
+        .assert()
+        .failure()
+        .stderr(contains("is an empty list"));
+    bin()
+        .args(["validate", "dcql", request])
+        .assert()
+        .failure()
+        .stdout(contains("DCQL-SET-OPTION-EMPTY"));
+}
+
 // --- evidence export / replay ---------------------------------------------
 
 #[test]
