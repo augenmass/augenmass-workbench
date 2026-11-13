@@ -1,0 +1,12 @@
+name: Case
+
+on:
+  "pull_request_t\x61rget":
+  workflow_dispatch:
+
+jobs:
+  native:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v6
+      - run: cargo test --workspace

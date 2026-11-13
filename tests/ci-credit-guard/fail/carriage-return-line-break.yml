@@ -1,0 +1,14 @@
+name: Case
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: case  push:    branches:      - main
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: echo case

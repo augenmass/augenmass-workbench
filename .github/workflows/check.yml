@@ -1,0 +1,79 @@
+name: Check
+
+# The only workflow that runs on branch pushes and pull requests. It runs on
+# GitHub-hosted ubuntu-latest, which is free for a public repository, and
+# scripts/ci-credit-guard.sh holds it to a strict profile: read-only
+# permissions declared once, no secret or token reference, no if: condition,
+# an expression only on a line of the guard allow-list (the concurrency group
+# below), plain block YAML with no backslash, and no action other than
+# actions/checkout pinned to a full commit SHA with persist-credentials: false.
+# ci.yml, blacksmith-smoke.yml and release.yml stay manual or tag-only.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check ubuntu-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Install Rust from rust-toolchain.toml
+        run: |
+          rustup toolchain install
+          rustc -vV
+          cargo -V
+
+      - name: CI credit guard and its regression cases
+        run: |
+          ./scripts/ci-credit-guard.sh
+          ./scripts/ci-credit-guard-cases.sh
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked --version 0.23.0
+
+      # Unsound and yanked findings fail the run. Each ignore below is an
+      # accepted advisory that needs a major upgrade; remove it with that
+      # upgrade (see docs/RELEASE.md, "Dependency audit").
+      #   RUSTSEC-2026-0459 libsqlite3-sys 0.28 (SQLite CVE), via rusqlite 0.31.
+      #   RUSTSEC-2026-0387 crypto-bigint 0.3 and 0.5 (timing), via rsa 0.6 and
+      #     elliptic-curve 0.13 (p256, josekit fork).
+      #   RUSTSEC-2023-0071 rsa 0.6 (Marvin attack), via ssi-jwk 0.4 (ssi 0.16).
+      #   RUSTSEC-2023-0126 im 15 (unsound OrdSet insertion), via ssi 0.16 json-ld.
+      #   RUSTSEC-2026-0255 sized-chunks 0.6 (unsound panic safety), via im 15.
+      - name: Audit
+        run: >-
+          cargo audit --deny unsound --deny yanked
+          --ignore RUSTSEC-2026-0459
+          --ignore RUSTSEC-2026-0387
+          --ignore RUSTSEC-2023-0071
+          --ignore RUSTSEC-2023-0126
+          --ignore RUSTSEC-2026-0255

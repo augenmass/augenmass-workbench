@@ -1,0 +1,9 @@
+name: Case
+
+on: [workflow_dispatch, issues]
+
+jobs:
+  workflow_dispatch:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - run: cargo test --workspace
