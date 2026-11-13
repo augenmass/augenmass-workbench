@@ -1,12 +1,12 @@
 # Augenmaß Workbench: Roadmap
 
-This is the forward roadmap for the `augenmass` CLI after the `v0.4.0` release. It
+This is the forward roadmap for the `augenmass` CLI after the `v0.4.1` release. It
 names the next verifier and auditor capabilities and, for each, what it is, why it
 matters for EUDI Wallet relying-party tooling, and what already exists in the
 codebase to build on. It is a statement of direction, not a specification. Each
 item gets its own numbered, parallelization-annotated plan when it is scheduled.
 
-`v0.4.0` already covers a lot of ground: decode and inspect for every common EUDI
+`v0.4.1` already covers a lot of ground: decode and inspect for every common EUDI
 artifact (SD-JWT VC, ISO 18013-5 mdoc, WRPRC registration certificate,
 OpenID4VP request / JAR, OpenID4VCI credential offer, token status list, DCQL),
 the over-ask engine (`check`, `audit`, `baselines`), end-to-end SD-JWT VC

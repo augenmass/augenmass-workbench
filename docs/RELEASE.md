@@ -407,12 +407,14 @@ supported desktop targets without a local source build.
 Run the plugin-free local gate first. Before the tag, the committed plugin
 bundle still carries the previous release, so the plugin checks
 (`plugin-bundle-freshness`, `codex-plugin-smoke`, `shipping-smoke`) run after the
-bundle refresh below, not here:
+bundle refresh below, not here. `just demo-run` gets the binary that
+`just verify` built, since without `AUGENMASS_DEMO_BIN` it would run the
+previous release's plugin binary:
 
 ```sh
 just verify
 just ci-credit-guard
-just demo-run
+AUGENMASS_DEMO_BIN=target/debug/augenmass just demo-run
 just install-smoke
 just release-archive-smoke
 just release-zip-layout-smoke
@@ -423,14 +425,37 @@ just platform-smoke
 Then tag from a clean tree:
 
 ```sh
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.4.1
+git push origin v0.4.1
 ```
 
 That tag push starts the release workflow and spends runner minutes. For the
 presentation-prep phase, keep release proof local with
 `just docker-release-archive-smoke-linux` and do not push a `v*` tag unless the
 runner spend has been approved.
+
+After the release workflow has published the release, attach the claim path
+test vectors (`fixtures/claim-paths/path-vectors.json`, see `docs/VECTORS.md`)
+and their SHA-256 checksum to it. The asset is the file at the tag, not the
+working tree, and the files are written outside the repository. The last two
+commands download the assets again and check the checksum:
+
+```sh
+tag=v0.4.1
+out="$(mktemp -d)"
+gh release view "$tag" --repo augenmass/augenmass-workbench
+git show "$tag:fixtures/claim-paths/path-vectors.json" > "$out/path-vectors.json"
+(cd "$out" && shasum -a 256 path-vectors.json > path-vectors.json.sha256)
+gh release upload "$tag" "$out/path-vectors.json" "$out/path-vectors.json.sha256" --repo augenmass/augenmass-workbench
+mkdir "$out/check"
+gh release download "$tag" --repo augenmass/augenmass-workbench --pattern 'path-vectors.json*' --dir "$out/check"
+(cd "$out/check" && shasum -a 256 -c path-vectors.json.sha256)
+```
+
+`gh release view` shows the published release; if it reports that the release
+is not found, stop and wait for the release workflow. The names `path-vectors.json` and
+`path-vectors.json.sha256` do not collide with the archive assets the release
+workflow publishes.
 
 Refresh the plugin bundle from release archives after the release exists, then
 run the plugin checks:
