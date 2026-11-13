@@ -16,6 +16,28 @@ it, and that it admits no new users; after that date, the `sandbox` target, the
 `cached-sandbox` reads, and the live sandbox smokes on this page may stop
 working against it.
 
+The tool repeats this notice in one line on stderr whenever it falls back to
+the built-in registrar address `https://sandbox.eudi-wallet.org/api` without
+explicit configuration: `list --target sandbox` and a confirmed
+`register --target sandbox --yes` print it when neither `AUGENMASS_API_BASE`
+nor `API_BASE` is set, and `cache serve` prints it when neither `--upstream`
+nor `AUGENMASS_CACHE_UPSTREAM` is set. A variable set to the built-in address
+counts as configuration and prints nothing. `augenmass serve` prints a
+`registration` startup line that names the source of its bundled registration
+certificate (`fixtures/regcert/rc-by-id.json`, issued by the German sandbox
+registrar) followed by the same notice. Standard output does not change, also
+with `--json`, and the notice adds no network request. For example, without any
+configuration:
+
+```
+augenmass list --target sandbox --rp x
+```
+
+```
+note: --target sandbox uses the built-in registrar https://sandbox.eudi-wallet.org/api because AUGENMASS_API_BASE is not set. The landing page of the German sandbox registrar (sandbox.eudi-wallet.org, read on 13 November 2026) says that testing in it is possible until 19 November 2026, that the new wallet app version then no longer accepts certificates from it, and that it admits no new users.
+Error: AUGENMASS_OIDC_TOKEN_URL is required for --target sandbox
+```
+
 This guide covers what each mode is, how to drive the clone and cache end to end,
 the safety rules that apply to writes, and one ecosystem caveat to confirm at
 sandbox time.
@@ -134,7 +156,7 @@ Flags (verified):
 - `--db <DB>`: SQLite file path. Default `./augenmass-cache.sqlite`.
 - `--host <HOST>`: bind host. Default `127.0.0.1`. Use `0.0.0.0` only behind TLS or a private network.
 - `--port <PORT>`: listen port. `AUGENMASS_CACHE_PORT` wins, then `PORT`, then `8081`.
-- `--upstream <URL>`: sandbox API base. Default `https://sandbox.eudi-wallet.org/api`.
+- `--upstream <URL>`: sandbox API base (env `AUGENMASS_CACHE_UPSTREAM`). Default `https://sandbox.eudi-wallet.org/api`; when neither the flag nor the variable is set, `cache serve` prints the sandbox registrar notice on stderr at startup.
 - `--ttl-secs <SECS>`: freshness window for cached responses. Default `3600`.
 - `--timeout-secs <SECS>`: upstream request timeout. Default `10`.
 - `--max-entries <N>`: maximum stored entries before oldest rows are evicted. Default `512`.
@@ -373,8 +395,8 @@ Requested claims:
 
 Over-asking 6 claim(s) beyond the stated purpose.
 
-Suggested minimal request:
-  age_equal_or_over.18
+Suggested minimal request (dc+sd-jwt, urn:eudi:pid:de:1), as claim paths:
+  ["age_equal_or_over", "18"]
 
 Legal basis:
   Regulation (EU) No 910/2014, Article 5b(3)
@@ -382,7 +404,7 @@ Legal basis:
   GDPR (EU) 2016/679, Art. 5(1)(c)
     Personal data shall be adequate, relevant and limited to what is necessary (data minimisation).
   EUDI ARF, registration certificate, RPRC_21
-    The wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
+    After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes.
 
 Refusing to write: this request over-asks (see above). Re-run with --yes --force to write it anyway.
 ```

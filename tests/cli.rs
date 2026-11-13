@@ -532,7 +532,12 @@ fn audit_accepts_wrapped_dcql_fixture() {
         .assert()
         .failure()
         .stdout(contains("OVER-ASK"))
-        .stdout(contains("age_equal_or_over.18"));
+        .stdout(contains(
+            "Suggested minimal request for \"pid-sd-jwt\" (dc+sd-jwt, urn:eudi:pid:de:1), as claim paths:\n  [\"age_equal_or_over\", \"18\"]\n",
+        ))
+        .stdout(contains(
+            "Suggested minimal request for \"pid-mso-mdoc\" (mso_mdoc, eu.europa.ec.eudi.pid.1), as [namespace, element]:\n  [\"eu.europa.ec.eudi.pid.de.1\", \"age_over_18\"] (German PID only)\n",
+        ));
 }
 
 #[test]
@@ -2262,4 +2267,494 @@ fn validate_dcql_json_output_is_valid() {
         .clone();
     let value: serde_json::Value = serde_json::from_slice(&out).expect("valid JSON");
     assert_eq!(value["valid"], serde_json::Value::Bool(false));
+}
+
+// --- v0.4.1: mdoc age element, suggestion spelling, demo inputs -------------
+
+/// An inline mdoc PID request (doctype eu.europa.ec.eudi.pid.1) for the given
+/// `[namespace, element]` paths.
+fn mdoc_request(paths: &[[&str; 2]]) -> String {
+    let claims: Vec<serde_json::Value> = paths.iter().map(|p| json!({ "path": p })).collect();
+    json!({ "credentials": [{
+        "id": "pid-mdoc",
+        "format": "mso_mdoc",
+        "meta": { "doctype_value": "eu.europa.ec.eudi.pid.1" },
+        "claims": claims,
+    }]})
+    .to_string()
+}
+
+#[test]
+fn audit_mdoc_age_request_is_minimal_in_both_pid_namespaces() {
+    for ns in ["eu.europa.ec.eudi.pid.1", "eu.europa.ec.eudi.pid.de.1"] {
+        let request = mdoc_request(&[[ns, "age_over_18"]]);
+        let text = stdout_of(
+            &["audit", "--request", &request, "--purpose", "age_gate_18"],
+            0,
+        );
+        assert!(
+            text.starts_with(
+                "OK: Within the purpose-minimal baseline; registration not evaluated.\n"
+            ),
+            "{ns}: {text}"
+        );
+        let request = mdoc_request(&[[ns, "age_over_21"]]);
+        stdout_of(
+            &["audit", "--request", &request, "--purpose", "car_rental"],
+            0,
+        );
+        let request = mdoc_request(&[[ns, "age_over_16"]]);
+        stdout_of(
+            &["audit", "--request", &request, "--purpose", "age_gate_18"],
+            1,
+        );
+    }
+}
+
+#[test]
+fn audit_mdoc_age_with_birth_date_is_still_over_ask() {
+    let request = mdoc_request(&[
+        ["eu.europa.ec.eudi.pid.de.1", "age_over_18"],
+        ["eu.europa.ec.eudi.pid.1", "birth_date"],
+    ]);
+    let text = stdout_of(
+        &["audit", "--request", &request, "--purpose", "age_gate_18"],
+        1,
+    );
+    assert!(text.starts_with("OVER-ASK"), "{text}");
+}
+
+#[test]
+fn suggestion_is_printed_in_the_request_spelling() {
+    let text = stdout_of(
+        &["audit", "--request", "overask", "--purpose", "age_gate_18"],
+        1,
+    );
+    assert!(
+        text.contains("as claim paths:\n  [\"age_equal_or_over\", \"18\"]\n"),
+        "{text}"
+    );
+    assert!(!text.contains("\n  age_equal_or_over.18\n"), "{text}");
+
+    let text = stdout_of(
+        &[
+            "audit",
+            "--request",
+            "examples/kyc-request-plus-birthdate.json",
+            "--purpose",
+            "bank_kyc",
+            "--cert",
+            NULL_SEGMENT_CERT,
+        ],
+        1,
+    );
+    assert!(
+        text.contains("\n  [\"address\", \"street_address\"]\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("\n  No known claim for this credential type: Place of birth (region), Place of birth (country), Resident house number, Resident address.\n"),
+        "{text}"
+    );
+    assert!(!text.contains("address.resident_street"), "{text}");
+
+    // An mdoc request that over-asks: the suggestion is in [namespace,
+    // element] form with the profile mark and its explanation.
+    let request = mdoc_request(&[["eu.europa.ec.eudi.pid.1", "birth_date"]]);
+    let text = stdout_of(
+        &["audit", "--request", &request, "--purpose", "age_gate_18"],
+        1,
+    );
+    assert!(
+        text.contains("Suggested minimal request (mso_mdoc, eu.europa.ec.eudi.pid.1), as [namespace, element]:\n  [\"eu.europa.ec.eudi.pid.de.1\", \"age_over_18\"] (German PID only)\n  The EU PID and the German PID share the doctype eu.europa.ec.eudi.pid.1; a marked element exists in only one of them.\n"),
+        "{text}"
+    );
+
+    // An unknown credential type gets labels, never internal keys.
+    let request = json!({ "credentials": [{
+        "id": "club", "format": "dc+sd-jwt",
+        "meta": { "vct_values": ["urn:example:membership:1"] },
+        "claims": [{ "path": ["member_name"] }],
+    }]})
+    .to_string();
+    let text = stdout_of(
+        &["audit", "--request", &request, "--purpose", "age_gate_18"],
+        1,
+    );
+    assert!(
+        text.contains("Suggested minimal request (dc+sd-jwt, urn:example:membership:1):\n  No claim names are known for this credential type. The purpose baseline asks only for: Age over 18.\n"),
+        "{text}"
+    );
+
+    let report = audit_json("overask", "age_gate_18", None, false);
+    assert_eq!(
+        report["suggested_minimal_request"][0]["paths"][0]["path"],
+        json!(["age_equal_or_over", "18"])
+    );
+    // The baseline keys stay in their 0.4.0 field.
+    assert_eq!(report["suggested_minimal"], json!(["age_equal_or_over.18"]));
+}
+
+#[test]
+fn check_over_example_suggests_claim_paths() {
+    bin()
+        .args(["check", "examples/over.json"])
+        .assert()
+        .failure()
+        .stdout(contains(
+            "Suggested minimal request (dc+sd-jwt, urn:eudi:pid:de:1), as claim paths:\n  [\"age_equal_or_over\", \"18\"]\n",
+        ));
+}
+
+#[test]
+fn demo_pair_is_inside_registration_beyond_purpose() {
+    let report = audit_json(
+        "examples/age-broad-request.json",
+        "age_gate_18",
+        Some("examples/age-broad-registration.jwt"),
+        false,
+    );
+    assert_eq!(report["counts"]["requested"], 5);
+    assert_eq!(report["counts"]["beyond_purpose"], 5);
+    assert_eq!(report["counts"]["beyond_registration"], 0);
+    for row in report["requested"].as_array().expect("requested") {
+        assert_eq!(row["status"], "BeyondPurpose", "{row}");
+    }
+    assert_eq!(report["registration_certificate"]["decoded"], true);
+}
+
+#[test]
+fn demo_minimal_age_requests_pass() {
+    for request in [
+        "examples/age-minimal-request-sdjwt.json",
+        "examples/age-minimal-request-mdoc.json",
+    ] {
+        let text = stdout_of(
+            &["audit", "--request", request, "--purpose", "age_gate_18"],
+            0,
+        );
+        assert!(text.starts_with("OK: "), "{request}: {text}");
+    }
+}
+
+#[test]
+fn check_integer_age_segment_is_not_minimal() {
+    // examples/min.json with the integer 18, which selects an array element
+    // and does not name the member "18" of the age object.
+    let body = std::fs::read_to_string("examples/min.json").expect("min.json");
+    let body = body.replace("\"18\"", "18");
+    assert!(
+        body.contains("\"age_equal_or_over\",\n            18"),
+        "{body}"
+    );
+    let out = bin()
+        .args(["check", &body, "--json"])
+        .assert()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&out).expect("json");
+    let text = report.to_string();
+    assert!(text.contains("\"BeyondPurpose\""), "{text}");
+    assert!(!text.contains("\"MinimalForPurpose\""), "{text}");
+    bin()
+        .args(["check", "examples/min.json"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn audit_unmodelled_format_gets_no_purpose_verdict() {
+    let request = r#"{"credentials":[{"id":"pid","format":"org.example.format","meta":{"vct_values":["urn:eudi:pid:de:1"]},"claims":[{"path":["age_equal_or_over","18"]}]}]}"#;
+    let report = audit_json(request, "age_gate_18", None, false);
+    assert_eq!(report["counts"]["beyond_purpose"], 1, "{report}");
+    assert_eq!(report["counts"]["minimal"], 0, "{report}");
+    let row = &report["requested"][0];
+    assert_eq!(row["status"], "BeyondPurpose", "{row}");
+    assert!(
+        row["rationale"]
+            .as_str()
+            .is_some_and(|r| r.starts_with("Purpose not judged for this credential format")),
+        "{row}"
+    );
+}
+
+/// ARF Annex 2.02, Topic 44, RPRC_21, verbatim.
+const RPRC_21: &str = "After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes.";
+
+#[test]
+fn legal_basis_quotes_rprc_21_verbatim_in_text_and_json() {
+    let line = format!("  EUDI ARF, registration certificate, RPRC_21\n    {RPRC_21}\n");
+    let text = stdout_of(&["baselines"], 0);
+    assert!(text.contains(&line), "{text}");
+    assert!(!text.contains("notifies the user"));
+
+    let value: serde_json::Value =
+        serde_json::from_str(&stdout_of(&["baselines", "--json"], 0)).expect("json");
+    assert_eq!(
+        value["legalBasis"][2],
+        json!({
+            "source": "EUDI ARF, registration certificate",
+            "locator": "RPRC_21",
+            "text": RPRC_21,
+        })
+    );
+
+    let text = stdout_of(
+        &["audit", "--request", "overask", "--purpose", "age_gate_18"],
+        1,
+    );
+    assert!(text.contains(&line), "{text}");
+    assert!(!text.contains("notifies the user"));
+    let report = audit_json("overask", "age_gate_18", None, false);
+    assert_eq!(report["legal_basis"][2], value["legalBasis"][2]);
+}
+
+// --- v0.4.1: sandbox registrar notice ----------------------------------------
+
+const SANDBOX_NOTICE: &str = "The landing page of the German sandbox registrar (sandbox.eudi-wallet.org, read on 13 November 2026) says that testing in it is possible until 19 November 2026, that the new wallet app version then no longer accepts certificates from it, and that it admits no new users.";
+
+fn sandbox_target_line() -> String {
+    format!("note: --target sandbox uses the built-in registrar https://sandbox.eudi-wallet.org/api because AUGENMASS_API_BASE is not set. {SANDBOX_NOTICE}\n")
+}
+
+fn cache_upstream_line() -> String {
+    format!("note: cache serve uses the built-in upstream https://sandbox.eudi-wallet.org/api because neither --upstream nor AUGENMASS_CACHE_UPSTREAM is set. {SANDBOX_NOTICE}\n")
+}
+
+/// A fresh, empty working directory with no `.env` in it or above it, so
+/// `dotenvy::dotenv()` in the binary loads nothing.
+fn isolated_dir() -> PathBuf {
+    let dir = test_temp_dir("augenmass-cli-isolated");
+    fs::create_dir_all(&dir).expect("create isolated dir");
+    for ancestor in dir.ancestors() {
+        assert!(!ancestor.join(".env").exists(), "{}", ancestor.display());
+    }
+    dir
+}
+
+/// The binary with an empty environment except `envs`, run in an isolated
+/// directory. Proxy variables point at a closed local port, so a request that
+/// a regression might send cannot leave the machine.
+fn isolated_command(args: &[&str], envs: &[(&str, &str)]) -> std::process::Command {
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_augenmass"));
+    cmd.env_clear()
+        .current_dir(isolated_dir())
+        .args(args)
+        .env("HTTPS_PROXY", "http://127.0.0.1:9")
+        .env("HTTP_PROXY", "http://127.0.0.1:9")
+        .env("ALL_PROXY", "http://127.0.0.1:9");
+    for (key, value) in envs {
+        cmd.env(key, value);
+    }
+    cmd
+}
+
+fn isolated_output(args: &[&str], envs: &[(&str, &str)]) -> (i32, String, String) {
+    let out = isolated_command(args, envs).output().expect("run binary");
+    (
+        out.status.code().unwrap_or(-1),
+        String::from_utf8(out.stdout).expect("utf8"),
+        String::from_utf8(out.stderr).expect("utf8"),
+    )
+}
+
+fn repo_path(rel: &str) -> String {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(rel)
+        .display()
+        .to_string()
+}
+
+fn closed_local_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .expect("bind")
+        .local_addr()
+        .expect("addr")
+        .port()
+}
+
+#[test]
+fn sandbox_target_without_configuration_prints_the_notice_on_stderr() {
+    // No token URL is set, so the command stops before any request.
+    for args in [
+        &["list", "--target", "sandbox", "--rp", "x"][..],
+        &["list", "--target", "sandbox", "--rp", "x", "--json"][..],
+    ] {
+        let (code, stdout, stderr) = isolated_output(args, &[]);
+        assert_ne!(code, 0, "{args:?}");
+        assert!(
+            stderr.starts_with(&sandbox_target_line()),
+            "{args:?}: {stderr}"
+        );
+        assert_eq!(stderr.matches("note: --target sandbox").count(), 1);
+        assert!(
+            stderr.contains("AUGENMASS_OIDC_TOKEN_URL is required"),
+            "{stderr}"
+        );
+        assert!(stdout.is_empty(), "{args:?}: {stdout}");
+    }
+}
+
+#[test]
+fn sandbox_target_with_configuration_prints_no_notice() {
+    for envs in [
+        &[("API_BASE", "https://registrar.example.org/api")][..],
+        &[("AUGENMASS_API_BASE", "https://sandbox.eudi-wallet.org/api")][..],
+    ] {
+        let (code, stdout, stderr) =
+            isolated_output(&["list", "--target", "sandbox", "--rp", "x"], envs);
+        assert_ne!(code, 0, "{envs:?}");
+        assert!(
+            !stderr.contains("note: --target sandbox"),
+            "{envs:?}: {stderr}"
+        );
+        assert!(
+            stderr.contains("AUGENMASS_OIDC_TOKEN_URL is required"),
+            "{stderr}"
+        );
+        assert!(stdout.is_empty());
+    }
+
+    // A dry run makes no request and prints no notice.
+    let body = repo_path("examples/min.json");
+    let (code, stdout, stderr) = isolated_output(&["register", &body, "--target", "sandbox"], &[]);
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stdout.contains("DRY RUN: nothing written."), "{stdout}");
+    assert!(!stderr.contains("note:"), "{stderr}");
+
+    // Another target prints no notice; the request fails locally.
+    let clone = format!("http://127.0.0.1:{}/api", closed_local_port());
+    let (code, _, stderr) = isolated_output(
+        &["list", "--target", "clone", "--rp", "x"],
+        &[("AUGENMASS_CLONE_API_BASE", clone.as_str())],
+    );
+    assert_ne!(code, 0);
+    assert!(!stderr.contains("note:"), "{stderr}");
+}
+
+/// Spawn the binary isolated, collect stdout and stderr until a line on
+/// either stream contains `until` or 20 seconds pass, then kill it and
+/// return everything both streams printed.
+fn startup_output(args: &[&str], envs: &[(&str, &str)], until: &str) -> (String, String) {
+    use std::io::BufRead;
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+
+    let mut child = isolated_command(args, envs)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn binary");
+    let (tx, rx) = mpsc::channel::<(bool, String)>();
+    let readers: Vec<_> = [
+        (
+            false,
+            Box::new(child.stdout.take().expect("stdout")) as Box<dyn std::io::Read + Send>,
+        ),
+        (
+            true,
+            Box::new(child.stderr.take().expect("stderr")) as Box<dyn std::io::Read + Send>,
+        ),
+    ]
+    .into_iter()
+    .map(|(is_err, stream)| {
+        let tx = tx.clone();
+        std::thread::spawn(move || {
+            for line in std::io::BufReader::new(stream)
+                .lines()
+                .map_while(Result::ok)
+            {
+                let _ = tx.send((is_err, line));
+            }
+        })
+    })
+    .collect();
+    drop(tx);
+
+    let (mut stdout, mut stderr) = (String::new(), String::new());
+    let mut push = |(is_err, line): (bool, String)| {
+        let buf = if is_err { &mut stderr } else { &mut stdout };
+        buf.push_str(&line);
+        buf.push('\n');
+        line.contains(until)
+    };
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while let Some(left) = deadline.checked_duration_since(Instant::now()) {
+        match rx.recv_timeout(left) {
+            Ok(item) => {
+                if push(item) {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+    for reader in readers {
+        let _ = reader.join();
+    }
+    for item in rx.try_iter() {
+        push(item);
+    }
+    (stdout, stderr)
+}
+
+#[test]
+fn cache_serve_prints_the_notice_only_for_the_built_in_upstream() {
+    let run = |extra: &[&str], envs: &[(&str, &str)]| {
+        let dir = isolated_dir();
+        let db = dir.join("c.sqlite").display().to_string();
+        let port = closed_local_port().to_string();
+        let mut args = vec![
+            "cache",
+            "serve",
+            "--db",
+            &db,
+            "--host",
+            "127.0.0.1",
+            "--port",
+            &port,
+        ];
+        args.extend_from_slice(extra);
+        startup_output(&args, envs, "admin endpoints:")
+    };
+
+    let (stdout, stderr) = run(&[], &[]);
+    assert!(stdout.contains("admin endpoints:"), "{stdout}\n{stderr}");
+    assert!(stderr.contains(&cache_upstream_line()), "{stderr}");
+    assert_eq!(stderr.matches("note: cache serve").count(), 1);
+    assert!(!stdout.contains("note:"), "{stdout}");
+
+    for (extra, envs) in [
+        (
+            &["--upstream", "https://sandbox.eudi-wallet.org/api"][..],
+            &[][..],
+        ),
+        (
+            &[][..],
+            &[(
+                "AUGENMASS_CACHE_UPSTREAM",
+                "https://sandbox.eudi-wallet.org/api",
+            )][..],
+        ),
+    ] {
+        let (stdout, stderr) = run(extra, envs);
+        assert!(stdout.contains("admin endpoints:"), "{stdout}\n{stderr}");
+        assert!(
+            !stderr.contains("note: cache serve"),
+            "{extra:?} {envs:?}: {stderr}"
+        );
+    }
+}
+
+#[test]
+fn serve_names_the_bundled_registration_certificate_at_startup() {
+    let port = closed_local_port().to_string();
+    let (_, stderr) = startup_output(&["serve", "--port", &port], &[], "registration :");
+    let line = format!("  registration : bundled certificate fixtures/regcert/rc-by-id.json, issued by the German sandbox registrar (C=DE, CN=German Registrar). {SANDBOX_NOTICE}\n");
+    assert!(stderr.contains(&line), "{stderr}");
 }

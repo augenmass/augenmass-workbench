@@ -1,0 +1,12 @@
+{
+  "credentials": [
+    {
+      "id": "pid-mdoc",
+      "format": "mso_mdoc",
+      "meta": { "doctype_value": "eu.europa.ec.eudi.pid.1" },
+      "claims": [
+        { "path": ["eu.europa.ec.eudi.pid.1", "age_over_18"] }
+      ]
+    }
+  ]
+}

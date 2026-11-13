@@ -67,7 +67,9 @@ fn overask_guardrail_demo_is_stable_and_cites_the_basis() {
         .assert()
         .failure()
         .stdout(contains("OVER-ASK"))
-        .stdout(contains("age_equal_or_over.18"));
+        .stdout(contains(
+            "Suggested minimal request (dc+sd-jwt, urn:eudi:pid:de:1), as claim paths:\n  [\"age_equal_or_over\", \"18\"]\n",
+        ));
 }
 
 #[test]

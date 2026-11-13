@@ -10,6 +10,123 @@ imply wall-clock timing for releases.
 
 ## [Unreleased]
 
+## [0.4.1]
+
+This release fixes a false over-ask on the minimal mdoc age request, prints the
+suggested minimal request in the spelling of the request, quotes ARF
+requirement RPRC_21 verbatim, adds a sandbox notice, and extends the claim path
+test vectors with `credential_sets` cases.
+
+### Fixed
+
+- Over-ask audit of mdoc age requests: an mdoc PID element `age_over_NN` in the
+  namespace `eu.europa.ec.eudi.pid.1` or `eu.europa.ec.eudi.pid.de.1` is now
+  judged for purpose under the claim-model key `age_equal_or_over.NN`, so it
+  gets the verdict the SD-JWT VC claim `["age_equal_or_over", "NN"]` gets under
+  the same baseline (`audit` and `check`).
+  Before, `audit` printed `OVER-ASK` and exited 1 for the request of
+  `["eu.europa.ec.eudi.pid.1", "age_over_18"]` under `age_gate_18`, while the
+  SD-JWT VC request passed. Six verdicts change from beyond the purpose to
+  within it: `age_over_18` under `age_gate_18` and `event_checkin`, and
+  `age_over_21` under `car_rental`, each in both namespaces. Other age groups,
+  and every age element under `bank_kyc`, stay beyond the purpose in both
+  formats. Only `age_over_` followed by ASCII digits maps; every other element
+  of the German namespace stays unmapped. The purpose verdict still does not
+  depend on the credential type, as for the other mdoc elements in 0.4.0.
+  Registration coverage and over-disclosure still compare raw paths, so the
+  alias never authorizes a path in the other namespace or the other format.
+  In `--json`, such a row now has `status` `MinimalForPurpose`, the label
+  `Age over NN`, and the matching `counts`. The 0.4.0 entry below that lists
+  `age_over_NN` among the mdoc paths without a claim-model key no longer holds
+  for it.
+- Purpose verdict of SD-JWT VC paths with an integer segment: an integer
+  selects an array element, so `["age_equal_or_over", 18]` is no longer judged
+  as the member `"18"` of the age object. Before, `check` and `audit` reported
+  it as within the purpose under `age_gate_18`, `event_checkin` and (with 21)
+  `car_rental` and exited 0; it is now beyond the purpose and exits 1. Integer
+  and `null` element selectors of `nationalities` still count as the array.
+- Purpose verdict of credential formats the baselines do not model: a claim of
+  any format other than `dc+sd-jwt`, `vc+sd-jwt` and `mso_mdoc` (for example
+  `jwt_vc_json`, `ldp_vc` or an unknown identifier) no longer borrows the
+  SD-JWT VC spelling. Before, `["age_equal_or_over", "18"]` in such a format
+  passed `age_gate_18` with exit 0; it now counts as beyond the purpose, with
+  the rationale `Purpose not judged for this credential format`, and exits 1.
+
+### Changed
+
+- "Suggested minimal request" is printed in the spelling of the requested
+  credential, one block per requested credential type, in the text output of
+  `check`, `audit` and the `register` gate and on the `serve` inspect page.
+  An SD-JWT VC request gets claim paths (`["age_equal_or_over", "18"]`), an
+  mdoc PID request gets `[namespace, element]` pairs; the array part of each
+  line can be pasted into a DCQL `path`. Because the EU PID and the German PID
+  share the mdoc doctype `eu.europa.ec.eudi.pid.1`, an element that only one of
+  them carries is marked `(German PID only)` or `(not in the German PID)`. A
+  baseline claim that the credential type does not carry is named after
+  `No known claim for this credential type:`, and a credential type without a
+  known claim table gets the baseline claim names only. Before, the block
+  listed internal baseline keys such as `age_equal_or_over.18` or
+  `address.resident_street`, also for mdoc requests. `--json` adds
+  `suggested_minimal_request` (per block: `credential_id`, `format`, `types`,
+  `known_type`, `paths` with `path` and `profile_note`, `not_suggested`);
+  `suggested_minimal` keeps the baseline keys.
+- The legal basis entry `EUDI ARF, registration certificate, RPRC_21` now
+  quotes the requirement verbatim from ARF Annex 2 (Topic 44), including that
+  the wallet warns the user and that the wallet provider decides whether the
+  presentation may go ahead. Before, it printed the paraphrase "The wallet
+  verifies requested attributes are within the registration certificate and
+  notifies the user otherwise." The change applies to the text and `--json`
+  output (`legal_basis[2].text`) of `audit`, `check` and `baselines`; the
+  source and locator are unchanged.
+- Sandbox notice: when `--target sandbox` (`list`, and `register --yes`) uses
+  the built-in registrar `https://sandbox.eudi-wallet.org/api` because neither
+  `AUGENMASS_API_BASE` nor `API_BASE` is set, and when `cache serve` uses it as
+  the upstream because neither `--upstream` nor `AUGENMASS_CACHE_UPSTREAM` is
+  set, the tool prints one line on stderr with what the registrar's landing
+  page said on 13 November 2026 (testing possible until 19 November 2026, the
+  new wallet app version then no longer accepts its certificates, no new
+  users). A variable set to the built-in address counts as configuration.
+  `serve` prints a startup line `registration :` that names the source of its
+  bundled registration certificate (`fixtures/regcert/rc-by-id.json`, issued by
+  the German sandbox registrar) with the same notice. Standard output does not
+  change, also with `--json`, and no network request is added. The default
+  address is unchanged; `cache serve --help` now states it in the `--upstream`
+  help text instead of a `[default: ...]` suffix.
+- Claim path test vectors: `fixtures/claim-paths/path-vectors.json` is version
+  1.1 and adds `query_cases`, five cases of whole DCQL queries with
+  `credential_sets`: an option selects only the credential queries it names,
+  an optional set is audited, every option of a set and every identifier of an
+  option is audited, and an empty option is malformed. The 58 cases of version
+  1 are unchanged. `tests/claim_paths.rs` runs the new cases through the same
+  DCQL parser as `audit --request` and checks with a SHA-256 that the version 1
+  cases did not change.
+
+### Added
+
+- `examples/`: demonstration inputs with invented relying-party names only.
+  `age-broad-registration.jwt` (readable payload
+  `age-broad-registration.payload.json`) with `age-broad-request.json` shows a
+  request inside the registration and beyond the purpose: under `age_gate_18`
+  all five requested claims are beyond the purpose and none beyond the
+  registration, exit 1. `age-minimal-request-sdjwt.json` and
+  `age-minimal-request-mdoc.json` are the minimal age requests (both exit 0
+  under `age_gate_18`), and `kyc-request-plus-birthdate.json` is a German PID
+  request of given name, nationalities, address locality and birth date.
+- `docs/VECTORS.md`: the format of the vector file, what "covers" means for
+  each kind of case, how to run the cases and consume the JSON, the licence and
+  reuse terms, and the version and change policy.
+- README: a table "What the Workbench does not do" (registration certificates
+  are decoded, not verified; no test wallet; no mdoc presentation verification;
+  no Digital Credentials API), each row with a free tool that covers it. The
+  four built-in purpose baselines are described as curated assessments, not
+  law and not legal advice.
+- `docs/RELEASE.md`, "Cutting a release": the step that attaches
+  `path-vectors.json` and its `.sha256` file to the published release.
+
+The plugin binaries committed under `plugins/augenmass-workbench/` are
+unchanged at this tag and do not carry these changes; the plugin bundle is
+rebuilt from the 0.4.1 release archives in a follow-up change.
+
 ## [0.4.0]
 
 This release adds request signature verification (`verify request`), compares

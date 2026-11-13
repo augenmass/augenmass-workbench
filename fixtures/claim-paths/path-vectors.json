@@ -1,6 +1,6 @@
 {
   "title": "Claims path pointer coverage vectors: is a requested claim within a registered claim?",
-  "version": "1",
+  "version": "1.1",
   "licence": "Apache-2.0",
   "reuse": "Licensed Apache-2.0 like the Augenmass Workbench repository. Other tools may reuse, copy and adapt this vector set; please keep the licence field.",
   "specification": {
@@ -602,6 +602,97 @@
       "expected": [{ "path": null, "result": "covered" }],
       "reason": "An empty combination selects no claim, and the credential type itself is registered.",
       "section": "OpenID4VP 1.0 sections 6.1 and 6.4.1"
+    }
+  ],
+  "query_cases_description": "Each case lists the registered credentials and one whole DCQL query with credentials and credential_sets. expected is the string malformed when the query must be rejected before any audit, or a list, in request order, of every audited path with the id of the credential query it belongs to and its result. A credential query that no option of any credential set names is not requested and has no entry.",
+  "query_cases": [
+    {
+      "id": "Q01-credential-set-selects-named-credential-only",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] }
+      ],
+      "query": {
+        "credentials": [
+          { "id": "club", "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [{ "path": ["member_name"] }] },
+          { "id": "other", "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:other:1"] }, "claims": [{ "path": ["member_since"] }] }
+        ],
+        "credential_sets": [{ "options": [["club"]] }]
+      },
+      "expected": [{ "credential": "club", "path": ["member_name"], "result": "covered" }],
+      "reason": "Only credential queries that an option names are requested; the unregistered credential query that no option names is not audited.",
+      "section": "OpenID4VP 1.0 sections 6.2 and 6.4.2"
+    },
+    {
+      "id": "Q02-optional-credential-set-is-audited",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] }
+      ],
+      "query": {
+        "credentials": [
+          { "id": "club", "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [{ "path": ["member_name"] }] },
+          { "id": "other", "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:other:1"] }, "claims": [{ "path": ["member_since"] }] }
+        ],
+        "credential_sets": [{ "options": [["club"]] }, { "options": [["other"]], "required": false }]
+      },
+      "expected": [
+        { "credential": "club", "path": ["member_name"], "result": "covered" },
+        { "credential": "other", "path": ["member_since"], "result": "not_covered" }
+      ],
+      "reason": "A credential set with required false may still be answered by the wallet, so the credential query it names is requested and its unregistered type is outside the registration.",
+      "section": "OpenID4VP 1.0 sections 6.2 and 6.4.2"
+    },
+    {
+      "id": "Q03-empty-credential-set-option-is-malformed",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] }
+      ],
+      "query": {
+        "credentials": [
+          { "id": "other", "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:other:1"] }, "claims": [{ "path": ["member_since"] }] }
+        ],
+        "credential_sets": [{ "options": [[]] }]
+      },
+      "expected": "malformed",
+      "reason": "Each option must name at least one credential query. A query with an empty option is rejected; it is not audited as a query that requests nothing.",
+      "section": "OpenID4VP 1.0 section 6.2"
+    },
+    {
+      "id": "Q04-every-option-of-a-set-is-audited",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] }
+      ],
+      "query": {
+        "credentials": [
+          { "id": "club", "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [{ "path": ["member_name"] }] },
+          { "id": "other", "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:other:1"] }, "claims": [{ "path": ["member_since"] }] }
+        ],
+        "credential_sets": [{ "options": [["club"], ["other"]] }]
+      },
+      "expected": [
+        { "credential": "club", "path": ["member_name"], "result": "covered" },
+        { "credential": "other", "path": ["member_since"], "result": "not_covered" }
+      ],
+      "reason": "The wallet may answer any option of a credential set, so every credential query named by any option is requested, not only the first option.",
+      "section": "OpenID4VP 1.0 sections 6.2 and 6.4.2"
+    },
+    {
+      "id": "Q05-every-identifier-of-an-option-is-audited",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] }
+      ],
+      "query": {
+        "credentials": [
+          { "id": "club", "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [{ "path": ["member_name"] }] },
+          { "id": "other", "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:other:1"] }, "claims": [{ "path": ["member_since"] }] }
+        ],
+        "credential_sets": [{ "options": [["club", "other"]] }]
+      },
+      "expected": [
+        { "credential": "club", "path": ["member_name"], "result": "covered" },
+        { "credential": "other", "path": ["member_since"], "result": "not_covered" }
+      ],
+      "reason": "An option is a list of credential query identifiers that are returned together, so every identifier of the option is requested, not only the first.",
+      "section": "OpenID4VP 1.0 sections 6.2 and 6.4.2"
     }
   ]
 }

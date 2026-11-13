@@ -401,9 +401,9 @@ enum CacheCmd {
         /// Listen port. Env AUGENMASS_CACHE_PORT wins, then PORT, then 8081.
         #[arg(long, env = "AUGENMASS_CACHE_PORT")]
         port: Option<u16>,
-        /// Upstream sandbox API base (env AUGENMASS_CACHE_UPSTREAM).
-        #[arg(long, env = "AUGENMASS_CACHE_UPSTREAM", default_value_t = DEFAULT_API_BASE.to_string())]
-        upstream: String,
+        /// Upstream sandbox API base (env AUGENMASS_CACHE_UPSTREAM). Default https://sandbox.eudi-wallet.org/api.
+        #[arg(long, env = "AUGENMASS_CACHE_UPSTREAM")]
+        upstream: Option<String>,
         /// Freshness window for cached responses (env AUGENMASS_CACHE_TTL_SECS).
         #[arg(long, env = "AUGENMASS_CACHE_TTL_SECS", default_value_t = DEFAULT_CACHE_TTL_SECS)]
         ttl_secs: u64,
@@ -553,7 +553,8 @@ pub async fn run() -> Result<()> {
                     db,
                     host,
                     port: resolve_cache_port(port),
-                    upstream,
+                    upstream_is_default: upstream.is_none(),
+                    upstream: upstream.unwrap_or_else(|| DEFAULT_API_BASE.to_string()),
                     ttl_secs,
                     timeout_secs,
                     max_entries,

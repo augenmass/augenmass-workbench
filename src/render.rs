@@ -85,15 +85,93 @@ fn render_over_ask_with(report: &OverAskReport, notice: Option<&str>) -> String 
         ));
     }
 
-    if let Some(keys) = &report.suggested_minimal {
-        out.push_str("\nSuggested minimal request:\n");
-        for key in keys {
-            out.push_str(&format!("  {key}\n"));
+    let blocks = suggestion_blocks(report);
+    if !blocks.is_empty() {
+        out.push('\n');
+        for (heading, lines) in blocks {
+            out.push_str(&format!("{heading}\n"));
+            for line in lines {
+                out.push_str(&format!("  {line}\n"));
+            }
         }
     }
 
     out.push_str(&render_legal_basis(report));
     out
+}
+
+/// The line printed once under a PID mdoc suggestion that carries a profile
+/// mark.
+pub const SHARED_DOCTYPE_NOTE: &str = "The EU PID and the German PID share the doctype eu.europa.ec.eudi.pid.1; a marked element exists in only one of them.";
+
+/// A suggested path as a JSON string array with ", " between segments, so
+/// it can be pasted into a DCQL `path`.
+fn path_json(path: &[String]) -> String {
+    let segs: Vec<String> = path
+        .iter()
+        .map(|s| serde_json::to_string(s).unwrap_or_else(|_| format!("\"{s}\"")))
+        .collect();
+    format!("[{}]", segs.join(", "))
+}
+
+/// The "Suggested minimal request" blocks of a report: one heading and its
+/// lines (without indentation) per requested credential type, in the format
+/// and spelling of that request. Empty when no baseline was evaluated.
+pub fn suggestion_blocks(report: &OverAskReport) -> Vec<(String, Vec<String>)> {
+    let Some(blocks) = &report.suggested_minimal_request else {
+        return Vec::new();
+    };
+    let several = blocks.len() > 1;
+    blocks
+        .iter()
+        .map(|block| {
+            let types = if block.types.is_empty() {
+                "no type".to_string()
+            } else {
+                block.types.join(", ")
+            };
+            let named = if several {
+                format!(" for \"{}\"", block.credential_id)
+            } else {
+                String::new()
+            };
+            let spelling = match (block.known_type, block.format == "mso_mdoc") {
+                (false, _) => "",
+                (true, true) => ", as [namespace, element]",
+                (true, false) => ", as claim paths",
+            };
+            let heading = format!(
+                "Suggested minimal request{named} ({}, {types}){spelling}:",
+                block.format
+            );
+            let mut lines = Vec::new();
+            if block.known_type {
+                for p in &block.paths {
+                    let mark = p
+                        .profile_note
+                        .as_deref()
+                        .map(|n| format!(" ({n})"))
+                        .unwrap_or_default();
+                    lines.push(format!("{}{mark}", path_json(&p.path)));
+                }
+                if block.paths.iter().any(|p| p.profile_note.is_some()) {
+                    lines.push(SHARED_DOCTYPE_NOTE.to_string());
+                }
+                if !block.not_suggested.is_empty() {
+                    lines.push(format!(
+                        "No known claim for this credential type: {}.",
+                        block.not_suggested.join(", ")
+                    ));
+                }
+            } else {
+                lines.push(format!(
+                    "No claim names are known for this credential type. The purpose baseline asks only for: {}.",
+                    block.not_suggested.join(", ")
+                ));
+            }
+            (heading, lines)
+        })
+        .collect()
 }
 
 /// Render an over-ask report for the `audit` command, including the OK case.

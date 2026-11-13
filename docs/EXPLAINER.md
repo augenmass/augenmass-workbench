@@ -24,7 +24,7 @@ It is against the rules. European law is explicit that a relying party must not 
 
 1. Regulation (EU) No 910/2014, Article 5b(3): "Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c)."
 2. GDPR (EU) 2016/679, Art. 5(1)(c): personal data must be "adequate, relevant and limited to what is necessary" (data minimisation).
-3. EUDI ARF, registration certificate, RPRC_21: the wallet checks that requested attributes are within the registration certificate and notifies the user otherwise.
+3. EUDI ARF, registration certificate, RPRC_21 (ARF Annex 2, Topic 44): "After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes."
 
 It turns users into something trackable. A birthdate plus a name plus a place is enough to recognise the same person across unrelated services. Data that was never needed becomes a way to follow people around. Asking only for "over 18: yes" cannot do that.
 

@@ -228,16 +228,190 @@ fn credential_case_failures(case: &Value) -> Vec<String> {
     failures
 }
 
+/// The result of one query case: the failures, empty when it holds. The
+/// query is parsed by the binary's own DCQL parser (`dcql::parse_dcql`), which
+/// rejects an empty credential set option before any audit.
+fn query_case_failures(case: &Value) -> Vec<String> {
+    let id = case["id"].as_str().expect("id");
+    let registered: Vec<Value> = case["registered"]
+        .as_array()
+        .expect("registered")
+        .iter()
+        .map(|c| {
+            registered_credential(
+                c["format"].as_str().expect("format"),
+                &c["meta"],
+                c["claims"].as_array().expect("claims"),
+            )
+        })
+        .collect();
+    let payload = registration(&registered);
+    let parsed = augenmass_workbench::dcql::parse_dcql(&case["query"].to_string());
+
+    if case["expected"] == "malformed" {
+        return match parsed {
+            Err(e) if format!("{e:#}").contains("section 6.2") => Vec::new(),
+            Err(e) => vec![format!("{id}: rejected without citing section 6.2: {e:#}")],
+            Ok(_) => vec![format!("{id}: expected malformed, but the query parses")],
+        };
+    }
+    let query = match parsed {
+        Ok(query) => query,
+        Err(e) => return vec![format!("{id}: query does not parse: {e:#}")],
+    };
+    let mut failures = Vec::new();
+
+    // The rows carry no credential id, so the case itself must tie each
+    // expected row to exactly one credential query, by a path only that
+    // credential query requests, in declaration order.
+    let declared = case["query"]["credentials"]
+        .as_array()
+        .expect("query.credentials");
+    let expected = case["expected"].as_array().expect("expected list");
+    let mut last_index = 0;
+    for want in expected {
+        let named: Vec<usize> = declared
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c["id"] == want["credential"])
+            .map(|(i, _)| i)
+            .collect();
+        let [index] = named.as_slice() else {
+            failures.push(format!(
+                "{id}: {} must name exactly one credential query",
+                want["credential"]
+            ));
+            continue;
+        };
+        let carries = |c: &Value| {
+            c["claims"]
+                .as_array()
+                .is_some_and(|claims| claims.iter().any(|claim| claim["path"] == want["path"]))
+        };
+        if !carries(&declared[*index]) {
+            failures.push(format!(
+                "{id}: {} does not request {}",
+                want["credential"], want["path"]
+            ));
+        }
+        if declared
+            .iter()
+            .enumerate()
+            .any(|(i, c)| i != *index && carries(c))
+        {
+            failures.push(format!(
+                "{id}: path {} is also requested by a credential query other than {}",
+                want["path"], want["credential"]
+            ));
+        }
+        if *index < last_index {
+            failures.push(format!(
+                "{id}: rows must follow the declaration order of query.credentials"
+            ));
+        }
+        last_index = *index;
+    }
+
+    let scope = regcert::scope_from_payload(&payload).expect("registration payload decodes");
+    let report = inspector::analyze("urn:example:membership:1", &query, Some(&scope), None, &[]);
+    if report.requested.len() != expected.len() {
+        failures.push(format!(
+            "{id}: expected {} audited paths, got {}: {:?}",
+            expected.len(),
+            report.requested.len(),
+            report
+                .requested
+                .iter()
+                .map(|v| v.key.as_str())
+                .collect::<Vec<_>>()
+        ));
+        return failures;
+    }
+    for (row, want) in report.requested.iter().zip(expected) {
+        let key = display_key(&want["path"]);
+        if row.key != key {
+            failures.push(format!("{id}: expected row {key}, got {}", row.key));
+        } else if result_of(row.status) != want["result"] {
+            failures.push(format!(
+                "{id}: {key} expected {}, got {}",
+                want["result"],
+                result_of(row.status)
+            ));
+        }
+    }
+    failures
+}
+
+/// SHA-256 over every version 1 key that defines an input or an expected
+/// result. A minor version step adds cases and never changes these.
+fn version_1_digest(v: &Value) -> String {
+    use sha2::{Digest, Sha256};
+    let frozen = json!([
+        v["specification"],
+        v["semantics"],
+        v["results"],
+        v["pointer_defaults"],
+        v["pointer_cases"],
+        v["credential_cases_description"],
+        v["credential_cases"],
+    ]);
+    let text = serde_json::to_string(&frozen).expect("serialize");
+    Sha256::digest(text.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// [`version_1_digest`] of the version 1 file shipped in 0.4.0 (SHA-256 of
+/// that file: b865299887cb6400d0d3f069d5bfc787a44cfc94ec36a3c15e8e274c81ea8146).
+const VERSION_1_DIGEST: &str = "aa59a96c43d027c4bee7bcd064998136d45c3e64b8b3592527c0a6409aaff3e5";
+
+#[test]
+fn path_vectors_version_1_cases_are_unchanged() {
+    assert_eq!(version_1_digest(&vectors()), VERSION_1_DIGEST);
+}
+
+#[test]
+fn path_vectors_ids_are_unique_and_version_is_1_1() {
+    let v = vectors();
+    assert_eq!(v["version"], "1.1");
+    let mut ids: Vec<&str> = Vec::new();
+    for list in ["pointer_cases", "credential_cases", "query_cases"] {
+        for case in v[list].as_array().expect(list) {
+            let id = case["id"].as_str().expect("id");
+            assert!(!ids.contains(&id), "duplicate case id {id}");
+            ids.push(id);
+        }
+    }
+    assert_eq!(ids.len(), 39 + 19 + 5);
+}
+
+#[test]
+fn path_vectors_query_cases_hold() {
+    let v = vectors();
+    let cases = v["query_cases"].as_array().expect("query_cases");
+    assert!(cases.iter().any(|c| c["expected"] == "malformed"));
+    assert!(cases.iter().any(|c| c["expected"].is_array()));
+    let failing: Vec<String> = cases.iter().flat_map(query_case_failures).collect();
+    assert!(
+        failing.is_empty(),
+        "failing query cases:\n{}",
+        failing.join("\n")
+    );
+}
+
 #[test]
 fn path_vectors_header_states_licence_and_reuse() {
     let v = vectors();
     assert_eq!(v["licence"], "Apache-2.0");
     assert!(v["reuse"].as_str().is_some_and(|s| s.contains("reuse")));
+    assert!(v["query_cases_description"].is_string());
     for case in v["pointer_cases"]
         .as_array()
         .expect("pointer_cases")
         .iter()
         .chain(v["credential_cases"].as_array().expect("credential_cases"))
+        .chain(v["query_cases"].as_array().expect("query_cases"))
     {
         for field in ["id", "expected", "reason", "section"] {
             assert!(!case[field].is_null(), "{}: missing {field}", case["id"]);
@@ -316,6 +490,8 @@ const REGISTRATION_FIXTURES: &[&str] = &[
     "examples/over.json",
     "fixtures/claim-paths/rc-null-segment.jwt",
     "fixtures/claim-paths/registration-structured.json",
+    "examples/age-broad-registration.jwt",
+    "examples/age-broad-registration.payload.json",
 ];
 
 /// Files in the scanned directories that are not registrations, with the reason.
@@ -327,6 +503,22 @@ const NOT_REGISTRATIONS: &[(&str, &str)] = &[
     (
         "examples/bad-request.json",
         "a signed request, not a registration",
+    ),
+    (
+        "examples/kyc-request-plus-birthdate.json",
+        "a DCQL request, not a registration",
+    ),
+    (
+        "examples/age-broad-request.json",
+        "a DCQL request, not a registration",
+    ),
+    (
+        "examples/age-minimal-request-sdjwt.json",
+        "a DCQL request, not a registration",
+    ),
+    (
+        "examples/age-minimal-request-mdoc.json",
+        "a DCQL request, not a registration",
     ),
     ("fixtures/claim-paths/path-vectors.json", "the vector set"),
     (

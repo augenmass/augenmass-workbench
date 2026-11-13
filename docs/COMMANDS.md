@@ -1,6 +1,6 @@
 # Augenmaß Workbench: Command Reference
 
-This is the complete reference for the `augenmass` CLI. Every command, subcommand, flag, exit code, and example here is verified against the built binary (`augenmass 0.4.0`) and the committed fixtures under `fixtures/`. Every example runs as written from the repository root.
+This is the complete reference for the `augenmass` CLI. Every command, subcommand, flag, exit code, and example here is verified against the built binary (`augenmass 0.4.1`) and the committed fixtures under `fixtures/`. Every example runs as written from the repository root.
 
 Augenmaß Workbench is a developer and auditor toolkit for the EUDI Wallet ecosystem. It decodes and inspects every common artifact (SD-JWT VC, ISO 18013-5 mdoc, registration certificate, authorization request/JAR, credential offer, status list, DCQL), audits requests for over-asking against curated purpose baselines and a cited legal basis, verifies presentations cryptographically, writes registrations under guardrails, and live-debugs the wallet-to-verifier exchange. Static artifact commands run fully offline; live surfaces are explicit: registrar targets (`clone`, `cached-sandbox`, `sandbox`), the cache server, and the live wallet-interaction debugger (`serve`).
 
@@ -417,8 +417,8 @@ Purpose: Age verification   Baseline: Age gate (over 18)
 Requested claims:
   [over]  given_name                   Registered, but beyond what the stated purpose needs.
   ...
-Suggested minimal request:
-  age_equal_or_over.18
+Suggested minimal request (dc+sd-jwt, urn:eudi:pid:de:1), as claim paths:
+  ["age_equal_or_over", "18"]
 
 Legal basis:
   Regulation (EU) No 910/2014, Article 5b(3)
@@ -426,8 +426,10 @@ Legal basis:
   GDPR (EU) 2016/679, Art. 5(1)(c)
     Personal data shall be adequate, relevant and limited to what is necessary (data minimisation).
   EUDI ARF, registration certificate, RPRC_21
-    The wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
+    After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes.
 ```
+
+The suggested minimal request is printed in the spelling of the requested credential: claim paths for an SD-JWT VC request, `[namespace, element]` pairs for an `mso_mdoc` request, one block per requested credential type. The array part of each line can be pasted into a DCQL `path`. The EU PID and the German PID share the mdoc doctype `eu.europa.ec.eudi.pid.1`, so an element that only one of them carries is marked `(German PID only)` or `(not in the German PID)`. A baseline claim that the credential type does not carry is listed by name after `No known claim for this credential type:`, and a credential type without a known claim table gets the baseline claim names only. The JSON output carries the blocks as `suggested_minimal_request`; `suggested_minimal` keeps the baseline keys.
 
 Blocking format error (exit 1):
 
@@ -553,7 +555,7 @@ The four baselines:
 - `age_gate_18` ("Age gate (over 18)"): `age_equal_or_over.18`
 - `event_checkin` ("Event check-in"): `given_name`, `family_name`, `age_equal_or_over.18`
 - `car_rental` ("Car rental (over 21, named)"): `given_name`, `family_name`, `age_equal_or_over.21`
-- `bank_kyc` ("Bank onboarding (KYC)"): `given_name`, `family_name`, `birthdate`, `place_of_birth.locality`, `place_of_birth.region`, `place_of_birth.country`, `nationalities`, `address.resident_street`, `address.house_number`, `address.resident_city`, `address.resident_postal_code`, `address.region`, `address.resident_country`, `address.formatted`; mdoc element `[eu.europa.ec.eudi.pid.1, place_of_birth]` (JSON field `mdoc_elements`, a list of `[namespace, element]` paths matched segment by segment). The keys are claim-model keys: a request path counts only in the spelling of its own credential format (SD-JWT VC `address.locality`, `birth_place`, `nationalities` with an element selector; mdoc `[eu.europa.ec.eudi.pid.1, resident_city]`, `birth_date`, `nationality`). A whole SD-JWT `address` or `place_of_birth` object stays beyond the purpose.
+- `bank_kyc` ("Bank onboarding (KYC)"): `given_name`, `family_name`, `birthdate`, `place_of_birth.locality`, `place_of_birth.region`, `place_of_birth.country`, `nationalities`, `address.resident_street`, `address.house_number`, `address.resident_city`, `address.resident_postal_code`, `address.region`, `address.resident_country`, `address.formatted`; mdoc element `[eu.europa.ec.eudi.pid.1, place_of_birth]` (JSON field `mdoc_elements`, a list of `[namespace, element]` paths matched segment by segment). The keys are claim-model keys: a request path counts only in the spelling of its own credential format (SD-JWT VC `address.locality`, `birth_place`, `nationalities` with an element selector; mdoc `[eu.europa.ec.eudi.pid.1, resident_city]`, `birth_date`, `nationality`). A whole SD-JWT `address` or `place_of_birth` object stays beyond the purpose. An integer path segment selects an array element, so `["age_equal_or_over", 18]` is beyond the purpose; only `nationalities` takes an element selector. A claim of any other credential format (`jwt_vc_json`, `ldp_vc`, or an unknown identifier) is beyond the purpose, since the baselines model only SD-JWT VC (`dc+sd-jwt`, `vc+sd-jwt`) and mdoc paths. An mdoc age element `age_over_NN` in the namespace `eu.europa.ec.eudi.pid.1` or `eu.europa.ec.eudi.pid.de.1` gets the verdict of the SD-JWT VC claim `age_equal_or_over.NN` (German PID Rulebook: `age_equal_or_over.NN` for SD-JWT VC, `age_over_NN` for mdoc).
 
 Exit code: 0 on success.
 
@@ -590,7 +592,7 @@ augenmass baselines age_gate_18 --json
 
 1. Regulation (EU) No 910/2014, Article 5b(3): "Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c)."
 2. GDPR (EU) 2016/679, Art. 5(1)(c): data minimisation ("adequate, relevant and limited to what is necessary").
-3. EUDI ARF, registration certificate, RPRC_21: the wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
+3. EUDI ARF, registration certificate, RPRC_21 (ARF Annex 2, Topic 44): "After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes."
 
 ---
 
@@ -1179,7 +1181,7 @@ Options (all optional):
 - `--relay-optional` (env `AUGENMASS_RELAY_OPTIONAL`): continue local-only if relay setup fails. Use this only when fallback is acceptable; for a real phone demo, let relay failure fail fast.
 - `--age-only` (env `AUGENMASS_SERVE_AGE_ONLY`): request only `age_equal_or_over.18`. This is the safest live-demo profile when a sandbox wallet cannot satisfy the named event-check-in query (`given_name`, `family_name`, and age).
 
-Runtime behavior: this command does not exit on its own and does not use `--json`. It binds the listener and serves until Ctrl-C. On startup it prints the open URL, the computed `client_id`, whether the cert is throwaway or the registrar leaf, whether issuer trust is enforced, whether status checks are live, where the trace is served, and whether unsafe local debug artifacts are enabled.
+Runtime behavior: this command does not exit on its own and does not use `--json`. It binds the listener and serves until Ctrl-C. On startup it prints the open URL, the computed `client_id`, the source of the bundled registration certificate it embeds in every request (`fixtures/regcert/rc-by-id.json`, issued by the German sandbox registrar) together with the sandbox registrar notice, whether the cert is throwaway or the registrar leaf, whether issuer trust is enforced, whether status checks are live, where the trace is served, and whether unsafe local debug artifacts are enabled.
 
 ```
 augenmass serve
@@ -1188,11 +1190,13 @@ augenmass serve
 ```
 augenmass serve: wallet-interaction debugger
   open         : http://127.0.0.1:8080/
+  listening    : http://127.0.0.1:8080
   client_id    : x509_hash:...
+  registration : bundled certificate fixtures/regcert/rc-by-id.json, issued by the German sandbox registrar (C=DE, CN=German Registrar). The landing page of the German sandbox registrar (sandbox.eudi-wallet.org, read on 13 November 2026) says that testing in it is possible until 19 November 2026, that the new wallet app version then no longer accepts certificates from it, and that it admits no new users.
   cert         : throwaway (development); set --key + --leaf for the real registrar leaf
   issuer trust : not enforced (set --trust-anchor to anchor PID issuers)
   status check : offline (set --live-status to resolve token-status-list revocation)
-  trace        : redacted by default; live on this console; also at <base>/trace/<session> and /api/trace/<session>
+  trace        : redacted by default; live on this console; also at <local>/trace/<session> and /api/trace/<session>
   artifacts    : off (set --unsafe-debug-artifacts <dir> to capture raw wallet material locally; UNSAFE)
 
   Open the URL above, scan the QR with a wallet, and watch the trace below.
@@ -1570,6 +1574,8 @@ Options:
 
 Exit code: 0 on a successful read.
 
+With `--target sandbox` and neither `AUGENMASS_API_BASE` nor `API_BASE` set, `list` (and a confirmed `register`) first prints one line on stderr, `note: --target sandbox uses the built-in registrar https://sandbox.eudi-wallet.org/api because AUGENMASS_API_BASE is not set.`, followed by the sandbox registrar notice (see `docs/SANDBOX.md`). Standard output, also with `--json`, is unchanged.
+
 Example (against the running clone):
 
 ```
@@ -1627,7 +1633,7 @@ Options:
 - `--db <DB>`: the SQLite database path. Default `./augenmass-cache.sqlite`; env `AUGENMASS_CACHE_DB`.
 - `--host <HOST>`: bind host. Default `127.0.0.1`; env `AUGENMASS_CACHE_HOST`. Use `0.0.0.0` only when deploying behind TLS or a private network; non-loopback binds require `--admin-token` or `AUGENMASS_CACHE_ADMIN_TOKEN`.
 - `--port <PORT>`: listen port. Env `AUGENMASS_CACHE_PORT` wins, then `PORT`, then default `8081`.
-- `--upstream <UPSTREAM>`: the upstream API base. Default `https://sandbox.eudi-wallet.org/api`; env `AUGENMASS_CACHE_UPSTREAM`.
+- `--upstream <UPSTREAM>`: the upstream API base. Default `https://sandbox.eudi-wallet.org/api`; env `AUGENMASS_CACHE_UPSTREAM`. When neither the flag nor the variable is set, `cache serve` prints one line on stderr before it binds: `note: cache serve uses the built-in upstream https://sandbox.eudi-wallet.org/api because neither --upstream nor AUGENMASS_CACHE_UPSTREAM is set.`, followed by the sandbox registrar notice (see `docs/SANDBOX.md`).
 - `--ttl-secs <TTL_SECS>`: freshness window in seconds. Default `3600`; env `AUGENMASS_CACHE_TTL_SECS`.
 - `--timeout-secs <TIMEOUT_SECS>`: upstream request timeout in seconds. Default `10`; env `AUGENMASS_CACHE_TIMEOUT_SECS`.
 - `--max-entries <MAX_ENTRIES>`: maximum stored cache entries before oldest rows are evicted. Default `512`; env `AUGENMASS_CACHE_MAX_ENTRIES`.

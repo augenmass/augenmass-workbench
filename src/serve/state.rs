@@ -47,8 +47,11 @@ use augenmass_core::VerifiedPid;
 
 use crate::serve::trace::TraceStore;
 
+/// The repository path of the bundled registration certificate.
+pub const BUNDLED_RC_SOURCE: &str = "fixtures/regcert/rc-by-id.json";
+
 /// The real registration certificate we created, bundled so the inspector has a
-/// registered scope with no network.
+/// registered scope with no network (the file at [`BUNDLED_RC_SOURCE`]).
 const BUNDLED_RC: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/fixtures/regcert/rc-by-id.json"
@@ -531,6 +534,13 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
     use super::*;
+
+    #[test]
+    fn bundled_registration_source_names_the_embedded_file() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(BUNDLED_RC_SOURCE);
+        let on_disk = std::fs::read_to_string(path).expect("bundled certificate file");
+        assert_eq!(on_disk, BUNDLED_RC);
+    }
 
     #[test]
     fn deny_list_covers_mapped_ipv6_and_cgnat() {

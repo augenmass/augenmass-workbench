@@ -180,10 +180,14 @@ committed plugin artifact. The sequence uses only committed fixtures and
 treats the intentional findings as successful proof points, so no sandbox
 credentials or phone wallet are needed.
 
-The sequence is:
+The narration anchors below are the output of the binary built from this
+source tree. The bundled plugin binary is refreshed only after a release exists
+and can be older (its `--version` line, the first line of the run, shows which
+it is), so point the run at the binary you built:
 
 ```sh
-./scripts/demo-run.sh
+cargo build --locked
+AUGENMASS_DEMO_BIN=target/debug/augenmass ./scripts/demo-run.sh
 ```
 
 Good narration anchors:
@@ -191,7 +195,7 @@ Good narration anchors:
 - `Detected: OpenID4VP authorization request (JAR)`
 - `response_mode: direct_post.jwt`
 - `DOCTOR-X5C-STRING` and `DOCTOR-CLIENT-ID-X509HASH`
-- `OVER-ASK` with `Suggested minimal request: age_equal_or_over.18`
+- `OVER-ASK` with `Suggested minimal request (dc+sd-jwt, urn:eudi:pid:de:1), as claim paths:` and `["age_equal_or_over", "18"]`
 - `OK: no over-ask, no format errors`
 - `VERIFIED`, `holder binding: true`, and `trust anchored: true`
 - `REJECTED [Revoked]: credential is revoked`

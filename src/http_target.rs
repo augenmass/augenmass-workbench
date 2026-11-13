@@ -11,7 +11,7 @@ use serde_json::Value;
 use std::net::{IpAddr, Ipv6Addr};
 use std::time::Duration;
 
-use crate::config::{trim_base, Config};
+use crate::config::{sandbox_target_notice, trim_base, Config};
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub enum Target {
@@ -39,6 +39,7 @@ pub async fn post_registration(target: Target, body: &Value, config: &Config) ->
         );
     }
 
+    print_sandbox_notice(target, config);
     let client = http_client(config)?;
     let base = base_url(target, config);
     if matches!(target, Target::Sandbox) {
@@ -66,6 +67,7 @@ pub async fn post_registration(target: Target, body: &Value, config: &Config) ->
 }
 
 pub async fn list_registrations(target: Target, rp_id: &str, config: &Config) -> Result<Value> {
+    print_sandbox_notice(target, config);
     let client = http_client(config)?;
     let base = base_url(target, config);
     if matches!(target, Target::Sandbox) {
@@ -90,6 +92,16 @@ pub async fn list_registrations(target: Target, rp_id: &str, config: &Config) ->
         anyhow::bail!("GET {url} returned {status}: {text}");
     }
     serde_json::from_str(&text).with_context(|| format!("GET {url} did not return JSON"))
+}
+
+/// One stderr line when `--target sandbox` falls back to the built-in
+/// registrar address, printed before any URL check or request.
+fn print_sandbox_notice(target: Target, config: &Config) {
+    if matches!(target, Target::Sandbox) {
+        if let Some(notice) = sandbox_target_notice(config) {
+            eprintln!("{notice}");
+        }
+    }
 }
 
 fn base_url(target: Target, config: &Config) -> String {

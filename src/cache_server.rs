@@ -43,6 +43,9 @@ pub struct ServeConfig {
     pub host: String,
     pub port: u16,
     pub upstream: String,
+    /// True when `upstream` is the built-in default (no `--upstream`, no
+    /// `AUGENMASS_CACHE_UPSTREAM`); `serve` then prints the sandbox notice.
+    pub upstream_is_default: bool,
     pub ttl_secs: u64,
     pub timeout_secs: u64,
     pub max_entries: usize,
@@ -133,6 +136,9 @@ impl CacheDisposition {
 }
 
 pub async fn serve(config: ServeConfig) -> Result<()> {
+    if let Some(notice) = crate::config::cache_upstream_notice(config.upstream_is_default) {
+        eprintln!("{notice}");
+    }
     let addr = resolve_bind_addr(&config.host, config.port)?;
     let admin_token = normalize_token(config.admin_token.clone());
     require_admin_token_for_public_bind(addr, admin_token.as_deref())?;

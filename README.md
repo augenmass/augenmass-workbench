@@ -12,7 +12,7 @@ The hackathon version was a light tool with six commands (`generate`, `check`, `
 
 ## Current release shape
 
-The current release is `v0.4.0`. It adds request signature verification (`verify request`), compares requested and registered claims as claims path pointers, segment by segment, and states that a registration certificate is decoded and not verified (see `CHANGELOG.md`). It builds on `v0.3.0`, the release for the EUDI On presentation. The release ships:
+The current release is `v0.4.1`. It judges the mdoc age element `age_over_NN` like the SD-JWT VC claim `age_equal_or_over.NN`, prints the suggested minimal request in the spelling of the request, quotes ARF requirement RPRC_21 verbatim, prints a notice on stderr when the built-in sandbox registrar address is used, adds `credential_sets` cases to the claim path vectors (`docs/VECTORS.md`), and adds demonstration inputs under `examples/` (see `CHANGELOG.md`). It builds on `v0.4.0`, which added request signature verification (`verify request`), compares requested and registered claims as claims path pointers, segment by segment, and states that a registration certificate is decoded and not verified, and on `v0.3.0`, the release for the EUDI On presentation. The release ships:
 
 - A platform-aware Claude Code/Codex plugin bundle with native launcher targets for macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64.
 - Release archives with checksums and provenance manifests for the main desktop targets, built from the release tag.
@@ -308,11 +308,22 @@ Over-ask is the central concern: a relying party must not request more personal 
 
 1. Regulation (EU) No 910/2014, Article 5b(3): "Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c)."
 2. GDPR (EU) 2016/679, Art. 5(1)(c): data minimisation, personal data must be "adequate, relevant and limited to what is necessary".
-3. EUDI ARF, registration certificate, RPRC_21: the wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
+3. EUDI ARF, registration certificate, RPRC_21 (ARF Annex 2, Topic 44): "After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes."
 
-The curated purpose baselines (`age_gate_18`, `event_checkin`, `car_rental`, `bank_kyc`) are taste judgments, not Rulebook derivations. See `augenmass baselines`.
+The four built-in purpose baselines (`age_gate_18`, `event_checkin`, `car_rental`, `bank_kyc`) are curated assessments, not law and not legal advice. See `augenmass baselines`.
 
 When `audit --cert` compares a request with a registration certificate, the Workbench decodes the certificate and does not validate its signature, issuer or revocation status.
+
+## What the Workbench does not do
+
+Each row names a free tool that covers the gap, with a link to the tool's own page. The list is a pointer, not a comparison.
+
+| The Workbench does not | A free tool that does |
+| --- | --- |
+| Verify a registration certificate. It decodes the payload and does not check the signature, the certificate chain or the revocation status. | [eudi-dev](https://github.com/eudi-dev/eudi-dev): with `--arf --mode strict` its wallet refuses a request whose registration certificate has a signature that does not verify or is revoked; with `--arf` in the default `--mode debug` it reports these findings as warnings and continues. [`@owf/eudi-registration-certificate`](https://github.com/openwallet-foundation-labs/identity-common-ts/tree/main/packages/eudi-registration-certificate): `verifyRegistrationCertificate` (0.7.0 alpha) checks the signature and the status list. |
+| Act as a test wallet. `serve` is a verifier and needs a real wallet. | [eudi-dev](https://github.com/eudi-dev/eudi-dev) and [ERICA](https://gitlab.opencode.de/bmi/eudi-wallet/erica) simulate the wallet. |
+| Verify mdoc presentations. `decode mdoc` decodes only; `verify presentation` covers SD-JWT VC. | [eudi-dev](https://github.com/eudi-dev/eudi-dev) and the [tessio verifier](https://github.com/tripledownab/tessio-verifier) verify mdoc presentations. |
+| Use the Digital Credentials API. | The [tessio verifier](https://github.com/tripledownab/tessio-verifier) supports Digital Credentials API transport (ISO 18013-7 Annex C). |
 
 ## Debug the wallet interaction
 
@@ -342,7 +353,7 @@ Writes are dry-run by default. `register` makes no network call until you pass `
 
 There are three target modes. `clone` (the default) is a local registrar-compatible store (axum plus SQLite) with no signing, no auth, and no x5c: it holds payload-only JWTs and exists so you can rehearse the read and write paths entirely offline. `cached-sandbox` is a read-only, server-side mirror for public sandbox reads, with bounded SQLite storage, provenance headers, stale fallback for demos, request coalescing on cache misses, and an RP allowlist for registration-certificate read-through. It can run locally or as a small backend on Railway or a VPS; the current presentation backend is proven at `https://cache.augenmass.tech/api`. Public binds require the admin token, a non-empty RP allowlist unless `--allow-any-rp` is explicitly set, and an https upstream without URL credentials, query, fragment, or private IP host unless `--unsafe-upstream` is explicitly set. Unlisted RP reads return `403` before the upstream is contacted. `sandbox` is the real registrar behind Keycloak; it is rehearsal-only and off-stage, and sandbox API/token URLs must be https unless `AUGENMASS_UNSAFE_SANDBOX_URLS=1` is used for loopback development. Configure targets through environment variables (see `docs/SANDBOX.md` and `.env.example`).
 
-The landing page of the German sandbox registrar (`sandbox.eudi-wallet.org`, read on 13 November 2026) says that testing in it is possible until 19 November 2026, that the new wallet app version then no longer accepts certificates from it, and that it admits no new users; after that date, the `sandbox` target and the `cached-sandbox` reads of that registrar may stop working against it.
+The landing page of the German sandbox registrar (`sandbox.eudi-wallet.org`, read on 13 November 2026) says that testing in it is possible until 19 November 2026, that the new wallet app version then no longer accepts certificates from it, and that it admits no new users; after that date, the `sandbox` target and the `cached-sandbox` reads of that registrar may stop working against it. When `--target sandbox` or `cache serve` falls back to the built-in address `https://sandbox.eudi-wallet.org/api` without explicit configuration, the tool repeats this notice in one line on stderr, and `serve` names the source of its bundled registration certificate with the same notice in its startup lines (see `docs/SANDBOX.md`).
 
 Secrets hygiene is enforced: the tool never logs, echoes, or commits tokens, certificates, or keys, and `.env*`, `secrets*.md`, `*.sqlite`, and `*signing-key*` are gitignored.
 
@@ -356,6 +367,7 @@ One engine is the spine. `augenmass-core` is a vendored, HTTP-free, pure-Rust cr
 - `docs/ASK-IT-LIKE-THIS.md`: natural-language recipes for driving the skill.
 - `docs/GUARDRAILS.md`: using the tool as a pre-commit hook and a CI gate so an over-ask never ships.
 - `docs/COMMANDS.md`: every command, flag, exit code, and output shape.
+- `docs/VECTORS.md`: the claim path test vectors (`fixtures/claim-paths/path-vectors.json`), their format, how to run them, and the change policy.
 - `docs/TOOLS.md`: an artifact field guide, organized by artifact type.
 - `docs/ARCHITECTURE.md`: the one-engine spine and how the CLI wraps `augenmass-core`.
 - `docs/SANDBOX.md`: the clone store, the sandbox registrar, and their environment variables.
