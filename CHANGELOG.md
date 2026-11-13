@@ -10,6 +10,19 @@ imply wall-clock timing for releases.
 
 ## [Unreleased]
 
+### Changed
+
+- Plugin bundle: the four target binaries under `plugins/augenmass-workbench/bin`
+  and `bin/manifest.json` are rebuilt from the `v0.4.1` release archives with
+  `just bundle`, so the plugin carries the 0.4.0 and 0.4.1 changes. Both plugin
+  manifests (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) say
+  version 0.4.1. The skill reference files quote Article 5b(3) and RPRC_21 as
+  the binary prints them, show the `bank_kyc` baseline, the registration
+  certificate notice, the suggested minimal request in the spelling of the
+  request, the mdoc age request under `age_gate_18`, the `serve` startup banner,
+  and the stderr notice for the built-in sandbox address as the 0.4.1 binary
+  prints them. `docs/RELEASE.md` gains the section "v0.4.1 release proof".
+
 ## [0.4.1]
 
 This release fixes a false over-ask on the minimal mdoc age request, prints the

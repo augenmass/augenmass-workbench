@@ -175,16 +175,16 @@ Mistake: requesting attributes beyond what the stated purpose requires (asking f
 
 Why it happens: it is cheaper to request a wide set once than to scope each registration, and PID exposes many attributes. This is the central problem Augenmaß exists to prevent. The legal basis, cited verbatim by the engine:
 
-1. eIDAS Regulation (EU) 2024/1183, Art. 5b(3): "Relying parties shall not request users to provide data other than that indicated for their intended use."
+1. Regulation (EU) No 910/2014, Article 5b(3): "Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c)."
 2. GDPR (EU) 2016/679, Art. 5(1)(c): data minimisation ("adequate, relevant and limited to what is necessary").
-3. EUDI ARF, registration certificate, RPRC_21: the wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
+3. EUDI ARF, registration certificate, RPRC_21: "After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes."
 
 Fix: request only the attributes the purpose needs. The curated baselines are the reference for "what is necessary":
 
 - `age_gate_18` (Age gate, over 18): `age_equal_or_over.18`
 - `event_checkin` (Event check-in): `given_name`, `family_name`, `age_equal_or_over.18`
 - `car_rental` (Car rental, over 21, named): `given_name`, `family_name`, `age_equal_or_over.21`
-- `bank_kyc` (Bank onboarding, KYC): `given_name`, `family_name`, `birthdate`, `address.resident_{street,city,postal_code,country}`
+- `bank_kyc` (Bank onboarding, KYC): `given_name`, `family_name`, `birthdate`, `place_of_birth.{locality,region,country}`, `nationalities`, `address.{resident_street,house_number,resident_city,resident_postal_code,region,resident_country,formatted}`, and the mdoc element `eu.europa.ec.eudi.pid.1/place_of_birth`
 
 Run `augenmass baselines` to print them with the legal basis, or `augenmass baselines age_gate_18` for one in detail.
 
@@ -306,7 +306,7 @@ The sandbox wallet supports the `x509_hash` client_id scheme only. It does not s
 
 ### 3.4 mdoc 2-element claim paths vs SD-JWT nested paths
 
-Claim path shape differs by credential format. An mdoc claim path is exactly two elements, `[namespace, element]`. An SD-JWT VC path is a nested array of object keys (for example `["age_equal_or_over", "18"]` or `["address", "resident_city"]`), as deep as the claim nests. Reusing an mdoc-shaped path in an SD-JWT request (or the reverse) selects nothing. Registration bodies in this ecosystem use the SD-JWT nested form; `check` enforces the array shape (see 1.1) but the segments themselves must match the format you are requesting.
+Claim path shape differs by credential format. An mdoc claim path is exactly two elements, `[namespace, element]`. An SD-JWT VC path is a nested array of object keys (for example `["age_equal_or_over", "18"]` or `["address", "resident_city"]`), as deep as the claim nests. Reusing an mdoc-shaped path in an SD-JWT request (or the reverse) selects nothing. Registration bodies in this ecosystem use the SD-JWT nested form; `check` enforces the array shape (see 1.1) but the segments themselves must match the format you are requesting. The purpose verdict follows the format too: the mdoc age request `["eu.europa.ec.eudi.pid.1", "age_over_18"]` is within `age_gate_18` (`augenmass audit --request examples/age-minimal-request-mdoc.json --purpose age_gate_18` exits 0), as `["age_equal_or_over", "18"]` is for SD-JWT VC.
 
 ### 3.5 nonce and aud binding for the KB-JWT
 
