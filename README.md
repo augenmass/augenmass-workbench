@@ -12,11 +12,11 @@ The hackathon version was a light tool with six commands (`generate`, `check`, `
 
 ## Current release shape
 
-The current branch is the `v0.3.0` EUDI On presentation release, not a README-only prototype. In the last proof pass, the workbench gained:
+The current release is `v0.4.0`. It adds request signature verification (`verify request`), compares requested and registered claims as claims path pointers, segment by segment, and states that a registration certificate is decoded and not verified (see `CHANGELOG.md`). It builds on `v0.3.0`, the release for the EUDI On presentation. The release ships:
 
 - A platform-aware Claude Code/Codex plugin bundle with native launcher targets for macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64.
-- Published `v0.2.0` release archives with checksums and provenance manifests for the main desktop targets.
-- Current `v0.3.0` line for live wallet proof, hosted relay, evidence replay, and the presentation-ready plugin bundle across macOS, Linux, and Windows targets.
+- Release archives with checksums and provenance manifests for the main desktop targets, built from the release tag.
+- Live wallet proof, hosted relay, and evidence replay, in place since `v0.3.0`.
 - A deployed cached-sandbox backend at `https://cache.augenmass.tech/api` for stable public sandbox reads and demo prewarming.
 - A deployed wallet-only relay at `https://wallet.augenmass.tech`, proven with `just hosted-relay-proof`, so a phone wallet can reach `augenmass serve` without exposing trace, inspect, evidence, or unsafe debug artifacts publicly. The hosted relay is protected; operators configure the token through `AUGENMASS_RELAY_TOKEN`.
 
@@ -312,6 +312,8 @@ Over-ask is the central concern: a relying party must not request more personal 
 
 The curated purpose baselines (`age_gate_18`, `event_checkin`, `car_rental`, `bank_kyc`) are taste judgments, not Rulebook derivations. See `augenmass baselines`.
 
+When `audit --cert` compares a request with a registration certificate, the Workbench decodes the certificate and does not validate its signature, issuer or revocation status.
+
 ## Debug the wallet interaction
 
 `augenmass serve` is a verifier-in-a-box for debugging the actual wallet exchange, not just static artifacts. It runs a local OpenID4VP verifier for the German PID profile (x509_hash client_id, signed request object by reference, `direct_post.jwt` encrypted response, the registration certificate embedded as array-shaped `verifier_info` plus `verifier_attestations`), and records the whole flow as a per-session trace:
@@ -339,6 +341,8 @@ Evidence replay turns that local capture into an audit artifact. Run `augenmass 
 Writes are dry-run by default. `register` makes no network call until you pass `--yes`; if the body over-asks, it refuses (exit 1) unless you also pass `--force`. Blocking format errors are never written past.
 
 There are three target modes. `clone` (the default) is a local registrar-compatible store (axum plus SQLite) with no signing, no auth, and no x5c: it holds payload-only JWTs and exists so you can rehearse the read and write paths entirely offline. `cached-sandbox` is a read-only, server-side mirror for public sandbox reads, with bounded SQLite storage, provenance headers, stale fallback for demos, request coalescing on cache misses, and an RP allowlist for registration-certificate read-through. It can run locally or as a small backend on Railway or a VPS; the current presentation backend is proven at `https://cache.augenmass.tech/api`. Public binds require the admin token, a non-empty RP allowlist unless `--allow-any-rp` is explicitly set, and an https upstream without URL credentials, query, fragment, or private IP host unless `--unsafe-upstream` is explicitly set. Unlisted RP reads return `403` before the upstream is contacted. `sandbox` is the real registrar behind Keycloak; it is rehearsal-only and off-stage, and sandbox API/token URLs must be https unless `AUGENMASS_UNSAFE_SANDBOX_URLS=1` is used for loopback development. Configure targets through environment variables (see `docs/SANDBOX.md` and `.env.example`).
+
+The landing page of the German sandbox registrar (`sandbox.eudi-wallet.org`, read on 13 November 2026) says that testing in it is possible until 19 November 2026, that the new wallet app version then no longer accepts certificates from it, and that it admits no new users; after that date, the `sandbox` target and the `cached-sandbox` reads of that registrar may stop working against it.
 
 Secrets hygiene is enforced: the tool never logs, echoes, or commits tokens, certificates, or keys, and `.env*`, `secrets*.md`, `*.sqlite`, and `*signing-key*` are gitignored.
 

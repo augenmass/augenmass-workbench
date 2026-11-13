@@ -9,6 +9,13 @@ target and run offline.
   with provenance headers and stale fallback.
 - `sandbox` is the real registrar behind Keycloak, for off-stage rehearsal.
 
+The landing page of the German sandbox registrar (`sandbox.eudi-wallet.org`,
+read on 13 November 2026) says that testing in it is possible until 19 November
+2026, that the new wallet app version then no longer accepts certificates from
+it, and that it admits no new users; after that date, the `sandbox` target, the
+`cached-sandbox` reads, and the live sandbox smokes on this page may stop
+working against it.
+
 This guide covers what each mode is, how to drive the clone and cache end to end,
 the safety rules that apply to writes, and one ecosystem caveat to confirm at
 sandbox time.

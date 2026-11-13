@@ -1,5 +1,17 @@
 # Shipping status
 
+Note for `v0.4.0`: the body of this page records the state before the EUDI On
+presentation (`v0.3.0`) and is not rewritten. `v0.4.0` added request
+signature verification (`verify request`), compares requested and registered
+claims as claims path pointers, segment by segment, states that a registration
+certificate is decoded and not verified, rejects a DCQL query with an empty
+`credential_sets` option, refreshed `Cargo.lock`, and runs the strict
+`check.yml` workflow on pushes and pull requests (see `CHANGELOG.md`). The
+committed plugin binaries stay the `v0.3.0` ones until the bundle is rebuilt
+from the `v0.4.0` release archives. The German sandbox registrar says on its
+landing page (read on 13 November 2026) that testing in it is possible until 19
+November 2026; see `docs/SANDBOX.md`.
+
 Last local verification: 2026-06-25.
 
 This page is the short operator verdict for the Workbench as it stands before the

@@ -1,12 +1,12 @@
 # Augenmaß Workbench: Roadmap
 
-This is the forward roadmap for the `augenmass` CLI after the `v0.3.0` release. It
+This is the forward roadmap for the `augenmass` CLI after the `v0.4.0` release. It
 names the next verifier and auditor capabilities and, for each, what it is, why it
 matters for EUDI Wallet relying-party tooling, and what already exists in the
 codebase to build on. It is a statement of direction, not a specification. Each
 item gets its own numbered, parallelization-annotated plan when it is scheduled.
 
-`v0.3.0` already covers a lot of ground: decode and inspect for every common EUDI
+`v0.4.0` already covers a lot of ground: decode and inspect for every common EUDI
 artifact (SD-JWT VC, ISO 18013-5 mdoc, WRPRC registration certificate,
 OpenID4VP request / JAR, OpenID4VCI credential offer, token status list, DCQL),
 the over-ask engine (`check`, `audit`, `baselines`), end-to-end SD-JWT VC
@@ -93,7 +93,7 @@ MAC-versus-signature `DeviceAuth` options) makes this the largest item.
 
 ## 2. Full JAR signature verification
 
-Status: implemented as `verify request` (`augenmass_core::jar`). The paragraphs
+Status: shipped in `v0.4.0` as `verify request` (`augenmass_core::jar`). The paragraphs
 below are the original scoping; the shipped command verifies the ES256 signature
 over the request object against the `x5c` leaf (rejecting `none` and
 alg-confusion), requires an `x509_hash` `client_id` binding, and, with

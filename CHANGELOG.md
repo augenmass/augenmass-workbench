@@ -10,6 +10,12 @@ imply wall-clock timing for releases.
 
 ## [Unreleased]
 
+## [0.4.0]
+
+This release adds request signature verification (`verify request`), compares
+requested and registered claims as claims path pointers, segment by segment,
+and states that a registration certificate is decoded and not verified.
+
 ### Added
 
 - `verify request`: full JAR (JWT-Secured Authorization Request) signature
@@ -145,12 +151,21 @@ imply wall-clock timing for releases.
   users to provide any data other than that indicated pursuant to paragraph 2,
   point (c).") and names the amended act instead of the amending Regulation
   (EU) 2024/1183. The other two legal-basis entries are unchanged.
+- A DCQL query whose `credential_sets` carry an empty option (`"options":
+  [[]]`) is rejected as malformed by `audit --request` and `inspect`, the
+  offline replay of an evidence bundle skips its over-disclosure analysis as
+  for any query it cannot parse, and `validate dcql` reports it as
+  the blocking finding `DCQL-SET-OPTION-EMPTY`. OpenID4VP 1.0 section 6.2
+  requires every option to name at least one credential query. Before, such
+  a query was accepted, no credential was selected, and the audit judged
+  nothing and exited 0.
 
-These fixes are in the source only. The plugin binaries committed under
-`plugins/augenmass-workbench/` are unchanged and keep the old `bank_kyc`
-baseline, the old mdoc behaviour, the old Article 5b(3) wording (binary and
-skill reference files), and the old dependency set until the next release
-rebuild.
+These fixes ship in the 0.4.0 CLI and its release archives. The plugin
+binaries committed under `plugins/augenmass-workbench/` are unchanged at this
+tag and keep the old `bank_kyc` baseline, the old mdoc behaviour, the old
+Article 5b(3) wording (binary and skill reference files), and the old
+dependency set until the plugin bundle is rebuilt from the 0.4.0 release
+archives.
 
 ### Security
 
