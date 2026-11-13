@@ -1,6 +1,6 @@
 # Augenmaß Workbench: command reference
 
-Natural-language intents mapped to exact `augenmass` commands. Every command below was verified against the real binary (`augenmass 0.3.0`). Examples use `$AUGENMASS`, the resolved binary path from the main skill. In a repo checkout, a local debug build is `./target/debug/augenmass`.
+Natural-language intents mapped to exact `augenmass` commands. Every command below was verified against the real binary (`augenmass 0.4.1`). Examples use `$AUGENMASS`, the resolved binary path from the main skill. In a repo checkout, a local debug build is `./target/debug/augenmass`.
 
 Many examples below use committed `fixtures/` and `examples/` paths. Those paths
 exist in a full checkout and in release archives, but not necessarily in a
@@ -68,11 +68,13 @@ This is the spine: `check` gates a registration body before you write it, `audit
 Purpose baseline ids for `--purpose` and `baselines <id>`: `age_gate_18`, `event_checkin`, `car_rental`, `bank_kyc`. The `--request` value is `minimal`, `overask`, or a path to a DCQL JSON file.
 
 The legal basis cited on every over-ask finding:
-1. eIDAS Regulation (EU) 2024/1183, Art. 5b(3): relying parties shall not request users to provide data other than that indicated for their intended use.
+1. Regulation (EU) No 910/2014, Article 5b(3): "Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c)."
 2. GDPR (EU) 2016/679, Art. 5(1)(c): data minimisation (adequate, relevant and limited to what is necessary).
-3. EUDI ARF, registration certificate, RPRC_21: the wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
+3. EUDI ARF, registration certificate, RPRC_21: "After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes."
 
-What `check` catches in a registration body: `claims[].path` must be an array of segments, not a string (`["age_equal_or_over","18"]`, not `"age_equal_or_over.18"`); use `credentials`, not `provided_attestations`; `purpose` is a list of `{lang, content}`, not a bare string; `privacy_policy` must be a valid URL; `support_uri` is any non-empty contact string (do not over-validate it as a URL).
+What `check` catches in a registration body: `claims[].path` must be an array of segments, not a string (`["age_equal_or_over","18"]`, not `"age_equal_or_over.18"`); use `credentials`, not `provided_attestations`; `purpose` is a list of `{lang, content}`, not a bare string; `privacy_policy` must be a valid URL; `support_uri` is any non-empty contact string (do not over-validate it as a URL). A credential without a non-empty `claims[]`, a path that is not a claims path pointer (for `mso_mdoc` anything but two strings), and a credential without `format` or type metadata block as `CHECK-CLAIM-PATH` and `CHECK-CREDENTIAL-META`.
+
+On an over-ask, `check` and `audit` print a "Suggested minimal request" in the spelling of the requested credential: claim paths such as `["age_equal_or_over", "18"]` for a `dc+sd-jwt` request of the German PID (`urn:eudi:pid:de:1`), `[namespace, element]` pairs for an mdoc PID request. An mdoc age request of `["eu.europa.ec.eudi.pid.1", "age_over_18"]` is within `age_gate_18`, as the SD-JWT VC request of `["age_equal_or_over", "18"]` is. For a credential type without known claim names (for example format `vc+sd-jwt`, or VCT `urn:eudi:pid:1`), the suggestion prints no paths; it names only the attributes the baseline asks for, such as "Age over 18".
 
 Examples:
 
@@ -193,8 +195,9 @@ Example:
 # Run it, then open the printed URL and scan the QR with a wallet.
 $AUGENMASS serve
 # augenmass serve: wallet-interaction debugger
-#   open      : http://127.0.0.1:8080/
-#   client_id : x509_hash:...
+#   open         : http://127.0.0.1:8080/
+#   client_id    : x509_hash:...
+#   registration : bundled certificate fixtures/regcert/rc-by-id.json, issued by the German sandbox registrar (C=DE, CN=German Registrar). ...
 #   ...        SESSION_CREATED / REQUEST_BUILT / REQUEST_OBJECT_FETCHED / ...
 ```
 
@@ -243,14 +246,14 @@ These are the explicit live target commands. Writes are dry-run by default.
 | List for a specific RP, from cached-sandbox, or from sandbox. | `$AUGENMASS list --target cached-sandbox --rp <RP>` | Decoded payloads |
 | Run the local registrar-compatible store. | `$AUGENMASS clone serve` | Defaults `--db ./augenmass-clone.sqlite`, `--port 8080` |
 | Run the clone on another port / db file. | `$AUGENMASS clone serve --port <PORT> --db <FILE>` | |
-| Run the read-through cached-sandbox mirror. | `$AUGENMASS cache serve` | Defaults `--db ./augenmass-cache.sqlite`, `--host 127.0.0.1`, `--port 8081`, `--upstream https://sandbox.eudi-wallet.org/api`, `--timeout-secs 10`, `--max-entries 512`, `--allowed-rp 2af138a8-59ea-4a84-aea3-666cafdb1369` |
+| Run the read-through cached-sandbox mirror. | `$AUGENMASS cache serve` | Defaults `--db ./augenmass-cache.sqlite`, `--host 127.0.0.1`, `--port 8081`, `--upstream https://sandbox.eudi-wallet.org/api`, `--timeout-secs 10`, `--max-entries 512`, `--allowed-rp 2af138a8-59ea-4a84-aea3-666cafdb1369`; with the built-in upstream it prints a sandbox notice on stderr |
 | Prewarm the cached-sandbox mirror. | `$AUGENMASS cache warm --api-base <BASE> --rp <RP> [--timeout-secs 10]` | Add `--admin-token <TOKEN>` if the backend protects refresh endpoints |
 
 `register` defaults: `--target clone`, dry-run unless `--yes`. The guardrails: it refuses with exit 1 on over-ask unless you add `--force`, and it bails on blocking format errors regardless. `--target` accepts `clone`, `cached-sandbox`, or `sandbox`; `cached-sandbox` is read-only and refuses confirmed writes before any network call.
 
 `list` defaults: `--target clone`, `--rp 2af138a8-59ea-4a84-aea3-666cafdb1369`. That id is a demo fixture default, not a production target. One relying party per entity, many certificates: write only under the relying party the user explicitly names and never mint extra relying parties.
 
-Clone vs cached-sandbox vs sandbox: `clone` is a local store (no signing, no auth, no x5c) that stores payload-only JWTs and serves the registrar-compatible endpoints; its base is `AUGENMASS_CLONE_API_BASE` (default `http://127.0.0.1:8080/api`). `cached-sandbox` is a read-only mirror served by `cache serve`; its base is `AUGENMASS_CACHE_API_BASE` (default `http://127.0.0.1:8081/api`) and responses carry cache provenance headers. Registration-certificate read-through is RP-allowlisted: add RPs with `--allowed-rp <id>` or `AUGENMASS_CACHE_ALLOWED_RPS`, and unlisted RP reads return `403` before upstream contact. For deploys, bind it with `--host 0.0.0.0`, keep a persistent `--db`, set `AUGENMASS_CACHE_ADMIN_TOKEN` so `/api/cache/status` and `/api/cache/refresh` require a bearer token, and set `AUGENMASS_CACHE_ALLOWED_RPS` to the RPs you intentionally prewarm. `sandbox` is the real registrar reached over OAuth; it reads `AUGENMASS_API_BASE` (default `https://sandbox.eudi-wallet.org/api`), `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`, and the optional `AUGENMASS_OIDC_CLIENT_SECRET`. Never log, echo, or commit tokens, certs, or keys.
+Clone vs cached-sandbox vs sandbox: `clone` is a local store (no signing, no auth, no x5c) that stores payload-only JWTs and serves the registrar-compatible endpoints; its base is `AUGENMASS_CLONE_API_BASE` (default `http://127.0.0.1:8080/api`). `cached-sandbox` is a read-only mirror served by `cache serve`; its base is `AUGENMASS_CACHE_API_BASE` (default `http://127.0.0.1:8081/api`) and responses carry cache provenance headers. Registration-certificate read-through is RP-allowlisted: add RPs with `--allowed-rp <id>` or `AUGENMASS_CACHE_ALLOWED_RPS`, and unlisted RP reads return `403` before upstream contact. For deploys, bind it with `--host 0.0.0.0`, keep a persistent `--db`, set `AUGENMASS_CACHE_ADMIN_TOKEN` so `/api/cache/status` and `/api/cache/refresh` require a bearer token, and set `AUGENMASS_CACHE_ALLOWED_RPS` to the RPs you intentionally prewarm. `sandbox` is the real registrar reached over OAuth; it reads `AUGENMASS_API_BASE` (default `https://sandbox.eudi-wallet.org/api`), `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`, and the optional `AUGENMASS_OIDC_CLIENT_SECRET`. When `list --target sandbox`, `register --target sandbox --yes`, or `cache serve` falls back to that built-in address because no address is configured, the tool prints one `note:` line on stderr: the registrar's landing page, read on 13 November 2026, says testing is possible until 19 November 2026, that the new wallet app version then no longer accepts its certificates, and that it admits no new users. Standard output does not change. Never log, echo, or commit tokens, certs, or keys.
 
 Example:
 
@@ -269,7 +272,7 @@ $AUGENMASS list
 | --- | --- | --- |
 | `inspect`, `decode`, `baselines` | success | (read-only; no gating) |
 | `check` | no over-ask, no blocking format error | over-ask or a blocking format error |
-| `audit` | within the purpose baseline | over-ask |
+| `audit` | within the purpose baseline, or an unknown `--purpose` (axis skipped, rows `[n/a]`) | over-ask |
 | `verify presentation` | verified | not verified |
 | `verify request` | signed by the x5c leaf, bound to x509_hash, and, with `--anchor`, trusted | not verified / unbound / untrusted / expired |
 | `verify trust` | trusted (chains to anchor) | untrusted |
@@ -285,4 +288,4 @@ $AUGENMASS list
 | `register` | dry-run or write succeeds | over-ask without `--force`, or a blocking format error |
 | `list`, `generate`, `clone serve`, `cache serve` | success | (no gating) |
 
-Read-only commands that render machine output accept `--json`. Verified against `augenmass 0.3.0`.
+Read-only commands that render machine output accept `--json`. Verified against `augenmass 0.4.1`.

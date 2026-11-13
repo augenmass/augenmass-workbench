@@ -24,9 +24,9 @@ storage and breach risk, and it can conflict with the data-minimisation basis.
 
 The tool cites three sources when a finding rests on them:
 
-1. eIDAS Regulation (EU) 2024/1183, Art. 5b(3): "Relying parties shall not request users to provide data other than that indicated for their intended use."
+1. Regulation (EU) No 910/2014, Article 5b(3): "Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c)."
 2. GDPR (EU) 2016/679, Art. 5(1)(c): personal data must be "adequate, relevant and limited to what is necessary".
-3. EUDI ARF, registration certificate, RPRC_21: the wallet checks that requested attributes are within the registration certificate and notifies the user otherwise.
+3. EUDI ARF, registration certificate, RPRC_21: the wallet checks that requested attributes are within the registration certificate; if they are not, it warns the user that the relying party is requesting more than it has registered, and the wallet provider decides whether the presentation may go ahead. Run `augenmass baselines` for the exact wording.
 
 ## Who It Helps
 

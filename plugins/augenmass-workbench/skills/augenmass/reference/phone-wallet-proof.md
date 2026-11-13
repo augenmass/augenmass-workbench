@@ -39,7 +39,7 @@ an unsigned bundled binary, ask them to set `AUGENMASS_BIN` to a native build or
 release archive:
 
 ```sh
-AUGENMASS=${AUGENMASS_BIN:-augenmass}
+AUGENMASS=${AUGENMASS_BIN:-${CLAUDE_PLUGIN_ROOT:?set to the plugin directory}/bin/augenmass}
 $AUGENMASS serve --help
 $AUGENMASS evidence assert-live --help
 ```

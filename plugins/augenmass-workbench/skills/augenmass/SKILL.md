@@ -187,7 +187,7 @@ For a live-wallet debugging report:
 | Prewarm the cached-sandbox mirror before a demo | `$AUGENMASS cache warm [--api-base --admin-token --rp --timeout-secs]` |
 | Check what a cache has stored | `$AUGENMASS cache status [--api-base --admin-token --timeout-secs]` |
 
-Artifact inputs accept file paths, inline values, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Commands that render structured output accept `--json`.
+Artifact inputs accept file paths, inline values, or `-` for stdin, except evidence bundles, which `evidence verify`, `replay`, and `assert-live` read only from a file path; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Commands that render structured output accept `--json`.
 
 The read-only commands exit non-zero on the bad outcome so they slot into CI: `check` and `audit` exit 1 on over-ask (and `check` also on a blocking format error), `verify` exits 1 when not verified, untrusted, revoked, or erroring, `x509-hash --client-id` exits 1 on mismatch, `doctor` exits 1 when it has findings, `evidence verify` / `evidence replay` exit non-zero when hashes, replay determinism, or signatures fail, and `evidence assert-live` exits non-zero unless the bundle proves the required live-wallet event spine.
 

@@ -62,7 +62,7 @@ When the plugin was installed from a marketplace without the full repository che
 
 ## CLI and bundled launcher
 
-The plugin includes a small launcher plus native `v0.3.0` target binaries for macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64. The skill resolves `AUGENMASS_BIN` first; otherwise it uses the bundled launcher and picks the matching target binary. Set `AUGENMASS_BIN` when you want to override the bundled binary, use an unsupported target, or point the skill at a source-built binary.
+The plugin includes a small launcher plus native `v0.4.1` target binaries for macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64. The skill resolves `AUGENMASS_BIN` first; otherwise it uses the bundled launcher and picks the matching target binary. Set `AUGENMASS_BIN` when you want to override the bundled binary, use an unsupported target, or point the skill at a source-built binary.
 
 Windows binaries are not code-signed
 yet; verify the release checksum first, then approve the binary manually through

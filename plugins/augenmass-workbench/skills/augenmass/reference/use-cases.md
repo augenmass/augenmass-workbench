@@ -72,6 +72,7 @@ augenmass decode regcert fixtures/regcert/rc-by-id.json
 
 ```
 WRPRC registration certificate (payload-only, no signature verified)
+Registration certificate: payload decoded; signature, issuer and revocation status not verified.
   purpose: "Demonstration: age-over-18 verification for an event check-in."
   privacy_policy: https://example.org/privacy
   support_uri: https://example.org/support
@@ -106,15 +107,18 @@ Curated purpose baselines:
   car_rental  (Car rental (over 21, named))
     minimal: given_name, family_name, age_equal_or_over.21
   bank_kyc  (Bank onboarding (KYC))
-    minimal: given_name, family_name, birthdate, address.resident_street, address.resident_city, address.resident_postal_code, address.resident_country
+    minimal: given_name, family_name, birthdate, place_of_birth.locality, place_of_birth.region, place_of_birth.country, nationalities, address.resident_street, address.house_number, address.resident_city, address.resident_postal_code, address.region, address.resident_country, address.formatted
+    mdoc elements: eu.europa.ec.eudi.pid.1/place_of_birth
 
 Legal basis cited on every over-ask finding:
-  eIDAS Regulation (EU) 2024/1183, Art. 5b(3)
-    Relying parties shall not request users to provide data other than that indicated for their intended use.
+  Regulation (EU) No 910/2014, Article 5b(3)
+    Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c).
   GDPR (EU) 2016/679, Art. 5(1)(c)
     Personal data shall be adequate, relevant and limited to what is necessary (data minimisation).
   EUDI ARF, registration certificate, RPRC_21
-    The wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
+    After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes.
+
+Note: the baselines are curated taste judgments, not Rulebook derivations.
 ```
 
 Next, decode the certificate so you can see what it actually requests (this is the `decode regcert` output from walkthrough 1): given_name, family_name, age_equal_or_over.18, with the stated purpose "age-over-18 verification for an event check-in."
@@ -127,6 +131,7 @@ augenmass audit --request minimal --purpose event_checkin --cert fixtures/regcer
 
 ```
 OK: Minimal: all 3 requested claims are within purpose and registration.
+Registration certificate: payload decoded; signature, issuer and revocation status not verified.
 Purpose: Demonstration: age-over-18 verification for an event check-in.   Baseline: Event check-in
 
 Requested claims:
@@ -143,6 +148,7 @@ augenmass audit --request minimal --purpose age_gate_18 --cert fixtures/regcert/
 
 ```
 OVER-ASK: Over-ask vs purpose: 2 of 3 requested claims exceed the stated purpose.
+Registration certificate: payload decoded; signature, issuer and revocation status not verified.
 Purpose: Demonstration: age-over-18 verification for an event check-in.   Baseline: Age gate (over 18)
 
 Requested claims:
@@ -152,21 +158,21 @@ Requested claims:
 
 Over-asking 2 claim(s) beyond the stated purpose.
 
-Suggested minimal request:
-  age_equal_or_over.18
+Suggested minimal request (dc+sd-jwt, urn:eudi:pid:de:1), as claim paths:
+  ["age_equal_or_over", "18"]
 
 Legal basis:
-  eIDAS Regulation (EU) 2024/1183, Art. 5b(3)
-    Relying parties shall not request users to provide data other than that indicated for their intended use.
+  Regulation (EU) No 910/2014, Article 5b(3)
+    Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c).
   GDPR (EU) 2016/679, Art. 5(1)(c)
     Personal data shall be adequate, relevant and limited to what is necessary (data minimisation).
   EUDI ARF, registration certificate, RPRC_21
-    The wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
+    After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes.
 ```
 
-The `--request` argument also accepts a path to a DCQL JSON file, plus two built-ins: `minimal` (the default) and `overask`. Use `overask` for the worst-case shape, which over-asks against every baseline.
+The `--request` argument also accepts a path to a DCQL JSON file, plus two built-ins: `minimal` (the default) and `overask`. Use `overask` for the worst-case shape, which over-asks against `age_gate_18`, `event_checkin`, and `car_rental`; under `bank_kyc` all six of its claims are within the baseline and the audit exits 0.
 
-Exit codes for `audit`: `1` on over-ask, `0` otherwise. Each row is `[ok]` (within baseline) or `[over]` (beyond the stated purpose). The wording shifts with `--cert`: with a certificate, an over claim reads "Registered, but beyond what the stated purpose needs"; without one, it reads "Beyond what the stated purpose needs; registration not evaluated." For a CI gate, add `--json`.
+Exit codes for `audit`: `1` on over-ask, `0` otherwise. Each row is `[ok]` (within baseline) or `[over]` (beyond the stated purpose). An unknown `--purpose` (a typo such as `age_gate_1`) prints a note on stderr, skips the purpose axis, marks every row `[n/a]`, and still exits `0`, so check the id against `augenmass baselines` before trusting exit `0`. The wording shifts with `--cert`: with a certificate, an over claim reads "Registered, but beyond what the stated purpose needs"; without one, it reads "Beyond what the stated purpose needs; registration not evaluated." For a CI gate, add `--json`.
 
 ## 3. Developer: build a proportionate registration, and watch the guard refuse an over-broad one
 
@@ -259,6 +265,7 @@ augenmass list --target clone
 
 ```
 1 registration(s) for RP 2af138a8-59ea-4a84-aea3-666cafdb1369 on clone:
+Registration certificate: payload decoded; signature, issuer and revocation status not verified.
 
 - 6e352d08-be3f-4e8c-89c7-4457730528ff  purpose: "Age verification"
     claims: age_equal_or_over.18
@@ -286,12 +293,12 @@ Requested claims:
 
 Over-asking 6 claim(s) beyond the stated purpose.
 
-Suggested minimal request:
-  age_equal_or_over.18
+Suggested minimal request (dc+sd-jwt, urn:eudi:pid:de:1), as claim paths:
+  ["age_equal_or_over", "18"]
 
 Legal basis:
-  eIDAS Regulation (EU) 2024/1183, Art. 5b(3)
-    Relying parties shall not request users to provide data other than that indicated for their intended use.
+  Regulation (EU) No 910/2014, Article 5b(3)
+    Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c).
   ...
 ```
 
@@ -317,7 +324,7 @@ Format findings:
 
 This exits `1`. A blocking format error stops `register` outright; only the over-ask warning is bypassable, and only with `--force`.
 
-For a real off-stage rehearsal, swap `--target clone` for `--target sandbox`, which talks to the actual registrar over OAuth. That path needs environment configuration (`AUGENMASS_API_BASE`, `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`) and a working `client_id` of `swagger`. Use `--target cached-sandbox` only for read-only cached sandbox reads; confirmed writes to cached-sandbox are refused before any network call. For real writes, use only the relying party the user explicitly names; never invent a demo relying party id or mint extra relying parties.
+For a real off-stage rehearsal, swap `--target clone` for `--target sandbox`, which talks to the actual registrar over OAuth. That path needs environment configuration (`AUGENMASS_API_BASE`, `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`) and a working `client_id` of `swagger`. Without `AUGENMASS_API_BASE` it uses the built-in `https://sandbox.eudi-wallet.org/api` and prints a `note:` line on stderr that, per the registrar's landing page read on 13 November 2026, testing there is possible until 19 November 2026 and it admits no new users. Use `--target cached-sandbox` only for read-only cached sandbox reads; confirmed writes to cached-sandbox are refused before any network call. For real writes, use only the relying party the user explicitly names; never invent a demo relying party id or mint extra relying parties.
 
 ## 4. Verify a wallet presentation end to end
 
@@ -361,7 +368,7 @@ An expired credential (here verified at `--now 1780435200`) likewise rejects:
 REJECTED [CredentialExpired]: credential expired at 1780348665
 ```
 
-Other failure fixtures exist in `fixtures/presentations/`: `WRONG_AUDIENCE`, `MISSING_HOLDER_BINDING`, `OVER_DISCLOSURE`, `EXPIRED`.
+Other failure fixtures exist in `fixtures/presentations/`: `WRONG_AUDIENCE`, `MISSING_HOLDER_BINDING`, `EXPIRED` (each rejects with exit `1`). `OVER_DISCLOSURE` is not a binding failure: it verifies (`VERIFIED`, exit `0`, five disclosed claims), because cryptographic verification does not judge how much was disclosed.
 
 Step two, trust. By default the issuer signature is checked against the leaf key in the credential. To require that the issuer chains to a trust anchor, use `verify trust`. ERICA chains to `erica-trust-anchor.pem`:
 
@@ -431,6 +438,7 @@ Step four, all in one pass. `verify presentation` can anchor trust and check sta
 augenmass verify presentation fixtures/presentations/synthetic-pid-with-status.sdjwt \
   --nonce b4ba2623-76a2-486b-a1f6-f1656025d07b \
   --aud https://self-issued.me/v2 --now 1780435200 \
+  --trust-anchor fixtures/certs/synthetic-pid-anchor.pem \
   --status-token fixtures/status/status-list-CLEAR.jwt \
   --status-key fixtures/status/status-list-verify-key.pub.pem
 ```
@@ -439,7 +447,7 @@ augenmass verify presentation fixtures/presentations/synthetic-pid-with-status.s
 VERIFIED
   vct: urn:eudi:pid:de:1
   holder binding: true
-  trust anchored: false
+  trust anchored: true
   status checked: true
   disclosed claims:
     given_name = Erika
@@ -451,7 +459,7 @@ Swap in the REVOKED token and the whole verification rejects, which is the point
 REJECTED [Revoked]: credential is revoked (status-list entry is INVALID)
 ```
 
-`verify presentation` also takes `--vct` to override the expected credential type, `--max-age` for the KB-JWT freshness window (default 300 seconds), and `--trust-anchor` to anchor the issuer in the same call (as shown for the VALID fixture, which reports `trust anchored: true` when anchored). All four `verify` subcommands exit `1` on not-verified, untrusted, revoked, or error, and `0` only when the layer passes.
+`verify presentation` also takes `--vct` to override the expected credential type, `--max-age` for the KB-JWT freshness window (default 300 seconds), and `--trust-anchor` to anchor the issuer in the same call (as shown for the VALID fixture, which reports `trust anchored: true` when anchored). All five `verify` subcommands (`presentation`, `request`, `trust`, `status`, `status-list`) exit `1` on not-verified, untrusted, revoked, or error, and `0` only when the layer passes.
 
 ## 5. Diagnose a rejected JAR, then fix the client_id
 
@@ -551,11 +559,15 @@ augenmass serve
 ```
 augenmass serve: wallet-interaction debugger
   open         : http://127.0.0.1:8080/
+  listening    : http://127.0.0.1:8080
   client_id    : x509_hash:...
+  registration : bundled certificate fixtures/regcert/rc-by-id.json, issued by the German sandbox registrar (C=DE, CN=German Registrar). The landing page of the German sandbox registrar (sandbox.eudi-wallet.org, read on 13 November 2026) says that testing in it is possible until 19 November 2026, that the new wallet app version then no longer accepts certificates from it, and that it admits no new users.
   cert         : throwaway (development); set --key + --leaf for the real registrar leaf
   issuer trust : not enforced (set --trust-anchor to anchor PID issuers)
   status check : offline (set --live-status to resolve token-status-list revocation)
-  trace        : live on this console; also at <base>/trace/<session> and /api/trace/<session>
+  trace        : redacted by default; live on this console; also at <local>/trace/<session> and /api/trace/<session>
+  artifacts    : off (set --unsafe-debug-artifacts <dir> to capture raw wallet material locally; UNSAFE)
+  note: bound to loopback; a phone wallet on your LAN cannot reach this. Use --host 0.0.0.0 with a --public-url that has your LAN IP, or a tunnel.
 
   Open the URL above, scan the QR with a wallet, and watch the trace below.
 ```

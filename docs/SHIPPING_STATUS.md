@@ -11,8 +11,8 @@ claims as claims path pointers, segment by segment, states that a registration
 certificate is decoded and not verified, rejects a DCQL query with an empty
 `credential_sets` option, refreshed `Cargo.lock`, and runs the strict
 `check.yml` workflow on pushes and pull requests (see `CHANGELOG.md`). The
-committed plugin binaries stay the `v0.3.0` ones until the bundle is rebuilt
-from the `v0.4.1` release archives in a follow-up change. The German sandbox
+committed plugin binaries are rebuilt from the `v0.4.1` release archives and
+carry these changes (see `docs/RELEASE.md`, "v0.4.1 release proof"). The German sandbox
 registrar says on its landing page (read on 13 November 2026) that testing in it is possible until 19
 November 2026; see `docs/SANDBOX.md`.
 
@@ -75,9 +75,9 @@ That proves:
   advertised command surfaces through both Claude Code and Codex metadata checks.
 - `just plugin-bundle-freshness` verifies the plugin bundle manifest, version,
   launcher, and every committed target-binary hash.
-- On this experiment branch, all four committed plugin target binaries
-  (macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64) have been
-  refreshed for `v0.3.0` and expose the latest evidence replay,
+- All four committed plugin target binaries (macOS Apple Silicon, macOS
+  Intel, Linux x64, and Windows x64) are rebuilt from the `v0.4.1` release
+  archives (they were first refreshed for `v0.3.0`) and expose evidence replay,
   `walletOverDisclosureAnalyzed`, fail-closed trust/status proof behavior, and
   append-only unsafe artifact behavior.
 - The repo-local Claude Code marketplace validates with `--strict`, installs
@@ -607,13 +607,12 @@ binaries may require manual OS approval after checksum verification.
   Run `just bundesdruckerei-preprod-material-smoke` before a demo to confirm the
   public root, signer, and BMI trustlist material are still reachable and
   parseable.
-- Full release rebuild: before presenting cross-platform plugin install as
-  current for Linux or Windows, rebuild and reassemble all platform archives so
-  every bundled target exposes the same evidence commands as the refreshed
-  macOS `v0.3.0` bundle.
-- PR caveat: the branch is ready for source review with local macOS plugin proof,
-  but a public cross-platform marketplace release still needs the full release
-  rebuild above.
+- Full release rebuild: done for `v0.4.1`. All platform archives were rebuilt
+  by the tag release run, and every bundled target binary is taken from those
+  archives (`plugins/augenmass-workbench/bin/manifest.json`, checked by
+  `just plugin-bundle-freshness`).
+- PR caveat: the plugin bundle is no longer limited to the macOS proof; the
+  bundled Linux and Windows binaries come from the same `v0.4.1` release.
 - Keep the known-good phone-wallet proof local or in a private evidence store.
   The exported bundles and raw debug artifacts are sensitive and intentionally
   ignored by git.

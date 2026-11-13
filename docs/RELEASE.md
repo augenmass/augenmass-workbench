@@ -213,6 +213,54 @@ release. Tag pushes spend runner minutes and should happen only after explicit
 approval. On manual dispatch, it publishes workflow artifacts only. Tag builds
 fail unless the tag name matches `v$(Cargo.toml version)`.
 
+## v0.4.1 release proof
+
+Published release `v0.4.1` is available at:
+
+```text
+https://github.com/augenmass/augenmass-workbench/releases/tag/v0.4.1
+```
+
+The tag `v0.4.1` is an annotated tag with a PGP signature; `git tag -v v0.4.1`
+reports a good signature from the EdDSA key
+`0A82DD028B9B7AB8518530ECBF9E8C1F7CE705C3`. It points at commit
+`dec2424d5a77e9b2b956e870e792a0741208731c`, the merge of pull request #9
+(`release/v0.4.1`) into `main`. The pull request check run `43504247283` passed
+on the branch head `96ee8ac45050332512afa26d13edd616281f41bd`, and the check run
+`43505233168` passed on `main` at the merge commit. The tag release run
+`43505244758` passed all four native build, package, and archive-smoke jobs
+(Linux x64, Windows x64, macOS Apple Silicon, macOS Intel) and the publish job.
+
+The release carries fourteen assets: four native CLI archives plus a `.sha256`
+checksum and a `.manifest.json` sidecar for each, and the claim path test
+vectors `path-vectors.json` with their `.sha256` file. Every archive manifest
+records `gitCommit` `dec2424d5a77e9b2b956e870e792a0741208731c`, `gitDirty`
+`false`, `layoutOnly` `false`, and `nativeExecution` `true`, so each binary is a
+native build of the tagged commit with no local modifications. The archives are:
+
+```text
+augenmass-v0.4.1-x86_64-unknown-linux-gnu.tar.gz
+augenmass-v0.4.1-x86_64-pc-windows-msvc.zip
+augenmass-v0.4.1-x86_64-apple-darwin.tar.gz
+augenmass-v0.4.1-aarch64-apple-darwin.tar.gz
+```
+
+The SHA-256 of `path-vectors.json` is
+`8f5972c370c7294126393c1f2f60cf7323f8aaccb90c1222876f16e56194af8b`; it matches
+its `.sha256` asset and the file `fixtures/claim-paths/path-vectors.json` at the
+tag.
+
+The committed plugin bundle under `plugins/augenmass-workbench/bin` was rebuilt
+from these release archives by `scripts/assemble-plugin-bundle.sh` (`just
+bundle`), which checks every archive and binary hash against its sidecar and
+rejects layout-only or non-native manifests before copying.
+
+macOS notarization was not performed for v0.4.1: the release workflow has no
+signing or notarization step, the macOS Apple Silicon binary carries only an ad
+hoc linker signature with no team identifier, and the macOS Intel binary is not
+signed. Verify the release checksum and approve the binary locally if Gatekeeper
+or Windows blocks it.
+
 ## v0.3.0 release proof
 
 Published release `v0.3.0` is available at:
