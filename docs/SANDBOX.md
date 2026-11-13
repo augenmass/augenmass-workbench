@@ -336,6 +336,7 @@ augenmass list --target clone
 
 ```
 1 registration(s) for RP 2af138a8-59ea-4a84-aea3-666cafdb1369 on clone:
+Registration certificate: payload decoded; signature, issuer and revocation status not verified.
 
 - 6272cc79-fec7-4e10-804d-3a52e6a6d8c5  purpose: "Age verification"
     claims: age_equal_or_over.18
@@ -369,8 +370,8 @@ Suggested minimal request:
   age_equal_or_over.18
 
 Legal basis:
-  eIDAS Regulation (EU) 2024/1183, Art. 5b(3)
-    Relying parties shall not request users to provide data other than that indicated for their intended use.
+  Regulation (EU) No 910/2014, Article 5b(3)
+    Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c).
   GDPR (EU) 2016/679, Art. 5(1)(c)
     Personal data shall be adequate, relevant and limited to what is necessary (data minimisation).
   EUDI ARF, registration certificate, RPRC_21

@@ -30,6 +30,181 @@ imply wall-clock timing for releases.
   leaf, used as a self-anchor). Deferred: non-ES256 algorithms, key resolution
   other than the `x5c` leaf, full RFC 5280 path validation, and support for any
   client identity scheme beyond `x509_hash`.
+- Claim path test vectors: `fixtures/claim-paths/path-vectors.json`, one case
+  per coverage rule (pointer cases for SD-JWT VC and mdoc paths, credential
+  cases for format and type matching, requests without `claims`, and
+  `claim_sets`), each with the format, the registered paths, the requested
+  path, the expected result (`covered`, `not_covered`, or `invalid`), a reason
+  and the OpenID4VP section. Invented names only; Apache-2.0, and the header
+  states that other tools may reuse the set. `tests/claim_paths.rs` runs it and
+  checks, for every registration fixture in the repository, that a request of
+  exactly its registered claims is never flagged.
+- Honest notice for registration certificates: `audit --cert`, `decode
+  regcert`, `inspect` on a certificate, and a non-empty `list` print
+  `Registration certificate: payload decoded; signature, issuer and revocation
+  status not verified.` (for `audit` right under the verdict line, on the OK
+  and the over-ask path). The JSON of `audit`, `decode regcert` and `inspect`
+  carries `registration_certificate`: `{"decoded": true, "signature_verified":
+  false, "issuer_verified": false, "revocation_checked": false}`, and `null` on
+  an `audit` without `--cert`, whose verdict keeps saying `registration not
+  evaluated`.
+- `check` (and the `register` gate): new blocking findings `CHECK-CLAIM-PATH`
+  (a credential without a non-empty `claims[]`, or a path that is not a claims
+  path pointer: a boolean, a negative or fractional number, an empty array,
+  or for mso_mdoc anything but two strings),
+  `CHECK-CREDENTIAL-META` (no `format`, or no valid `vct_values` for SD-JWT VC
+  or `doctype_value` for mso_mdoc), and `CHECK-UNREADABLE-REQUEST`. Before, a
+  body such as `["birthdate", true]` skipped the over-ask guardrail and passed
+  with exit 0.
+
+### Fixed
+
+- Registration comparison (`audit --cert`, `check`, `serve`): a request is now
+  compared with the registration as OpenID4VP 1.0 claims path pointers,
+  segment by segment and never as joined strings. Before, the decoder dropped
+  `null` segments and registration matching compared dotted strings, so a
+  request identical to its registration with `["nationalities", null]` was
+  flagged as over-asking, a registered `["address"]` did not cover
+  `["address", "locality"]`, one segment `"address.locality"` matched
+  `["address", "locality"]`, and a request for another credential type passed
+  because all registered credentials were merged. Now: an equal path is
+  covered (`null` included); a registered `null` covers a requested index; a
+  registered object covers its members; a requested `null` under a registered
+  index, a parent of a registered member, `"0"` against `0`, and a dotted
+  segment are not covered; mdoc paths are covered only by an equal
+  `[namespace, element]` of two strings, and an mdoc path of another shape
+  (`[namespace, null]`, an integer element, one or three components) is
+  invalid and covers nothing, even an equal registered path (OpenID4VP 1.0
+  section 7.2.1). The credential is matched by format and type first
+  (`vct_values`, `doctype_value`); a request accepting several types must be
+  within the registration for each; a request without a type, an empty or
+  invalid registered path, and a registered credential with malformed type
+  metadata authorize nothing. A credential requested without `claims` is
+  within the registration when its type is registered and otherwise gets one
+  row beyond it; so does a credential whose `claim_sets` select no claim
+  (`[[]]`), since its mandatory claims are still presented. With `claim_sets`,
+  only claims named in some combination are audited (every declared claim
+  when a combination names an unknown id); with `credential_sets`, only
+  credentials named in some option are audited (every credential when an
+  option names an unknown id), so an unselected credential is no longer
+  flagged. Engine: `regcert::PathSeg`, `parse_claim_path`,
+  `valid_claim_path`, `path_covers`,
+  `requested_types`, `RegisteredScope::covers`, and `RegisteredCredential`
+  gains `doctype_value`; `claims` keeps typed segments and `fingerprint`
+  includes the doctype and typed paths. Purpose: an SD-JWT segment that
+  itself contains a dot no longer maps to a nested model key.
+- `check` reads each body credential in its own format, type and raw paths
+  (before, every body was read as a German PID SD-JWT VC with string
+  segments), so `null` and integer segments and mso_mdoc bodies are judged.
+- `baselines` text lists a baseline's mdoc elements (`mdoc elements:
+  eu.europa.ec.eudi.pid.1/place_of_birth`) as the JSON `mdoc_elements` does.
+- The PID claim model has rows and labels for `place_of_birth.region`,
+  `place_of_birth.country`, `address.region`, `address.formatted` and
+  `address.house_number`, so they appear in the disclosed-vs-withheld rows.
+- `bank_kyc` baseline: adds `place_of_birth.locality` and `nationalities`, so a
+  request with the German identification set for a natural person (GwG § 11
+  Abs. 4 Nr. 1: name, place and date of birth, nationality, address) is no
+  longer flagged as over-asking on 2 of 9 claims. The baseline note cites the
+  statute and keeps the curated-judgment qualification; passing the check does
+  not establish complete identification or AML compliance. Place of birth and
+  nationality stay over-asking under `age_gate_18`, `event_checkin`, and
+  `car_rental`.
+- `bank_kyc` baseline, remaining false positives: every spelling of the GwG
+  attributes in the EU PID SD-JWT VC and mdoc encodings is now within the
+  baseline in its own format: SD-JWT `place_of_birth.region` and `.country`,
+  `address.region`, `address.formatted`, `address.house_number`, the flat
+  `birth_place` and `birth_country` of the ERICA fixture, and `nationalities`
+  with an element selector (`null` or an index); mdoc `resident_state`,
+  `resident_address`, and the structured `place_of_birth` element (new
+  baseline field `mdoc_elements`, a list of `[namespace, element]` paths
+  compared segment by segment, so a path such as
+  `["eu.europa.ec.eudi.pid", "1.place_of_birth"]` does not match). Whole SD-JWT `address` and `place_of_birth`
+  objects, spellings of the other format, other namespaces, and attributes
+  outside the list stay over-asking.
+- Over-ask audit of EU PID mdoc requests: a `mso_mdoc` path
+  `["eu.europa.ec.eudi.pid.1", element]` is now judged for purpose under the
+  matching claim-model key (`given_name`, `family_name`, `birth_date`,
+  `nationality`, `resident_street`, `resident_city`, `resident_postal_code`,
+  `resident_country`, and the legacy text element `birth_place`), so for example
+  an mdoc `given_name` is no longer flagged under `bank_kyc`, `event_checkin`, or
+  `car_rental`. New engine function `inspector::canonical_claim_key`. The
+  mapping is format-aware: an mdoc path without a claim-model key (another
+  namespace, `age_over_NN`, the structured `place_of_birth`) is judged only
+  against the baseline's `mdoc_elements`, never against a model key, so an
+  mdoc path such as `["address", "resident_city"]` cannot borrow an SD-JWT
+  spelling. Registration and over-disclosure matching still compare raw
+  paths, so an alias never authorizes a path in another format or another
+  SD-JWT path (`address.locality` does not authorize a disclosed
+  `address.resident_city`), and every requested path keeps its own verdict row
+  (`counts.requested` is unchanged). The disclosed-vs-withheld rows map
+  disclosed SD-JWT keys to model keys as well. A disclosed member of a
+  requested object or array, or an element of an array requested with a
+  wildcard, is no longer reported as over-disclosed.
+- Article 5b(3) quotation: the over-ask legal basis now quotes Regulation (EU)
+  No 910/2014, Article 5b(3) verbatim ("Relying parties shall not request
+  users to provide any data other than that indicated pursuant to paragraph 2,
+  point (c).") and names the amended act instead of the amending Regulation
+  (EU) 2024/1183. The other two legal-basis entries are unchanged.
+
+These fixes are in the source only. The plugin binaries committed under
+`plugins/augenmass-workbench/` are unchanged and keep the old `bank_kyc`
+baseline, the old mdoc behaviour, the old Article 5b(3) wording (binary and
+skill reference files), and the old dependency set until the next release
+rebuild.
+
+### Security
+
+- `Cargo.lock` refreshed within the existing manifest requirements
+  (`CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS=fallback cargo update`; 186 lock
+  changes, among them rustls 0.23.46, rustls-webpki 0.103.17, webpki-roots
+  1.0.12, h2 0.4.20, quinn-proto 0.11.19, tokio 1.54.1, and anyhow 1.0.104).
+  No manifest, no `rust-toolchain.toml`, and no direct dependency major version
+  changed, and no `--precise` downgrade was needed: every resolved package
+  declares a `rust-version` of 1.92 or lower. `cargo audit` went from 20
+  vulnerabilities and 14 warnings to 4 vulnerabilities and 10 warnings (8
+  unmaintained, 2 unsound, 0 yanked). The remaining advisories need major
+  upgrades and are deferred: RUSTSEC-2026-0459 (libsqlite3-sys 0.28 via rusqlite
+  0.31), RUSTSEC-2026-0387 (crypto-bigint 0.3 and 0.5 via rsa 0.6 and
+  elliptic-curve 0.13), RUSTSEC-2023-0071 (rsa 0.6 via ssi 0.16), and the
+  unsound RUSTSEC-2023-0126 (im 15) and RUSTSEC-2026-0255 (sized-chunks 0.6),
+  both via ssi 0.16. Each is listed with its removal condition in
+  `docs/RELEASE.md`, "Dependency audit".
+
+### Changed
+
+- `decode regcert`, `inspect` and `audit --cert` refuse a registrar list with
+  more than one entry and name the ids; before, the first entry was used
+  silently. A list with one entry still works.
+- New `.github/workflows/check.yml`: format, clippy, locked tests, and
+  `cargo audit --deny unsound --deny yanked` (with one documented `--ignore` per
+  accepted advisory) on pushes to `main`, on pull requests against `main`, and
+  on demand, on GitHub-hosted `ubuntu-latest` only. `ci.yml` and
+  `blacksmith-smoke.yml` stay manual, and `release.yml` stays tag-only.
+- `scripts/ci-credit-guard.sh` allows branch-push and pull-request triggers only
+  for a workflow that meets a strict profile (literal `ubuntu-latest` runners,
+  one top-level read-only permissions block, no secret or token reference, only
+  a SHA-pinned `actions/checkout` where each checkout step sets
+  `persist-credentials: false` in its own `with:` block and passes no other
+  input than `fetch-depth`, a job timeout, plain block YAML). The rule is
+  fail-closed and checked line by line, without parsing expressions: in such
+  a workflow `${{` may appear only on a line that equals an entry of a short
+  allow-list in the guard, and `if:` keys, backslashes, quoted or spaced keys,
+  and keys starting with `GITHUB_`, `RUNNER_`, `ACTIONS_`, or `INPUT_` are
+  rejected. For every workflow, the top-level keys and the `on:` block must use
+  a small plain block grammar (`push`, `pull_request`, `workflow_dispatch`,
+  with `branches:` or `tags:` lists), so quoted, escaped, or spaced event keys,
+  flow values, event lists, and an inline `on: push` cannot change the
+  classification. Every workflow must also start its root mapping at column 0
+  and hold only printable ASCII, tabs, and LF line breaks, so neither an
+  indented root with a multi-line scalar nor a carriage return or Unicode line
+  separator can hide structure from the line matcher.
+  `scripts/ci-credit-guard-cases.sh` (`just
+  ci-credit-guard-cases`) runs 71 committed regression cases under
+  `tests/ci-credit-guard/`.
+- Docs: `docs/RELEASE.md`, `docs/GUARDRAILS.md`, `docs/SHIPPING_STATUS.md`, and
+  `AGENTS.md` describe the new automatic workflow. `docs/SHIPPING_STATUS.md` no
+  longer lists third-party registration counts or another relying party's
+  identifier, and `README.md` no longer advertises the macOS `.pkg`.
 
 ## [0.3.0]
 

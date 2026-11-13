@@ -1,0 +1,14 @@
+name: Case
+
+on:
+  "p\x75sh":
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  native:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v6
+      - run: cargo test --workspace

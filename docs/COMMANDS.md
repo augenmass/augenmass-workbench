@@ -200,7 +200,9 @@ Key Binding JWT:
 
 ### `decode regcert`
 
-Decode a WRPRC registration certificate (`typ rc-wrp+jwt`), payload-only. The input is a compact registration-certificate JWT, or a registrar entry that wraps one under a `jwt` field.
+Decode a WRPRC registration certificate (`typ rc-wrp+jwt`), payload-only. The input is a compact registration-certificate JWT, a registrar entry that wraps one under a `jwt` field, or a registrar list holding exactly one such entry. A list with several entries is refused with their ids (each certificate stands for one intended use; pass one entry, for example with `jq '.[0]'`), so no certificate is picked silently.
+
+Nothing about the certificate is verified: not its signature, not its issuer, not its revocation status. The text output says so in one line, and the JSON output carries the same as `registration_certificate`: `{"decoded": true, "signature_verified": false, "issuer_verified": false, "revocation_checked": false}`. `inspect` on a registration certificate prints the same. Claim paths are shown dotted with `*` for a `null` segment; the JSON `scope` keeps the typed segments (strings, integers, `null`) and an mdoc credential's `doctype_value`.
 
 ```
 Usage: augenmass decode regcert [OPTIONS] <INPUT>
@@ -218,6 +220,7 @@ augenmass decode regcert fixtures/regcert/rc-by-id.json
 
 ```
 WRPRC registration certificate (payload-only, no signature verified)
+Registration certificate: payload decoded; signature, issuer and revocation status not verified.
   purpose: "Demonstration: age-over-18 verification for an event check-in."
   privacy_policy: https://example.org/privacy
   support_uri: https://example.org/support
@@ -383,6 +386,11 @@ Format findings this command catches (grounded in the registrar DTO):
 - `purpose` is a list of `{lang, content}` objects, not a bare string.
 - `privacy_policy` must be a valid URL.
 - `support_uri` is any non-empty contact string (email, phone, or URL); it is not over-validated as a URL.
+- `CHECK-CLAIM-PATH` (blocking): every `credentials[]` entry needs a non-empty `claims[]`, and every path must be an OpenID4VP claims path pointer, a non-empty array of strings, `null`s and non-negative integers. A boolean, a negative or fractional number, or an empty array blocks. For `mso_mdoc` the path must be exactly two strings, `[namespace, element]` (section 7.2.1); `[namespace, null]` or a three-component path blocks even though the body is judged against itself.
+- `CHECK-CREDENTIAL-META` (blocking): every entry needs a `format` and its type in `meta`, `vct_values` (a non-empty array of strings) for `dc+sd-jwt` and `vc+sd-jwt`, `doctype_value` (a string) for `mso_mdoc`.
+- `CHECK-UNREADABLE-REQUEST` (blocking): the requested credentials could not be read as a DCQL query, so the over-ask guardrail could not run. A body the guardrail cannot read blocks; it never passes unexamined.
+
+The over-ask part reads the body credential by credential, in its own format and type, with the paths exactly as written (`null` and integer segments included), and compares them with the body itself as the registration under the rules described for `audit` below. A body is therefore always within its own registration; what `check` flags is the purpose axis (against the `age_gate_18` baseline) and the format.
 
 Exit code: 1 on over-ask or a blocking format error; 0 if clean.
 
@@ -413,8 +421,8 @@ Suggested minimal request:
   age_equal_or_over.18
 
 Legal basis:
-  eIDAS Regulation (EU) 2024/1183, Art. 5b(3)
-    Relying parties shall not request users to provide data other than that indicated for their intended use.
+  Regulation (EU) No 910/2014, Article 5b(3)
+    Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c).
   GDPR (EU) 2016/679, Art. 5(1)(c)
     Personal data shall be adequate, relevant and limited to what is necessary (data minimisation).
   EUDI ARF, registration certificate, RPRC_21
@@ -441,7 +449,7 @@ augenmass check examples/min.json --json
 
 ## `audit`
 
-Audit an OpenID4VP request for over-asking against a purpose baseline. Unlike `check`, this lints a request (its DCQL), not a registration body. With `--cert` it also confirms the requested claims sit within a registration certificate.
+Audit an OpenID4VP request for over-asking against a purpose baseline. Unlike `check`, this lints a request (its DCQL), not a registration body. With `--cert` it also confirms the requested claims sit within a registration certificate. The certificate is decoded, not verified: its signature, issuer and revocation status are not checked, and the output says so (see below).
 
 ```
 Usage: augenmass audit [OPTIONS]
@@ -451,7 +459,7 @@ Options:
 
 - `--request <REQUEST>`: `"minimal"`, `"overask"`, a DCQL JSON file, inline DCQL JSON, or `-` for stdin. Bare DCQL and wrappers under `dcql_query` are accepted. Default `minimal`. The two keywords are built-in synthetic requests; the minimal one asks for `given_name`, `family_name`, `age_equal_or_over.18`, and the overask one asks for a broad PID set.
 - `--purpose <PURPOSE>`: purpose baseline id (`age_gate_18`, `event_checkin`, `car_rental`, `bank_kyc`). Default `event_checkin`.
-- `--cert <CERT>`: path to a registration certificate (compact JWT, entity JSON, or array) to cross-check the request against.
+- `--cert <CERT>`: path to a registration certificate (compact JWT, entity JSON, or a registrar list with exactly one entry) to cross-check the request against.
 - `--vct <VCT>`: override the expected `vct` (defaults to the German PID, `urn:eudi:pid:de:1`).
 - `--json`, `-h, --help`.
 
@@ -495,6 +503,37 @@ Audit a real DCQL file against a baseline:
 augenmass audit --request fixtures/dcql/eudiplo-haip-pid-de.dcql.json --purpose age_gate_18
 ```
 
+### Registration comparison (`--cert`)
+
+A requested claim is within the registration when one registered claim path of a matching credential covers it. Both are OpenID4VP 1.0 claims path pointers (section 7), compared segment by segment and never as joined strings. Coverage is structural: no concrete credential is evaluated.
+
+- Credentials first. The requested credential is matched by format and type before any path is compared: `vct_values` for SD-JWT VC (appendix B.3.5), `doctype_value` for `mso_mdoc` (appendix B.2.3). A request that accepts several `vct_values` is within the registration only when it is for every one of them, since the wallet may return any. A request without a type matches nothing. Registered entries of the same format and type add up path by path; a path never borrows authorization from another format or type. Types are compared as exact strings: SD-JWT VC type inheritance and `aka_vcts` are not evaluated.
+- JSON-based formats (section 7.1): a string selects an object member, a non-negative integer one array element, `null` every element of an array. An equal path is covered, `null` segments included; a requested index is covered by a registered `null` at that position; a child of a registered object is covered (`["address"]` covers `["address", "locality"]`, section 7.3). Not covered: a requested `null` against a registered index, a parent of a registered child, the string `"0"` against the integer `0`, and `["address.locality"]` against `["address", "locality"]`.
+- `mso_mdoc` (section 7.2): a path is `[namespace, element]`, exactly two strings, and is covered only by an equal registered path. An element of another namespace is not covered. A path of another shape (`[namespace, null]`, an integer element, one or three components) is invalid (section 7.2.1: the wallet aborts with an error) and covers nothing, even an equal registered path; the audit row says `Not a valid mso_mdoc claims path pointer`.
+- A credential without `claims` requests no selectively disclosable claim (section 6.4.1). It is within the registration when its format and type are registered; otherwise it gets one row, `<id> (credential, no claims)`, beyond the registration. The same holds when its `claim_sets` select no claim (`[[]]`): the wallet still presents the credential and its mandatory claims.
+- With `claim_sets`, every claim named in any combination is audited and a declared claim that no combination names is not (section 6.4.1). When a combination names an unknown id, every declared claim is audited.
+- With `credential_sets`, every credential named in an option of any set, required or not, is audited, and a credential that no option names is not (section 6.4.2). When an option names an unknown id, every credential is audited.
+- A registered path that is not a valid pointer (empty, or with a boolean or a negative or fractional number) authorizes nothing.
+
+The rules are pinned by the reusable vector set `fixtures/claim-paths/path-vectors.json` (Apache-2.0). A request identical to its registration, `null` segment included, is within it, exit 0:
+
+```
+augenmass audit --request fixtures/claim-paths/request-identical.json --purpose bank_kyc --cert fixtures/claim-paths/rc-null-segment.jwt
+```
+
+```
+OK: Minimal: all 3 requested claims are within purpose and registration.
+Registration certificate: payload decoded; signature, issuer and revocation status not verified.
+Purpose: Example check   Baseline: Bank onboarding (KYC)
+
+Requested claims:
+  [ok]  given_name                   Within the purpose-minimal baseline.
+  [ok]  nationalities.*              Within the purpose-minimal baseline.
+  [ok]  address.locality             Within the purpose-minimal baseline.
+```
+
+The second line appears on every audit with `--cert`, on the OK and the over-ask path, right under the verdict. The JSON output carries the same as `registration_certificate`, `{"decoded": true, "signature_verified": false, "issuer_verified": false, "revocation_checked": false}`, and `null` without `--cert`. Without `--cert` the verdict itself says `registration not evaluated`.
+
 ## `baselines`
 
 List the curated purpose baselines and the legal basis, or show one baseline in detail. These baselines are curated taste judgments, not Rulebook derivations; they are the yardstick `check` and `audit` measure against.
@@ -514,14 +553,20 @@ The four baselines:
 - `age_gate_18` ("Age gate (over 18)"): `age_equal_or_over.18`
 - `event_checkin` ("Event check-in"): `given_name`, `family_name`, `age_equal_or_over.18`
 - `car_rental` ("Car rental (over 21, named)"): `given_name`, `family_name`, `age_equal_or_over.21`
-- `bank_kyc` ("Bank onboarding (KYC)"): `given_name`, `family_name`, `birthdate`, `address.resident_street`, `address.resident_city`, `address.resident_postal_code`, `address.resident_country`
+- `bank_kyc` ("Bank onboarding (KYC)"): `given_name`, `family_name`, `birthdate`, `place_of_birth.locality`, `place_of_birth.region`, `place_of_birth.country`, `nationalities`, `address.resident_street`, `address.house_number`, `address.resident_city`, `address.resident_postal_code`, `address.region`, `address.resident_country`, `address.formatted`; mdoc element `[eu.europa.ec.eudi.pid.1, place_of_birth]` (JSON field `mdoc_elements`, a list of `[namespace, element]` paths matched segment by segment). The keys are claim-model keys: a request path counts only in the spelling of its own credential format (SD-JWT VC `address.locality`, `birth_place`, `nationalities` with an element selector; mdoc `[eu.europa.ec.eudi.pid.1, resident_city]`, `birth_date`, `nationality`). A whole SD-JWT `address` or `place_of_birth` object stays beyond the purpose.
 
 Exit code: 0 on success.
 
-List all (also prints the legal basis cited on every over-ask finding):
+List all (also prints the legal basis cited on every over-ask finding). A baseline with mdoc elements lists them as `namespace/element`, the same paths as the JSON `mdoc_elements`:
 
 ```
 augenmass baselines
+```
+
+```
+  bank_kyc  (Bank onboarding (KYC))
+    minimal: given_name, family_name, birthdate, place_of_birth.locality, place_of_birth.region, place_of_birth.country, nationalities, address.resident_street, address.house_number, address.resident_city, address.resident_postal_code, address.region, address.resident_country, address.formatted
+    mdoc elements: eu.europa.ec.eudi.pid.1/place_of_birth
 ```
 
 Show one as JSON:
@@ -543,7 +588,7 @@ augenmass baselines age_gate_18 --json
 
 ### Legal basis (cited verbatim on every over-ask finding)
 
-1. eIDAS Regulation (EU) 2024/1183, Art. 5b(3): "Relying parties shall not request users to provide data other than that indicated for their intended use."
+1. Regulation (EU) No 910/2014, Article 5b(3): "Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c)."
 2. GDPR (EU) 2016/679, Art. 5(1)(c): data minimisation ("adequate, relevant and limited to what is necessary").
 3. EUDI ARF, registration certificate, RPRC_21: the wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
 
@@ -1511,7 +1556,7 @@ augenmass register examples/min.json --target cached-sandbox --yes
 
 ## `list`
 
-Read registrations back for one relying party, decoded. It fetches from the target and renders each stored certificate payload-only.
+Read registrations back for one relying party, decoded. It fetches from the target and renders each stored certificate payload-only. A non-empty list starts with the line `Registration certificate: payload decoded; signature, issuer and revocation status not verified.`
 
 ```
 Usage: augenmass list [OPTIONS]

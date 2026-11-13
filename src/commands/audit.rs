@@ -17,7 +17,7 @@ use serde_json::Value;
 use crate::commands::decode::extract_regcert_jwt;
 use crate::dcql::parse_dcql;
 use crate::output::{emit, OutputFormat};
-use crate::render::render_audit;
+use crate::render::{regcert_status_json, render_audit};
 
 pub struct AuditArgs {
     /// "minimal", "overask", or a path to a DCQL JSON file.
@@ -45,8 +45,19 @@ pub fn run(args: AuditArgs, format: OutputFormat) -> Result<bool> {
     let report: OverAskReport =
         inspector::analyze(vct, &query, scope.as_ref(), baseline.as_ref(), &[]);
 
-    let json = serde_json::to_value(&report).unwrap_or(Value::Null);
-    let text = render_audit(&report);
+    // The certificate is decoded, never verified: say so in both outputs.
+    let mut json = serde_json::to_value(&report).unwrap_or(Value::Null);
+    if let Some(obj) = json.as_object_mut() {
+        obj.insert(
+            "registration_certificate".to_string(),
+            if scope.is_some() {
+                regcert_status_json()
+            } else {
+                Value::Null
+            },
+        );
+    }
+    let text = render_audit(&report, scope.is_some());
     emit(format, &json, &text)?;
     Ok(!report.has_over_ask())
 }

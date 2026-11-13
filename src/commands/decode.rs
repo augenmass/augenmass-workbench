@@ -8,6 +8,7 @@ use ssi::claims::sd_jwt::SdJwt;
 use url::Url;
 
 use crate::jose::{self, decode_compact};
+use crate::render::{regcert_status_json, REGCERT_NOTICE};
 
 /// A decoded artifact in both machine (JSON) and human (text) form.
 pub struct Decoded {
@@ -117,17 +118,30 @@ pub fn decode_sd_jwt(input: &str) -> Result<Decoded> {
 // --- WRPRC registration certificate ----------------------------------------
 
 /// Extract a compact WRPRC JWT from a JWT string, an entity JSON with a `.jwt`
-/// field, or an array of such entities (the registrar list response).
+/// field, or an array holding exactly one such entity (the registrar list
+/// response for one registration). An array with several entities is refused,
+/// listing their ids: each registration certificate stands for one intended
+/// use, so silently picking one (or merging them) could change a verdict.
 pub fn extract_regcert_jwt(content: &str) -> Result<String> {
     let trimmed = content.trim();
     if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
-        let jwt = if value.is_array() {
-            value
-                .get(0)
+        let jwt = match value.as_array() {
+            Some(items) if items.len() > 1 => {
+                let ids: Vec<&str> = items
+                    .iter()
+                    .map(|e| e.get("id").and_then(Value::as_str).unwrap_or("<no id>"))
+                    .collect();
+                anyhow::bail!(
+                    "the input lists {} registration certificates (ids: {}); pass one entry, for example `jq '.[0]'`",
+                    items.len(),
+                    ids.join(", ")
+                );
+            }
+            Some(items) => items
+                .first()
                 .and_then(|e| e.get("jwt"))
-                .and_then(Value::as_str)
-        } else {
-            value.get("jwt").and_then(Value::as_str)
+                .and_then(Value::as_str),
+            None => value.get("jwt").and_then(Value::as_str),
         };
         if let Some(jwt) = jwt {
             return Ok(jwt.to_string());
@@ -147,10 +161,12 @@ pub fn decode_regcert(input: &str) -> Result<Decoded> {
         "header": header,
         "scope": serde_json::to_value(&scope).unwrap_or(Value::Null),
         "claimKeys": scope.all_claim_keys(),
+        "registration_certificate": regcert_status_json(),
     });
 
     let mut text = String::new();
     text.push_str("WRPRC registration certificate (payload-only, no signature verified)\n");
+    text.push_str(&format!("{REGCERT_NOTICE}\n"));
     text.push_str(&format!(
         "  purpose: \"{}\"\n",
         scope.purpose_text().unwrap_or("not stated")
@@ -163,11 +179,16 @@ pub fn decode_regcert(input: &str) -> Result<Decoded> {
     }
     text.push_str(&format!("  credentials: {}\n", scope.credentials.len()));
     for cred in &scope.credentials {
-        text.push_str(&format!(
-            "    format {}  vct {}\n",
-            cred.format,
-            cred.vct_values.join(", ")
-        ));
+        match &cred.doctype_value {
+            Some(doctype) if cred.is_mdoc() => {
+                text.push_str(&format!("    format {}  doctype {doctype}\n", cred.format));
+            }
+            _ => text.push_str(&format!(
+                "    format {}  vct {}\n",
+                cred.format,
+                cred.vct_values.join(", ")
+            )),
+        }
         for key in cred.claim_keys() {
             text.push_str(&format!("      claim {key}\n"));
         }

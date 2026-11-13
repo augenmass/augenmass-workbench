@@ -1,0 +1,35 @@
+name: Blacksmith Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "How much to prove on Blacksmith runners"
+        required: true
+        default: "debug-build"
+        type: choice
+        options:
+          - debug-build
+          - test
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blacksmith-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: ${{ matrix.name }} / ${{ inputs.scope }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - name: linux-x64
+            runner: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v6
+      - name: Test
+        if: inputs.scope == 'test'
+        run: cargo test --workspace

@@ -1,0 +1,12 @@
+name: Case
+
+on:
+  - workflow_dispatch
+  - push
+
+jobs:
+  native:
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v6
+      - run: cargo test --workspace

@@ -68,6 +68,21 @@ pub fn pid_claim_model() -> Vec<PidClaim> {
             true,
             true,
         ),
+        // EU PID Rulebook place_of_birth and address members beyond the
+        // German model (section 3.1.4 and the private-name table); listed so
+        // they get a label and a row, not asserted mandatory.
+        claim(
+            &["place_of_birth", "region"],
+            "Place of birth (region)",
+            false,
+            true,
+        ),
+        claim(
+            &["place_of_birth", "country"],
+            "Place of birth (country)",
+            false,
+            true,
+        ),
         claim(&["nationalities"], "Nationalities", true, true),
         claim(
             &["address", "resident_country"],
@@ -88,6 +103,14 @@ pub fn pid_claim_model() -> Vec<PidClaim> {
             false,
             true,
         ),
+        claim(
+            &["address", "house_number"],
+            "Resident house number",
+            false,
+            true,
+        ),
+        claim(&["address", "region"], "Resident state", false, true),
+        claim(&["address", "formatted"], "Resident address", false, true),
         claim(&["family_name_birth"], "Birth family name", false, true),
         claim(&["given_name_birth"], "Birth given name", false, true),
         claim(&["date_of_expiry"], "Expiry date", true, false),

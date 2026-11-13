@@ -37,6 +37,9 @@ fn list_all(format: OutputFormat) -> Result<()> {
         if let Some(b) = inspector::baseline(id) {
             text.push_str(&format!("  {}  ({})\n", b.id, b.label));
             text.push_str(&format!("    minimal: {}\n", b.minimal_keys.join(", ")));
+            if !b.mdoc_elements.is_empty() {
+                text.push_str(&format!("    mdoc elements: {}\n", mdoc_elements(&b)));
+            }
         }
     }
     text.push_str("\nLegal basis cited on every over-ask finding:\n");
@@ -46,6 +49,16 @@ fn list_all(format: OutputFormat) -> Result<()> {
     text.push_str("\nNote: the baselines are curated taste judgments, not Rulebook derivations.\n");
     emit(format, &json, &text)?;
     Ok(())
+}
+
+/// The baseline's mso_mdoc elements as `namespace/element`, comma separated.
+/// The slash keeps namespace and element apart (the namespace holds dots).
+fn mdoc_elements(b: &inspector::PurposeBaseline) -> String {
+    b.mdoc_elements
+        .iter()
+        .map(|[namespace, element]| format!("{namespace}/{element}"))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn show_one(id: &str, format: OutputFormat) -> Result<()> {
@@ -58,6 +71,9 @@ fn show_one(id: &str, format: OutputFormat) -> Result<()> {
                 "  minimal claims: {}\n",
                 b.minimal_keys.join(", ")
             ));
+            if !b.mdoc_elements.is_empty() {
+                text.push_str(&format!("  mdoc elements: {}\n", mdoc_elements(&b)));
+            }
             text.push_str(&format!("  note: {}\n", b.note));
             emit(format, &json, &text)?;
             Ok(())

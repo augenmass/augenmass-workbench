@@ -2,8 +2,24 @@
 //! the registration-body check. JSON output is handled separately in `output`.
 
 use augenmass_core::inspector::{ClaimStatus, OverAskReport};
+use serde_json::{json, Value};
 
 use crate::checkbody::{CheckOutcome, Finding};
+
+/// The one line every output that read a registration certificate carries:
+/// the payload was decoded, nothing about it was verified.
+pub const REGCERT_NOTICE: &str =
+    "Registration certificate: payload decoded; signature, issuer and revocation status not verified.";
+
+/// The JSON form of [`REGCERT_NOTICE`], under `registration_certificate`.
+pub fn regcert_status_json() -> Value {
+    json!({
+        "decoded": true,
+        "signature_verified": false,
+        "issuer_verified": false,
+        "revocation_checked": false,
+    })
+}
 
 pub fn render_check(path: &str, outcome: &CheckOutcome) -> String {
     let mut out = String::new();
@@ -30,8 +46,16 @@ pub fn render_check(path: &str, outcome: &CheckOutcome) -> String {
 }
 
 pub fn render_over_ask(report: &OverAskReport) -> String {
+    render_over_ask_with(report, None)
+}
+
+/// The over-ask report with an optional notice line right under the verdict.
+fn render_over_ask_with(report: &OverAskReport, notice: Option<&str>) -> String {
     let mut out = String::new();
     out.push_str(&format!("OVER-ASK: {}\n", report.verdict_line));
+    if let Some(notice) = notice {
+        out.push_str(&format!("{notice}\n"));
+    }
     let purpose = report.purpose.as_deref().unwrap_or("not stated");
     let baseline = report.baseline_label.as_deref().unwrap_or("not evaluated");
     out.push_str(&format!("Purpose: {purpose}   Baseline: {baseline}\n\n"));
@@ -73,13 +97,19 @@ pub fn render_over_ask(report: &OverAskReport) -> String {
 }
 
 /// Render an over-ask report for the `audit` command, including the OK case.
-pub fn render_audit(report: &OverAskReport) -> String {
+/// With `cert_decoded`, the registration-certificate notice follows the
+/// verdict line on either path.
+pub fn render_audit(report: &OverAskReport, cert_decoded: bool) -> String {
+    let notice = cert_decoded.then_some(REGCERT_NOTICE);
     if report.has_over_ask() {
-        return render_over_ask(report);
+        return render_over_ask_with(report, notice);
     }
 
     let mut out = String::new();
     out.push_str(&format!("OK: {}\n", report.verdict_line));
+    if let Some(notice) = notice {
+        out.push_str(&format!("{notice}\n"));
+    }
     let purpose = report.purpose.as_deref().unwrap_or("not stated");
     let baseline = report.baseline_label.as_deref().unwrap_or("not evaluated");
     out.push_str(&format!("Purpose: {purpose}   Baseline: {baseline}\n\n"));

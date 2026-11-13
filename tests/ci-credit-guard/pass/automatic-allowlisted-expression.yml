@@ -1,0 +1,36 @@
+name: Case
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: 'check: ubuntu-latest'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # pinned
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Block scalar text is not structure
+        run: |
+          echo "pull_request: uses: runs-on: macos-latest"
+          echo 'permissions: write-all'
+      - run: >-
+          cargo test
+          --workspace --locked

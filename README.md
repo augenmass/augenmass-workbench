@@ -17,7 +17,6 @@ The current branch is the `v0.3.0` EUDI On presentation release, not a README-on
 - A platform-aware Claude Code/Codex plugin bundle with native launcher targets for macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64.
 - Published `v0.2.0` release archives with checksums and provenance manifests for the main desktop targets.
 - Current `v0.3.0` line for live wallet proof, hosted relay, evidence replay, and the presentation-ready plugin bundle across macOS, Linux, and Windows targets.
-- A stapled Apple Silicon macOS `.pkg`, signed by Developer ID Installer and accepted by Gatekeeper as `source=Notarized Developer ID`.
 - A deployed cached-sandbox backend at `https://cache.augenmass.tech/api` for stable public sandbox reads and demo prewarming.
 - A deployed wallet-only relay at `https://wallet.augenmass.tech`, proven with `just hosted-relay-proof`, so a phone wallet can reach `augenmass serve` without exposing trace, inspect, evidence, or unsafe debug artifacts publicly. The hosted relay is protected; operators configure the token through `AUGENMASS_RELAY_TOKEN`.
 
@@ -65,11 +64,7 @@ When the plugin was installed from a marketplace without the full repository che
 
 The plugin includes a small launcher plus native `v0.3.0` target binaries for macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64. The skill resolves `AUGENMASS_BIN` first; otherwise it uses the bundled launcher and picks the matching target binary. Set `AUGENMASS_BIN` when you want to override the bundled binary, use an unsupported target, or point the skill at a source-built binary.
 
-For the polished macOS Apple Silicon install path, use the stapled `.pkg`
-produced by `just macos-pkg-notarize`; the current local proof validates the
-package signature, stapling, and Gatekeeper install assessment. ZIP archives can
-be accepted by Apple's notary service without being stapled, so treat the `.pkg`
-as the offline-verifiable macOS installer. Windows binaries are not code-signed
+Windows binaries are not code-signed
 yet; verify the release checksum first, then approve the binary manually through
 the OS security UI, or build from source with `cargo build --release --locked`
 and set `AUGENMASS_BIN`.
@@ -311,7 +306,7 @@ HOSTED PROOFS
 
 Over-ask is the central concern: a relying party must not request more personal data than its stated purpose needs. The same engine that audits the EUDI registry for over-asking helps a developer avoid over-asking when they register. Every over-ask finding cites the basis it rests on:
 
-1. eIDAS Regulation (EU) 2024/1183, Art. 5b(3): "Relying parties shall not request users to provide data other than that indicated for their intended use."
+1. Regulation (EU) No 910/2014, Article 5b(3): "Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c)."
 2. GDPR (EU) 2016/679, Art. 5(1)(c): data minimisation, personal data must be "adequate, relevant and limited to what is necessary".
 3. EUDI ARF, registration certificate, RPRC_21: the wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
 

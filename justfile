@@ -113,9 +113,13 @@ claude-plugin-smoke:
 codex-plugin-smoke:
     ./scripts/codex-plugin-smoke.sh
 
-# Verify GitHub Actions cannot spend runner credits on normal branch pushes.
+# Verify branch pushes and pull requests start only the strict check.yml workflow and no paid-runner workflow.
 ci-credit-guard:
     ./scripts/ci-credit-guard.sh
+
+# Run the committed pass and fail regression cases of the CI credit guard.
+ci-credit-guard-cases:
+    ./scripts/ci-credit-guard-cases.sh
 
 # Verify a fresh source install into an isolated local root.
 install-smoke:

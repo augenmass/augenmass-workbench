@@ -1,0 +1,37 @@
+{
+  "purpose": [
+    {
+      "lang": "en",
+      "content": "Example Rowing Club: confirm club membership at the boathouse"
+    }
+  ],
+  "privacy_policy": "https://club.example.org/privacy",
+  "support_uri": "support@club.example.org",
+  "credentials": [
+    {
+      "format": "dc+sd-jwt",
+      "meta": {
+        "vct_values": [
+          "urn:example:membership:1"
+        ]
+      },
+      "claim": [
+        { "path": ["member_name"] },
+        { "path": ["memberships", null, "club"] },
+        { "path": ["badges", 0] },
+        { "path": ["home_address"] },
+        { "path": ["nicknames", null] }
+      ]
+    },
+    {
+      "format": "mso_mdoc",
+      "meta": {
+        "doctype_value": "org.example.membership.1"
+      },
+      "claim": [
+        { "path": ["org.example.ns1", "member_name"] },
+        { "path": ["org.example.ns1", "member_since"] }
+      ]
+    }
+  ]
+}

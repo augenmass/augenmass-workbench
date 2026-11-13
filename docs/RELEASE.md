@@ -21,11 +21,37 @@ The local macOS machine is not the proof for Linux or Windows. Native GitHub
 Actions jobs are the proof because this crate pulls in C-backed crypto and SQLite
 dependencies.
 
+## Check workflow (push and pull request)
+
+`.github/workflows/check.yml` is the only workflow that runs automatically: on
+pushes to `main`, on pull requests against `main`, and through
+`workflow_dispatch`. It runs one job on GitHub-hosted `ubuntu-latest`, which is
+free for a public repository, and it never runs on Blacksmith or macOS runners.
+It checks out the code with `actions/checkout` pinned to a full commit SHA and
+`persist-credentials: false`, installs the toolchain from `rust-toolchain.toml`,
+and runs:
+
+```sh
+./scripts/ci-credit-guard.sh
+./scripts/ci-credit-guard-cases.sh
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+cargo install cargo-audit --locked --version 0.23.0
+cargo audit --deny unsound --deny yanked \
+  --ignore RUSTSEC-2026-0459 --ignore RUSTSEC-2026-0387 \
+  --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2023-0126 \
+  --ignore RUSTSEC-2026-0255
+```
+
+The accepted advisories and their removal conditions are listed under
+"Dependency audit" below and next to each `--ignore` in the workflow.
+
 ## CI gate
 
 `.github/workflows/ci.yml` is manual-only through `workflow_dispatch`, so normal
-pushes do not spend private-repo runner credits. When you explicitly run it, it
-uses:
+pushes do not spend runner credits on the paid runners it uses. When you
+explicitly run it, it uses:
 
 - `blacksmith-2vcpu-ubuntu-2404` for Linux x64
 - `blacksmith-2vcpu-windows-2025` for Windows x64
@@ -61,16 +87,95 @@ Apple Silicon, so this gate proves macOS arm64 behavior; keep the Intel macOS
 release target in `.github/workflows/release.yml` until a separate Intel proof is
 chosen.
 
-Run the local guard before changing or pushing workflow files:
+Run the local guard and its regression cases before changing or pushing
+workflow files:
 
 ```sh
 just ci-credit-guard
+just ci-credit-guard-cases
 ```
 
-It fails if a workflow can run on normal branch pushes or pull-request activity.
-The only allowed push trigger is a tag-only release trigger, currently `v*`, so a
-release can still be cut deliberately without making every branch push spend
-runner credits.
+The guard matches lines; it does not parse YAML or GitHub expressions. Its
+rules are written so that a workflow it cannot classify fails (fail closed).
+
+For every workflow, before classification:
+
+- the file holds only printable ASCII, tabs, and LF line breaks; a carriage
+  return, NEL, or Unicode line separator is a line break to YAML but not to
+  the guard, so it fails;
+- the first non-comment line is at column 0: under an indented root mapping a
+  column-0 line can be text inside a multi-line scalar, so that layout fails;
+- every non-comment line at column 0 is a plain top-level key (`name`,
+  `run-name`, `on`, `permissions`, `env`, `defaults`, `concurrency`, `jobs`),
+  and `on:` occurs exactly once, as a block;
+- inside `on:` only the plain block keys `push:`, `pull_request:`, and
+  `workflow_dispatch:` are allowed, each once; `push` holds a `branches:` or
+  `tags:` block, `pull_request` a `branches:` block, and those hold `- name`
+  items. Quoted, escaped, spaced, or explicit (`?`) keys, flow values such as
+  `branches: [main]` or `pull_request: {}`, anchors, aliases, event lists,
+  `branches-ignore`, `pull_request_target`, `schedule`, and `workflow_run` fail;
+- `workflow_dispatch` is present, and a `push` trigger carries a filter.
+
+A workflow with `pull_request` or `push.branches` is automatic (today only
+`check.yml`) and must also meet a strict profile:
+
+- an expression start marker `${{` appears only on a line that equals,
+  character for character, an entry of the allow-list in
+  `scripts/ci-credit-guard.sh` (today one line, the `concurrency.group` of
+  `check.yml`), on any line, comments and block scalar contents included;
+- no `if:` key (it is an implicit expression), no backslash on any line (YAML
+  escapes could spell an expression or a key), and no reference to `secrets`
+  or `GITHUB_TOKEN` in any letter case;
+- plain block YAML: outside block scalar contents every line is `key:`,
+  `key: value`, or a `- ` item, with a plain key and no space before the
+  colon; quoted, explicit, and merge keys, flow mappings or sequences,
+  anchors, aliases, tags, multi-line quoted scalars, block scalar indentation
+  indicators, and multiple documents fail instead of being parsed;
+- no key starting with `GITHUB_`, `RUNNER_`, `ACTIONS_`, or `INPUT_`, so no
+  environment override of runner settings or action inputs;
+- every job runs on the literal `ubuntu-latest` and has `timeout-minutes`;
+- permissions are declared once, at the top level, and grant only `read` or
+  `none`; job-level permissions and inline values such as `write-all` fail;
+- the only action is `actions/checkout` pinned to a full commit SHA; reusable
+  workflows and other actions fail. Each checkout step sets
+  `persist-credentials: false` in its own `with:` block, and that block holds
+  no other input than `fetch-depth` (no `repository`, `ref`, `token`,
+  `ssh-key`, or `github-server-url`).
+
+The guard checks workflow files only. It makes no claim about what a `run`
+step executes at run time (repository scripts, build scripts, writes to
+`GITHUB_ENV` or `GITHUB_PATH`); for that code the bound is the read-only token
+and the absence of secrets. A future automatic workflow that needs another
+expression must add its exact line to the allow-list on purpose.
+
+Every other workflow stays manual or tag-only: `ci.yml` and
+`blacksmith-smoke.yml` run only through `workflow_dispatch`, and the only push
+trigger they or `release.yml` may carry is a tag-only release trigger, currently
+`v*`, so a release can still be cut deliberately. `just ci-credit-guard-cases`
+(`./scripts/ci-credit-guard-cases.sh`) runs the committed regression cases
+under `tests/ci-credit-guard/`: 71 cases, allowed workflows under `pass/` and
+one rejected form per file under `fail/`.
+
+## Dependency audit
+
+`check.yml` runs `cargo audit --deny unsound --deny yanked`, so a vulnerability,
+an unsound crate, or a yanked crate fails the run unless its advisory is
+accepted below. Unmaintained warnings are reported but do not fail the run.
+
+Accepted advisories (measured with `cargo audit` 0.23.0 on 2026-11-13, after
+the lockfile refresh). Each needs a major-version upgrade, which a lockfile
+refresh cannot make. Remove the `--ignore` in the same change as the upgrade.
+
+| Advisory | Crate | Kind | Path into this repository | Removal condition |
+| --- | --- | --- | --- | --- |
+| RUSTSEC-2026-0459 | libsqlite3-sys 0.28.0 | vulnerability (SQLite CVE) | rusqlite 0.31 (clone and cache stores) | rusqlite upgraded to a release on libsqlite3-sys 0.39 or newer |
+| RUSTSEC-2026-0387 | crypto-bigint 0.3.2 and 0.5.5 | vulnerability (timing) | rsa 0.6 (ssi 0.16); elliptic-curve 0.13 (p256, the josekit fork) | ssi, p256, and josekit moved to crypto-bigint 0.7.6 or newer |
+| RUSTSEC-2023-0071 | rsa 0.6.1 | vulnerability (Marvin attack) | ssi-jwk 0.4 (ssi 0.16) | ssi upgraded off rsa 0.6 |
+| RUSTSEC-2023-0126 | im 15.1.0 | unsound | linked-data, json-ld (ssi 0.16) | ssi upgraded off im 15 |
+| RUSTSEC-2026-0255 | sized-chunks 0.6.5 | unsound | im 15 (ssi 0.16) | ssi upgraded off im 15 |
+
+Unmaintained, reported only: bitmaps, clear_on_drop, derivative, im,
+proc-macro-error, serde_cbor, sized-chunks, smallstr.
 
 ## Release archives
 
@@ -85,7 +190,8 @@ The release workflow uses Blacksmith runners for Linux x64, Windows x64, macOS
 Apple Silicon, and the publish job. The remaining Intel Mac artifact uses
 GitHub's `macos-15-intel` runner because Blacksmith macOS runners are Apple
 Silicon. Both the CI and release workflows remain manual/tag-only; they still do
-not run on ordinary pushes or pull-request activity.
+not run on ordinary pushes or pull-request activity. Only `check.yml` does, on
+GitHub-hosted `ubuntu-latest`.
 
 The workflow, local host smoke, and Docker Linux archive smoke all use
 `scripts/package-release-archive.sh` for the package layout.
@@ -357,7 +463,9 @@ artifact from the CLI release archives.
 `just sandbox-readiness-proof`, `just platform-smoke`, and
 `just platform-smoke-strict` are local. They do not start GitHub Actions.
 `ci-credit-guard` proves the workflow trigger invariant: normal branch pushes
-and pull-request activity cannot start GitHub Actions.
+and pull-request activity start only `check.yml`, on GitHub-hosted
+`ubuntu-latest` with read-only permissions and no secrets; no paid-runner
+workflow can start that way.
 `install-smoke` proves a fresh source install into a temporary local root.
 `claude-plugin-smoke` proves local Claude Code marketplace installation in a
 temporary `HOME`.

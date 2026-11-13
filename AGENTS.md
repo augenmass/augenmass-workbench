@@ -35,7 +35,7 @@ cargo build
 cargo test
 ```
 
-`cargo test` runs unit tests plus integration suites that drive the real binary against the committed fixtures. `cargo test --workspace` currently runs 201 tests, all passing (measured 2026-08-13): 116 unit tests under `src/` and `crates/`, 64 CLI integration tests, 15 cache integration tests, 5 demo-proof integration tests, and 1 serve integration test. There is a `just verify` convenience target that wraps the build, the test run, and smoke checks; `cargo build` and `cargo test` are the canonical path and always work.
+`cargo test` runs unit tests plus integration suites that drive the real binary against the committed fixtures. `cargo test --workspace` currently runs 285 tests, all passing (measured 2026-11-13): 178 unit tests under `src/` and `crates/`, 80 CLI integration tests, 15 cache integration tests, 6 claim-path integration tests (`tests/claim_paths.rs`, which runs the shared vectors in `fixtures/claim-paths/path-vectors.json`), 5 demo-proof integration tests, and 1 serve integration test. There is a `just verify` convenience target that wraps the build, the test run, and smoke checks; `cargo build` and `cargo test` are the canonical path and always work.
 
 For presentation and skill wording changes, run the focused proof gate too:
 
@@ -55,7 +55,8 @@ just release-zip-layout-smoke
 just docker-release-archive-smoke-linux
 ```
 
-They prove that normal branch pushes cannot start GitHub Actions, a fresh source
+They prove that normal branch pushes and pull requests start only the strict
+`ubuntu-latest` check workflow (`check.yml`) and never a paid-runner workflow, a fresh source
 install into an isolated local root, an extracted host release archive that
 carries its own docs, examples, and fixtures, and the Windows-style zip package
 layout. The Docker gate proves the Linux arm64 and amd64 release archives inside
@@ -150,7 +151,7 @@ Rules for the engine:
 
 Over-ask findings cite three sources, sourced from the engine's `LEGAL_BASIS`. Cite them verbatim; do not paraphrase or invent legal text.
 
-1. eIDAS Regulation (EU) 2024/1183, Art. 5b(3): "Relying parties shall not request users to provide data other than that indicated for their intended use."
+1. Regulation (EU) No 910/2014, Article 5b(3): "Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c)."
 2. GDPR (EU) 2016/679, Art. 5(1)(c): data minimisation ("adequate, relevant and limited to what is necessary").
 3. EUDI ARF, registration certificate, RPRC_21: the wallet verifies requested attributes are within the registration certificate and notifies the user otherwise.
 
@@ -163,6 +164,7 @@ The value of `check`, `doctor`, and `x509-hash` is catching the traps below. If 
 Registration body (caught by `check`):
 
 - `claims[].path` must be an array of segments, not a string (`["age_equal_or_over","18"]`, not `"age_equal_or_over.18"`).
+- Each segment is a string, `null`, or a non-negative integer (an OpenID4VP claims path pointer); a body the guardrail cannot read blocks (`CHECK-CLAIM-PATH`, `CHECK-CREDENTIAL-META`, `CHECK-UNREADABLE-REQUEST`) instead of skipping the over-ask check.
 - Use `credentials`, not `provided_attestations`, for requested claims.
 - `purpose` is a list of `{lang, content}`, not a bare string.
 - `privacy_policy` must be a valid URL.
