@@ -564,6 +564,530 @@ fn baselines_lists_known_ids() {
         .stdout(contains("bank_kyc"));
 }
 
+#[test]
+fn baselines_text_lists_mdoc_elements_like_the_json() {
+    let text = stdout_of(&["baselines"], 0);
+    assert!(
+        text.contains("    mdoc elements: eu.europa.ec.eudi.pid.1/place_of_birth\n"),
+        "{text}"
+    );
+    let text = stdout_of(&["baselines", "bank_kyc"], 0);
+    assert!(
+        text.contains("  mdoc elements: eu.europa.ec.eudi.pid.1/place_of_birth\n"),
+        "{text}"
+    );
+    let value: serde_json::Value =
+        serde_json::from_str(&stdout_of(&["baselines", "bank_kyc", "--json"], 0)).expect("json");
+    assert_eq!(
+        value["mdoc_elements"],
+        json!([["eu.europa.ec.eudi.pid.1", "place_of_birth"]])
+    );
+    // Baselines without mdoc elements print no such line.
+    let text = stdout_of(&["baselines", "age_gate_18"], 0);
+    assert!(!text.contains("mdoc elements"), "{text}");
+}
+
+#[test]
+fn baselines_bank_kyc_lists_gwg_claims() {
+    let out = bin()
+        .args(["baselines", "bank_kyc", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("baselines json");
+    let keys: Vec<&str> = value["minimal_keys"]
+        .as_array()
+        .expect("minimal_keys")
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "given_name",
+            "family_name",
+            "birthdate",
+            "place_of_birth.locality",
+            "place_of_birth.region",
+            "place_of_birth.country",
+            "nationalities",
+            "address.resident_street",
+            "address.house_number",
+            "address.resident_city",
+            "address.resident_postal_code",
+            "address.region",
+            "address.resident_country",
+            "address.formatted",
+        ]
+    );
+    assert_eq!(
+        value["mdoc_elements"],
+        serde_json::json!([["eu.europa.ec.eudi.pid.1", "place_of_birth"]])
+    );
+    assert!(value["note"]
+        .as_str()
+        .expect("note")
+        .contains("GwG § 11 Abs. 4 Nr. 1"));
+}
+
+/// Regulation (EU) No 910/2014, Article 5b(3), verbatim from the consolidated
+/// English text of 18.10.2024.
+const ART_5B_3: &str = "Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c).";
+
+#[test]
+fn legal_basis_quotes_article_5b_3_verbatim_in_text_and_json() {
+    let text = bin()
+        .args(["baselines"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let text = String::from_utf8(text).expect("utf8");
+    assert!(
+        text.contains(&format!(
+            "  Regulation (EU) No 910/2014, Article 5b(3)\n    {ART_5B_3}\n"
+        )),
+        "{text}"
+    );
+    assert!(!text.contains("2024/1183"));
+
+    let out = bin()
+        .args(["baselines", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let value: serde_json::Value = serde_json::from_slice(&out).expect("json");
+    assert_eq!(
+        value["legalBasis"][0],
+        serde_json::json!({
+            "source": "Regulation (EU) No 910/2014",
+            "locator": "Article 5b(3)",
+            "text": ART_5B_3,
+        })
+    );
+
+    let out = bin()
+        .args([
+            "audit",
+            "--request",
+            "overask",
+            "--purpose",
+            "age_gate_18",
+            "--json",
+        ])
+        .assert()
+        .code(1)
+        .get_output()
+        .stdout
+        .clone();
+    let report: serde_json::Value = serde_json::from_slice(&out).expect("audit json");
+    assert_eq!(report["legal_basis"][0], value["legalBasis"][0]);
+
+    bin()
+        .args(["audit", "--request", "overask", "--purpose", "age_gate_18"])
+        .assert()
+        .code(1)
+        .stdout(contains(format!(
+            "  Regulation (EU) No 910/2014, Article 5b(3)\n    {ART_5B_3}\n"
+        )));
+}
+
+/// The bank_kyc request with every GwG § 11 Abs. 4 Nr. 1 claim, as SD-JWT.
+const GWG_SD_JWT_DCQL: &str = r#"{"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["urn:eudi:pid:de:1"]},"claims":[
+{"path":["given_name"]},{"path":["family_name"]},{"path":["birthdate"]},
+{"path":["place_of_birth","locality"]},{"path":["nationalities"]},
+{"path":["address","resident_street"]},{"path":["address","resident_city"]},
+{"path":["address","resident_postal_code"]},{"path":["address","resident_country"]}]}]}"#;
+
+/// The same request with the standard SD-JWT address components of the PID
+/// Rulebook (the shape of fixtures/presentations/erica-pid-template-normal.json).
+const GWG_SD_JWT_STANDARD_ADDRESS_DCQL: &str = r#"{"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["urn:eudi:pid:de:1"]},"claims":[
+{"path":["given_name"]},{"path":["family_name"]},{"path":["birthdate"]},
+{"path":["place_of_birth","locality"]},{"path":["nationalities"]},
+{"path":["address","street_address"]},{"path":["address","locality"]},
+{"path":["address","postal_code"]},{"path":["address","country"]}]}]}"#;
+
+/// The same request in the EU PID mdoc encoding.
+const GWG_MDOC_DCQL: &str = r#"{"credentials":[{"id":"pid","format":"mso_mdoc","meta":{"doctype_value":"eu.europa.ec.eudi.pid.1"},"claims":[
+{"path":["eu.europa.ec.eudi.pid.1","given_name"]},{"path":["eu.europa.ec.eudi.pid.1","family_name"]},
+{"path":["eu.europa.ec.eudi.pid.1","birth_date"]},{"path":["eu.europa.ec.eudi.pid.1","birth_place"]},
+{"path":["eu.europa.ec.eudi.pid.1","nationality"]},{"path":["eu.europa.ec.eudi.pid.1","resident_street"]},
+{"path":["eu.europa.ec.eudi.pid.1","resident_city"]},{"path":["eu.europa.ec.eudi.pid.1","resident_postal_code"]},
+{"path":["eu.europa.ec.eudi.pid.1","resident_country"]}]}]}"#;
+
+fn audit_json(
+    request: &str,
+    purpose: &str,
+    cert: Option<&str>,
+    success: bool,
+) -> serde_json::Value {
+    let mut args = vec![
+        "audit",
+        "--request",
+        request,
+        "--purpose",
+        purpose,
+        "--json",
+    ];
+    if let Some(cert) = cert {
+        args.extend(["--cert", cert]);
+    }
+    let assert = bin().args(&args).assert();
+    let assert = if success {
+        assert.success()
+    } else {
+        assert.code(1)
+    };
+    serde_json::from_slice(&assert.get_output().stdout).expect("audit json")
+}
+
+#[test]
+fn audit_bank_kyc_gwg_complete_request_passes() {
+    for request in [
+        GWG_SD_JWT_DCQL,
+        GWG_SD_JWT_STANDARD_ADDRESS_DCQL,
+        GWG_MDOC_DCQL,
+    ] {
+        let report = audit_json(request, "bank_kyc", None, true);
+        assert_eq!(report["counts"]["requested"], 9);
+        assert_eq!(report["counts"]["minimal"], 9);
+        assert_eq!(report["counts"]["beyond_purpose"], 0);
+    }
+}
+
+#[test]
+fn audit_bank_kyc_gwg_request_beyond_purpose_elsewhere_fails() {
+    for purpose in ["age_gate_18", "event_checkin", "car_rental"] {
+        for request in [
+            GWG_SD_JWT_DCQL,
+            GWG_SD_JWT_STANDARD_ADDRESS_DCQL,
+            GWG_MDOC_DCQL,
+        ] {
+            let report = audit_json(request, purpose, None, false);
+            let flagged: Vec<&str> = report["requested"]
+                .as_array()
+                .expect("requested")
+                .iter()
+                .filter(|v| v["status"] == "BeyondPurpose")
+                .filter_map(|v| v["key"].as_str())
+                .collect();
+            assert!(
+                flagged.iter().any(|k| k.contains("nationalit")),
+                "{purpose}: {flagged:?}"
+            );
+            assert!(
+                flagged
+                    .iter()
+                    .any(|k| k.contains("birth_place") || k.contains("place_of_birth")),
+                "{purpose}: {flagged:?}"
+            );
+        }
+    }
+}
+
+/// The bank_kyc request in the current EU PID Rulebook mdoc encoding, with
+/// the structured `place_of_birth` element and the remaining address elements.
+const GWG_MDOC_RULEBOOK_DCQL: &str = r#"{"credentials":[{"id":"pid","format":"mso_mdoc","meta":{"doctype_value":"eu.europa.ec.eudi.pid.1"},"claims":[
+{"path":["eu.europa.ec.eudi.pid.1","given_name"]},{"path":["eu.europa.ec.eudi.pid.1","family_name"]},
+{"path":["eu.europa.ec.eudi.pid.1","birth_date"]},{"path":["eu.europa.ec.eudi.pid.1","place_of_birth"]},
+{"path":["eu.europa.ec.eudi.pid.1","nationality"]},{"path":["eu.europa.ec.eudi.pid.1","resident_street"]},
+{"path":["eu.europa.ec.eudi.pid.1","resident_city"]},{"path":["eu.europa.ec.eudi.pid.1","resident_postal_code"]},
+{"path":["eu.europa.ec.eudi.pid.1","resident_state"]},{"path":["eu.europa.ec.eudi.pid.1","resident_country"]},
+{"path":["eu.europa.ec.eudi.pid.1","resident_address"]}]}]}"#;
+
+/// The bank_kyc request with the SD-JWT spellings of
+/// fixtures/presentations/erica-pid-template-normal.json (flat birth place,
+/// standard address members) and a nationalities wildcard.
+const GWG_SD_JWT_FIXTURE_DCQL: &str = r#"{"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["urn:eudi:pid:de:1"]},"claims":[
+{"path":["given_name"]},{"path":["family_name"]},{"path":["birthdate"]},
+{"path":["birth_place"]},{"path":["birth_country"]},{"path":["nationalities",null]},
+{"path":["address","street_address"]},{"path":["address","house_number"]},{"path":["address","locality"]},
+{"path":["address","postal_code"]},{"path":["address","region"]},{"path":["address","country"]},
+{"path":["address","formatted"]},{"path":["place_of_birth","region"]},{"path":["place_of_birth","country"]}]}]}"#;
+
+#[test]
+fn audit_bank_kyc_rulebook_and_fixture_spellings_pass() {
+    for (request, n) in [(GWG_MDOC_RULEBOOK_DCQL, 11), (GWG_SD_JWT_FIXTURE_DCQL, 15)] {
+        let report = audit_json(request, "bank_kyc", None, true);
+        assert_eq!(report["counts"]["requested"], n);
+        assert_eq!(report["counts"]["minimal"], n);
+        assert_eq!(report["counts"]["correlatable_requested"], n);
+        assert_eq!(report["counts"]["beyond_purpose"], 0);
+    }
+}
+
+#[test]
+fn audit_bank_kyc_flags_mdoc_path_in_another_namespace() {
+    // The dotted key equals a model key, but the namespace is not the PID's.
+    let request = r#"{"credentials":[{"id":"pid","format":"mso_mdoc","meta":{"doctype_value":"eu.europa.ec.eudi.pid.1"},"claims":[{"path":["address","resident_city"]},{"path":["place_of_birth","country"]}]}]}"#;
+    let report = audit_json(request, "bank_kyc", None, false);
+    assert_eq!(report["counts"]["beyond_purpose"], 2);
+}
+
+#[test]
+fn audit_bank_kyc_with_cert_flags_unregistered_claims() {
+    // The committed certificate registers SD-JWT given_name, family_name and
+    // age_equal_or_over.18 only.
+    let cert = "fixtures/regcert/rc-by-id.json";
+    let report = audit_json(GWG_SD_JWT_DCQL, "bank_kyc", Some(cert), false);
+    assert_eq!(report["counts"]["beyond_registration"], 7);
+
+    // The mdoc given_name is a different path from the registered SD-JWT one.
+    let mdoc_given = r#"{"credentials":[{"id":"pid","format":"mso_mdoc","meta":{"doctype_value":"eu.europa.ec.eudi.pid.1"},"claims":[{"path":["eu.europa.ec.eudi.pid.1","given_name"]}]}]}"#;
+    let report = audit_json(mdoc_given, "bank_kyc", Some(cert), false);
+    assert_eq!(report["counts"]["beyond_registration"], 1);
+    assert_eq!(report["requested"][0]["status"], "BeyondRegistration");
+}
+
+// --- registration coverage and the registration-certificate notice ---------
+
+const REGCERT_NOTICE: &str =
+    "Registration certificate: payload decoded; signature, issuer and revocation status not verified.";
+const NULL_SEGMENT_CERT: &str = "fixtures/claim-paths/rc-null-segment.jwt";
+const IDENTICAL_REQUEST: &str = "fixtures/claim-paths/request-identical.json";
+
+fn not_verified_json() -> serde_json::Value {
+    json!({
+        "decoded": true,
+        "signature_verified": false,
+        "issuer_verified": false,
+        "revocation_checked": false,
+    })
+}
+
+fn stdout_of(args: &[&str], code: i32) -> String {
+    let out = bin()
+        .args(args)
+        .assert()
+        .code(code)
+        .get_output()
+        .stdout
+        .clone();
+    String::from_utf8(out).expect("utf8")
+}
+
+#[test]
+fn audit_request_identical_to_null_segment_registration_is_ok() {
+    let text = stdout_of(
+        &[
+            "audit",
+            "--request",
+            IDENTICAL_REQUEST,
+            "--purpose",
+            "bank_kyc",
+            "--cert",
+            NULL_SEGMENT_CERT,
+        ],
+        0,
+    );
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(
+        lines[0],
+        "OK: Minimal: all 3 requested claims are within purpose and registration."
+    );
+    assert_eq!(lines[1], REGCERT_NOTICE);
+    assert!(text.contains("nationalities.*"), "{text}");
+    assert!(!text.contains("[over]"), "{text}");
+
+    let report = audit_json(IDENTICAL_REQUEST, "bank_kyc", Some(NULL_SEGMENT_CERT), true);
+    assert_eq!(report["counts"]["beyond_registration"], 0);
+    assert_eq!(report["registration_certificate"], not_verified_json());
+}
+
+#[test]
+fn audit_request_for_an_unregistered_type_is_beyond_registration() {
+    let request = r#"{"credentials":[{"id":"x","format":"dc+sd-jwt","meta":{"vct_values":["urn:example:other:1"]},"claims":[{"path":["given_name"]}]}]}"#;
+    let report = audit_json(request, "bank_kyc", Some(NULL_SEGMENT_CERT), false);
+    assert_eq!(report["counts"]["beyond_registration"], 1);
+    assert_eq!(report["requested"][0]["status"], "BeyondRegistration");
+
+    // One segment with a dot is not the registered two-segment path.
+    let dotted = r#"{"credentials":[{"id":"x","format":"dc+sd-jwt","meta":{"vct_values":["urn:eudi:pid:de:1"]},"claims":[{"path":["address.locality"]}]}]}"#;
+    let report = audit_json(dotted, "bank_kyc", Some(NULL_SEGMENT_CERT), false);
+    assert_eq!(report["requested"][0]["status"], "BeyondRegistration");
+}
+
+#[test]
+fn audit_over_ask_with_cert_carries_the_notice_under_the_verdict() {
+    let cert = "fixtures/regcert/rc-by-id.json";
+    let text = stdout_of(
+        &[
+            "audit",
+            "--request",
+            GWG_SD_JWT_DCQL,
+            "--purpose",
+            "bank_kyc",
+            "--cert",
+            cert,
+        ],
+        1,
+    );
+    let lines: Vec<&str> = text.lines().collect();
+    assert!(lines[0].starts_with("OVER-ASK: "), "{text}");
+    assert_eq!(lines[1], REGCERT_NOTICE);
+    let report = audit_json(GWG_SD_JWT_DCQL, "bank_kyc", Some(cert), false);
+    assert_eq!(report["registration_certificate"], not_verified_json());
+}
+
+#[test]
+fn audit_without_cert_says_registration_not_evaluated() {
+    let text = stdout_of(
+        &[
+            "audit",
+            "--request",
+            "minimal",
+            "--purpose",
+            "event_checkin",
+        ],
+        0,
+    );
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(
+        lines[0],
+        "OK: Within the purpose-minimal baseline; registration not evaluated."
+    );
+    assert!(!text.contains("Registration certificate:"), "{text}");
+
+    let report = audit_json("minimal", "event_checkin", None, true);
+    assert_eq!(report["counts"]["registration_evaluated"], false);
+    let obj = report.as_object().expect("object");
+    assert!(obj.contains_key("registration_certificate"));
+    assert!(report["registration_certificate"].is_null());
+
+    // The over-ask path without a certificate has no notice either.
+    let text = stdout_of(
+        &[
+            "audit",
+            "--request",
+            "overask",
+            "--purpose",
+            "event_checkin",
+        ],
+        1,
+    );
+    assert!(!text.contains("Registration certificate:"), "{text}");
+}
+
+#[test]
+fn decode_and_inspect_regcert_state_that_nothing_was_verified() {
+    for args in [
+        &["decode", "regcert", "fixtures/regcert/rc-by-id.json"][..],
+        &["inspect", "fixtures/regcert/rc-by-id.json"][..],
+    ] {
+        let text = stdout_of(args, 0);
+        assert!(
+            text.lines().any(|line| line == REGCERT_NOTICE),
+            "{args:?}: {text}"
+        );
+        let mut json_args = vec!["--json"];
+        json_args.extend_from_slice(args);
+        let value: serde_json::Value =
+            serde_json::from_str(&stdout_of(&json_args, 0)).expect("json");
+        assert_eq!(
+            value["registration_certificate"],
+            not_verified_json(),
+            "{args:?}"
+        );
+    }
+}
+
+#[test]
+fn regcert_list_with_several_entries_is_refused() {
+    let entry: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string("fixtures/regcert/rc-by-id.json").unwrap())
+            .unwrap();
+    let mut other = entry.clone();
+    other["id"] = json!("second-registration");
+    let dir = test_temp_dir("augenmass-cli-regcert-list");
+    fs::create_dir_all(&dir).unwrap();
+    let two = dir.join("two.json");
+    fs::write(&two, serde_json::to_string(&json!([entry, other])).unwrap()).unwrap();
+    let one = dir.join("one.json");
+    fs::write(&one, serde_json::to_string(&json!([entry])).unwrap()).unwrap();
+
+    bin()
+        .args(["decode", "regcert", two.to_str().unwrap()])
+        .assert()
+        .failure()
+        .stderr(contains("lists 2 registration certificates"))
+        .stderr(contains("second-registration"));
+    bin()
+        .args([
+            "audit",
+            "--request",
+            "minimal",
+            "--purpose",
+            "event_checkin",
+            "--cert",
+            two.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(contains("lists 2 registration certificates"));
+    bin()
+        .args(["decode", "regcert", one.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(contains("given_name"));
+}
+
+#[test]
+fn check_and_register_block_a_path_that_is_not_a_pointer() {
+    let mut body: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string("examples/min.json").unwrap()).unwrap();
+    body["credentials"][0]["claims"] = json!([{ "path": ["birthdate", true] }]);
+    let dir = test_temp_dir("augenmass-cli-bad-pointer");
+    fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("body.json");
+    fs::write(&file, serde_json::to_string(&body).unwrap()).unwrap();
+    let file = file.to_str().unwrap();
+
+    bin()
+        .args(["check", file])
+        .assert()
+        .code(1)
+        .stdout(contains("CHECK-CLAIM-PATH"));
+    let value: serde_json::Value =
+        serde_json::from_str(&stdout_of(&["--json", "check", file], 1)).expect("json");
+    assert_eq!(value["block"], true);
+    assert_eq!(value["blockingFormatError"], true);
+
+    bin()
+        .args(["register", file, "--target", "cached-sandbox"])
+        .assert()
+        .failure()
+        .stdout(contains("CHECK-CLAIM-PATH"))
+        .stdout(contains("DRY RUN").not())
+        .stdout(contains("Writing to").not());
+}
+
+#[test]
+fn check_accepts_null_segments_within_its_own_registration() {
+    let mut body: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string("examples/min.json").unwrap()).unwrap();
+    body["credentials"][0]["claims"] = json!([
+        { "path": ["age_equal_or_over", "18"] },
+        { "path": ["nationalities", null] },
+    ]);
+    let dir = test_temp_dir("augenmass-cli-null-body");
+    fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("body.json");
+    fs::write(&file, serde_json::to_string(&body).unwrap()).unwrap();
+    // nationalities is beyond the age-gate purpose, but within the body's
+    // own registration.
+    let value: serde_json::Value =
+        serde_json::from_str(&stdout_of(&["--json", "check", file.to_str().unwrap()], 1))
+            .expect("json");
+    assert_eq!(value["report"]["counts"]["beyond_registration"], 0);
+    assert_eq!(value["report"]["counts"]["beyond_purpose"], 1);
+    assert_eq!(value["blockingFormatError"], false);
+}
+
 // --- verify presentation ---------------------------------------------------
 
 #[test]

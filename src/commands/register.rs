@@ -8,7 +8,7 @@ use serde_json::Value;
 use crate::checkbody::check_body_str;
 use crate::config::Config;
 use crate::http_target::{self, Target};
-use crate::render::render_check;
+use crate::render::{render_check, REGCERT_NOTICE};
 
 pub struct RegisterArgs {
     pub target: Target,
@@ -77,19 +77,24 @@ pub async fn list(target: Target, rp: &str) -> Result<()> {
         return Ok(());
     }
 
-    println!(
-        "{} registration(s) for RP {rp} on {}:\n",
-        items.len(),
-        target.as_str()
-    );
-
-    for item in items {
-        render_registration(item)?;
-    }
+    print!("{}", render_registration_list(target.as_str(), rp, items)?);
     Ok(())
 }
 
-fn render_registration(item: &Value) -> Result<()> {
+/// The text of a non-empty registration list. Every row is a decoded
+/// registration certificate, so the not-verified notice comes first.
+fn render_registration_list(target: &str, rp: &str, items: &[Value]) -> Result<String> {
+    let mut out = format!(
+        "{} registration(s) for RP {rp} on {target}:\n{REGCERT_NOTICE}\n\n",
+        items.len()
+    );
+    for item in items {
+        out.push_str(&render_registration(item)?);
+    }
+    Ok(out)
+}
+
+fn render_registration(item: &Value) -> Result<String> {
     let id = item
         .get("id")
         .and_then(Value::as_str)
@@ -102,7 +107,26 @@ fn render_registration(item: &Value) -> Result<()> {
         augenmass_core::regcert::decode_registration_jwt(jwt).context("decode registration jwt")?;
     let purpose = scope.purpose_text().unwrap_or("not stated");
     let claims = scope.all_claim_keys();
-    println!("- {id}  purpose: \"{purpose}\"");
-    println!("    claims: {}", claims.join(", "));
-    Ok(())
+    Ok(format!(
+        "- {id}  purpose: \"{purpose}\"\n    claims: {}\n",
+        claims.join(", ")
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registration_list_states_that_certificates_are_not_verified() {
+        let entry: Value = serde_json::from_str(
+            &std::fs::read_to_string("fixtures/regcert/rc-by-id.json").expect("fixture"),
+        )
+        .expect("json");
+        let text = render_registration_list("clone", "rp", &[entry]).expect("render");
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines[0], "1 registration(s) for RP rp on clone:");
+        assert_eq!(lines[1], REGCERT_NOTICE);
+        assert!(text.contains("claims: age_equal_or_over.18, family_name, given_name"));
+    }
 }

@@ -61,9 +61,12 @@ just ci-credit-guard
 ```
 
 `just verify` runs formatting, clippy, tests, and deterministic fixture checks.
-`just ci-credit-guard` fails if GitHub Actions can run on normal branch pushes
-or pull-request activity. This keeps the private-repo runner budget under
-explicit human control.
+`just ci-credit-guard` fails if any workflow other than one meeting the strict
+`ubuntu-latest` profile can run on branch pushes or pull-request activity. Today
+that is only `.github/workflows/check.yml`: GitHub-hosted `ubuntu-latest`,
+read-only permissions, no secrets. The paid-runner workflows (`ci.yml`,
+`blacksmith-smoke.yml`, `release.yml`) stay manual or tag-only, so their runner
+budget stays under explicit human control (see `docs/RELEASE.md`).
 
 ## Optional remote CI gate
 

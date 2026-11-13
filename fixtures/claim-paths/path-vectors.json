@@ -1,0 +1,607 @@
+{
+  "title": "Claims path pointer coverage vectors: is a requested claim within a registered claim?",
+  "version": "1",
+  "licence": "Apache-2.0",
+  "reuse": "Licensed Apache-2.0 like the Augenmass Workbench repository. Other tools may reuse, copy and adapt this vector set; please keep the licence field.",
+  "specification": {
+    "openid4vp": "OpenID for Verifiable Presentations 1.0, https://openid.net/specs/openid-4-verifiable-presentations-1_0.html",
+    "registration": "EUDI TS5 (common formats and API for relying party registration information), sections 2.4.2 Claim and 2.4.5 Credential: a registered claim path is an OpenID4VP claims path pointer"
+  },
+  "semantics": "A requested path is covered when one registered path of a matching credential selects, structurally, everything the requested path selects. Coverage is structural containment of claims path pointers: no concrete credential is evaluated, so array lengths and member existence play no role. JSON-based formats: a string selects an object member, a non-negative integer one array element, null every element of an array; a registered path covers an equal path, a path where the registered path has null and the requested path an integer at the same position, and every descendant of the paths it covers. mso_mdoc: a path is [namespace, data element identifier], exactly two strings, and is covered only by an equal registered path; a path of another shape is invalid on either side and covers nothing. Paths are compared segment by segment and never as joined strings; a string segment never equals an integer segment. Credentials are matched by format and type (vct_values for SD-JWT VC, doctype_value for mso_mdoc) before any path is compared, and a path is never covered by a credential of another format or type.",
+  "results": {
+    "covered": "the requested path (or, with path null, the requested credential) is within the registration",
+    "not_covered": "the requested path or credential is outside the registration",
+    "invalid": "the requested path is not a valid claims path pointer: not a non-empty array of strings, nulls and non-negative integers, or, for mso_mdoc, not exactly two strings (section 7.2.1: the wallet aborts processing with an error). An invalid path is never covered, even by an equal registered path; a tool that does not reject it must report it as not_covered"
+  },
+  "pointer_defaults": {
+    "description": "Pointer cases assume one registered credential and one requested credential of the case format with these meta values, so the credential always matches.",
+    "meta": {
+      "dc+sd-jwt": { "vct_values": ["urn:example:membership:1"] },
+      "mso_mdoc": { "doctype_value": "org.example.membership.1" }
+    }
+  },
+  "pointer_cases": [
+    {
+      "id": "P01-equal-member",
+      "format": "dc+sd-jwt",
+      "registered": [["member_name"]],
+      "requested": ["member_name"],
+      "expected": "covered",
+      "reason": "An equal pointer selects the same claim.",
+      "section": "OpenID4VP 1.0 section 7.1"
+    },
+    {
+      "id": "P02-equal-null",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", null]],
+      "requested": ["memberships", null],
+      "expected": "covered",
+      "reason": "An equal pointer with a null segment selects the same set of array elements.",
+      "section": "OpenID4VP 1.0 section 7.1.1"
+    },
+    {
+      "id": "P03-equal-null-nested",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", null, "club"]],
+      "requested": ["memberships", null, "club"],
+      "expected": "covered",
+      "reason": "An equal pointer selects the same claims, null segments included.",
+      "section": "OpenID4VP 1.0 sections 7.1.1 and 7.3"
+    },
+    {
+      "id": "P04-equal-index",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", 0]],
+      "requested": ["memberships", 0],
+      "expected": "covered",
+      "reason": "An equal index selects the same array element.",
+      "section": "OpenID4VP 1.0 section 7.1"
+    },
+    {
+      "id": "P05-index-under-null",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", null]],
+      "requested": ["memberships", 2],
+      "expected": "covered",
+      "reason": "Null selects all elements of the array, so one element is within it.",
+      "section": "OpenID4VP 1.0 section 7.1"
+    },
+    {
+      "id": "P06-index-under-null-nested",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", null, "club"]],
+      "requested": ["memberships", 1, "club"],
+      "expected": "covered",
+      "reason": "The club member of one element is within the club members of all elements.",
+      "section": "OpenID4VP 1.0 sections 7.1 and 7.3"
+    },
+    {
+      "id": "P07-null-over-index",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", 0]],
+      "requested": ["memberships", null],
+      "expected": "not_covered",
+      "reason": "All elements are more than the one registered element.",
+      "section": "OpenID4VP 1.0 section 7.1"
+    },
+    {
+      "id": "P08-other-index",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", 0]],
+      "requested": ["memberships", 1],
+      "expected": "not_covered",
+      "reason": "Another index selects another array element.",
+      "section": "OpenID4VP 1.0 section 7.1"
+    },
+    {
+      "id": "P09-child-of-registered-parent",
+      "format": "dc+sd-jwt",
+      "registered": [["home_address"]],
+      "requested": ["home_address", "town"],
+      "expected": "covered",
+      "reason": "A registered object pointer selects the object with its sub-claims, so a member of it is within it.",
+      "section": "OpenID4VP 1.0 section 7.3"
+    },
+    {
+      "id": "P10-parent-of-registered-child",
+      "format": "dc+sd-jwt",
+      "registered": [["home_address", "town"]],
+      "requested": ["home_address"],
+      "expected": "not_covered",
+      "reason": "The parent object discloses its other members as well.",
+      "section": "OpenID4VP 1.0 section 7.3"
+    },
+    {
+      "id": "P11-member-of-element-under-null",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", null]],
+      "requested": ["memberships", 0, "club"],
+      "expected": "covered",
+      "reason": "A member of one element is within all elements with their sub-claims.",
+      "section": "OpenID4VP 1.0 sections 7.1 and 7.3"
+    },
+    {
+      "id": "P12-sibling",
+      "format": "dc+sd-jwt",
+      "registered": [["home_address", "town"]],
+      "requested": ["home_address", "street"],
+      "expected": "not_covered",
+      "reason": "A sibling member is a different claim.",
+      "section": "OpenID4VP 1.0 section 7.1"
+    },
+    {
+      "id": "P13-array-over-registered-elements",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", null]],
+      "requested": ["memberships"],
+      "expected": "not_covered",
+      "reason": "The requested pointer is the parent of the registered one; coverage is structural, so the array itself is not assumed equal to all its elements.",
+      "section": "OpenID4VP 1.0 sections 7.1 and 7.3"
+    },
+    {
+      "id": "P14-elements-under-registered-array",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships"]],
+      "requested": ["memberships", null],
+      "expected": "covered",
+      "reason": "All elements of a registered array are within the array.",
+      "section": "OpenID4VP 1.0 sections 7.1 and 7.3"
+    },
+    {
+      "id": "P15-string-zero-is-not-index-zero",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", "0"]],
+      "requested": ["memberships", 0],
+      "expected": "not_covered",
+      "reason": "The string \"0\" selects an object member, the integer 0 an array element.",
+      "section": "OpenID4VP 1.0 section 7.1"
+    },
+    {
+      "id": "P16-index-zero-is-not-string-zero",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", 0]],
+      "requested": ["memberships", "0"],
+      "expected": "not_covered",
+      "reason": "The integer 0 selects an array element, the string \"0\" an object member.",
+      "section": "OpenID4VP 1.0 section 7.1"
+    },
+    {
+      "id": "P17-literal-star-is-not-null",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", "*"]],
+      "requested": ["memberships", null],
+      "expected": "not_covered",
+      "reason": "The string \"*\" selects a member named *, not all array elements.",
+      "section": "OpenID4VP 1.0 section 7.1"
+    },
+    {
+      "id": "P18-null-is-not-literal-star",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", null]],
+      "requested": ["memberships", "*"],
+      "expected": "not_covered",
+      "reason": "A string segment selects an object member, which null over array elements does not cover.",
+      "section": "OpenID4VP 1.0 section 7.1"
+    },
+    {
+      "id": "P19-dotted-segment-is-not-two-segments",
+      "format": "dc+sd-jwt",
+      "registered": [["home_address", "town"]],
+      "requested": ["home_address.town"],
+      "expected": "not_covered",
+      "reason": "One segment with a dot names a top-level member, not a nested one.",
+      "section": "OpenID4VP 1.0 section 7.1"
+    },
+    {
+      "id": "P20-two-segments-are-not-dotted-segment",
+      "format": "dc+sd-jwt",
+      "registered": [["home_address.town"]],
+      "requested": ["home_address", "town"],
+      "expected": "not_covered",
+      "reason": "Segments are compared one by one, never as a joined string.",
+      "section": "OpenID4VP 1.0 section 7.1"
+    },
+    {
+      "id": "P21-null-with-unequal-suffix",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", null, "club"]],
+      "requested": ["memberships", 0, "since"],
+      "expected": "not_covered",
+      "reason": "The element position is covered, the member after it is not.",
+      "section": "OpenID4VP 1.0 section 7.1"
+    },
+    {
+      "id": "P22-empty-registered-path-covers-nothing",
+      "format": "dc+sd-jwt",
+      "registered": [[]],
+      "requested": ["member_name"],
+      "expected": "not_covered",
+      "reason": "A claims path pointer must be non-empty; an empty registered path is invalid and authorizes nothing.",
+      "section": "OpenID4VP 1.0 section 7"
+    },
+    {
+      "id": "P23-empty-registered-path-covers-no-wildcard",
+      "format": "dc+sd-jwt",
+      "registered": [[]],
+      "requested": ["memberships", null],
+      "expected": "not_covered",
+      "reason": "An empty registered path is invalid and authorizes nothing, wildcard requests included.",
+      "section": "OpenID4VP 1.0 section 7"
+    },
+    {
+      "id": "P24-invalid-registered-segment-covers-nothing",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", -1]],
+      "requested": ["memberships", 0],
+      "expected": "not_covered",
+      "reason": "A registered path with a negative integer is invalid and authorizes nothing.",
+      "section": "OpenID4VP 1.0 section 7"
+    },
+    {
+      "id": "P25-requested-boolean-segment",
+      "format": "dc+sd-jwt",
+      "registered": [["member_name"]],
+      "requested": ["member_name", true],
+      "expected": "invalid",
+      "reason": "A boolean is not a claims path pointer segment.",
+      "section": "OpenID4VP 1.0 section 7"
+    },
+    {
+      "id": "P26-requested-negative-index",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", null]],
+      "requested": ["memberships", -1],
+      "expected": "invalid",
+      "reason": "Array indices are non-negative integers.",
+      "section": "OpenID4VP 1.0 section 7"
+    },
+    {
+      "id": "P27-requested-fractional-index",
+      "format": "dc+sd-jwt",
+      "registered": [["memberships", null]],
+      "requested": ["memberships", 1.5],
+      "expected": "invalid",
+      "reason": "Array indices are integers.",
+      "section": "OpenID4VP 1.0 section 7"
+    },
+    {
+      "id": "P28-requested-empty-path",
+      "format": "dc+sd-jwt",
+      "registered": [["member_name"]],
+      "requested": [],
+      "expected": "invalid",
+      "reason": "A claims path pointer must be a non-empty array.",
+      "section": "OpenID4VP 1.0 sections 6.3 and 7"
+    },
+    {
+      "id": "M01-mdoc-equal",
+      "format": "mso_mdoc",
+      "registered": [["org.example.ns1", "member_name"]],
+      "requested": ["org.example.ns1", "member_name"],
+      "expected": "covered",
+      "reason": "Equal namespace and data element identifier select the same data element.",
+      "section": "OpenID4VP 1.0 section 7.2"
+    },
+    {
+      "id": "M02-mdoc-other-namespace",
+      "format": "mso_mdoc",
+      "registered": [["org.example.ns1", "member_name"]],
+      "requested": ["org.example.ns2", "member_name"],
+      "expected": "not_covered",
+      "reason": "The same element name in another namespace is another data element.",
+      "section": "OpenID4VP 1.0 sections 7.2 and 7.2.1"
+    },
+    {
+      "id": "M03-mdoc-dotted-namespace-split",
+      "format": "mso_mdoc",
+      "registered": [["org.example.ns1", "member_name"]],
+      "requested": ["org.example", "ns1.member_name"],
+      "expected": "not_covered",
+      "reason": "Namespace and element are compared separately, never as one joined string.",
+      "section": "OpenID4VP 1.0 section 7.2.1"
+    },
+    {
+      "id": "M04-mdoc-other-element",
+      "format": "mso_mdoc",
+      "registered": [["org.example.ns1", "member_name"]],
+      "requested": ["org.example.ns1", "member_since"],
+      "expected": "not_covered",
+      "reason": "Another data element identifier is another data element.",
+      "section": "OpenID4VP 1.0 section 7.2.1"
+    },
+    {
+      "id": "M05-mdoc-namespace-is-no-prefix",
+      "format": "mso_mdoc",
+      "registered": [["org.example.ns1"]],
+      "requested": ["org.example.ns1", "member_name"],
+      "expected": "not_covered",
+      "reason": "An mdoc pointer has exactly two components; a namespace alone selects nothing and covers nothing.",
+      "section": "OpenID4VP 1.0 section 7.2.1"
+    },
+    {
+      "id": "M06-mdoc-null-is-no-wildcard",
+      "format": "mso_mdoc",
+      "registered": [["org.example.ns1", null]],
+      "requested": ["org.example.ns1", "member_name"],
+      "expected": "not_covered",
+      "reason": "Both mdoc components are strings; null has no wildcard meaning for mdoc.",
+      "section": "OpenID4VP 1.0 sections 7.2 and 7.2.1"
+    },
+    {
+      "id": "M07-mdoc-null-element-is-invalid",
+      "format": "mso_mdoc",
+      "registered": [["org.example.ns1", "member_name"]],
+      "requested": ["org.example.ns1", null],
+      "expected": "invalid",
+      "reason": "Both mdoc components must be strings; a null component makes the wallet abort with an error.",
+      "section": "OpenID4VP 1.0 sections 7.2 and 7.2.1"
+    },
+    {
+      "id": "M08-mdoc-three-components-is-invalid",
+      "format": "mso_mdoc",
+      "registered": [["org.example.ns1", "member_name"]],
+      "requested": ["org.example.ns1", "member_name", "town"],
+      "expected": "invalid",
+      "reason": "An mdoc pointer has exactly two components; a longer path is no child of the registered element but an error.",
+      "section": "OpenID4VP 1.0 section 7.2.1"
+    },
+    {
+      "id": "M09-mdoc-equal-null-element-is-invalid",
+      "format": "mso_mdoc",
+      "registered": [["org.example.ns1", null]],
+      "requested": ["org.example.ns1", null],
+      "expected": "invalid",
+      "reason": "An equal registered path does not make an invalid mdoc pointer valid; it covers nothing.",
+      "section": "OpenID4VP 1.0 sections 7.2 and 7.2.1"
+    },
+    {
+      "id": "M10-mdoc-equal-three-components-is-invalid",
+      "format": "mso_mdoc",
+      "registered": [["org.example.ns1", "member_name", "town"]],
+      "requested": ["org.example.ns1", "member_name", "town"],
+      "expected": "invalid",
+      "reason": "An equal registered path of three components is as invalid as the request and covers nothing.",
+      "section": "OpenID4VP 1.0 section 7.2.1"
+    },
+    {
+      "id": "M11-mdoc-equal-index-element-is-invalid",
+      "format": "mso_mdoc",
+      "registered": [["org.example.ns1", 0]],
+      "requested": ["org.example.ns1", 0],
+      "expected": "invalid",
+      "reason": "An integer component is not a data element identifier, even when the registration lists the same path.",
+      "section": "OpenID4VP 1.0 sections 7.2 and 7.2.1"
+    }
+  ],
+  "credential_cases_description": "Each case lists the registered credentials and one requested DCQL credential. expected lists, in request order, every requested path that is audited with its result; a path of null stands for the requested credential itself when it carries no claims member or its claim_sets select no claim.",
+  "credential_cases": [
+    {
+      "id": "C01-same-type",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] }
+      ],
+      "request": { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] },
+      "expected": [{ "path": ["member_name"], "result": "covered" }],
+      "reason": "Same format, same type, equal path.",
+      "section": "OpenID4VP 1.0 section 6.1 and appendix B.3.5"
+    },
+    {
+      "id": "C02-other-vct",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] }
+      ],
+      "request": { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:library:1"] }, "claims": [["member_name"]] },
+      "expected": [{ "path": ["member_name"], "result": "not_covered" }],
+      "reason": "The requested type is not registered; an equal path of another credential type authorizes nothing.",
+      "section": "OpenID4VP 1.0 appendix B.3.5"
+    },
+    {
+      "id": "C03-other-format",
+      "registered": [
+        { "format": "mso_mdoc", "meta": { "doctype_value": "org.example.membership.1" }, "claims": [["org.example.ns1", "member_name"]] }
+      ],
+      "request": { "format": "dc+sd-jwt", "meta": { "vct_values": ["org.example.membership.1"] }, "claims": [["org.example.ns1", "member_name"]] },
+      "expected": [{ "path": ["org.example.ns1", "member_name"], "result": "not_covered" }],
+      "reason": "A path registered for one format does not authorize the same segments in another format.",
+      "section": "OpenID4VP 1.0 sections 6.1 and 7"
+    },
+    {
+      "id": "C04-other-doctype",
+      "registered": [
+        { "format": "mso_mdoc", "meta": { "doctype_value": "org.example.membership.1" }, "claims": [["org.example.ns1", "member_name"]] }
+      ],
+      "request": { "format": "mso_mdoc", "meta": { "doctype_value": "org.example.library.1" }, "claims": [["org.example.ns1", "member_name"]] },
+      "expected": [{ "path": ["org.example.ns1", "member_name"], "result": "not_covered" }],
+      "reason": "The requested doctype is not registered.",
+      "section": "OpenID4VP 1.0 appendix B.2.3"
+    },
+    {
+      "id": "C05-mdoc-same-doctype",
+      "registered": [
+        { "format": "mso_mdoc", "meta": { "doctype_value": "org.example.membership.1" }, "claims": [["org.example.ns1", "member_name"]] }
+      ],
+      "request": { "format": "mso_mdoc", "meta": { "doctype_value": "org.example.membership.1" }, "claims": [["org.example.ns1", "member_name"]] },
+      "expected": [{ "path": ["org.example.ns1", "member_name"], "result": "covered" }],
+      "reason": "Same doctype, equal namespace and element.",
+      "section": "OpenID4VP 1.0 section 7.2 and appendix B.2.3"
+    },
+    {
+      "id": "C06-no-borrowing-across-credentials",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] },
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:library:1"] }, "claims": [["card_number"]] }
+      ],
+      "request": { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["card_number"]] },
+      "expected": [{ "path": ["card_number"], "result": "not_covered" }],
+      "reason": "A path registered for another credential type does not authorize it for this one.",
+      "section": "OpenID4VP 1.0 section 6.1 and appendix B.3.5"
+    },
+    {
+      "id": "C07-same-type-entries-aggregate",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] },
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_since"]] }
+      ],
+      "request": { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"], ["member_since"]] },
+      "expected": [
+        { "path": ["member_name"], "result": "covered" },
+        { "path": ["member_since"], "result": "covered" }
+      ],
+      "reason": "Coverage is decided per requested path; every registered entry of the same format and type authorizes its paths.",
+      "section": "OpenID4VP 1.0 section 6.1"
+    },
+    {
+      "id": "C08-alternative-types-all-registered",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] },
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:library:1"] }, "claims": [["member_name"]] }
+      ],
+      "request": { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1", "urn:example:library:1"] }, "claims": [["member_name"]] },
+      "expected": [{ "path": ["member_name"], "result": "covered" }],
+      "reason": "The wallet may return either listed type, and the path is registered for each of them.",
+      "section": "OpenID4VP 1.0 appendix B.3.5"
+    },
+    {
+      "id": "C09-alternative-type-lacks-path",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"], ["member_since"]] },
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:library:1"] }, "claims": [["member_name"]] }
+      ],
+      "request": { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1", "urn:example:library:1"] }, "claims": [["member_since"]] },
+      "expected": [{ "path": ["member_since"], "result": "not_covered" }],
+      "reason": "The wallet may return the library type, for which member_since is not registered.",
+      "section": "OpenID4VP 1.0 appendix B.3.5"
+    },
+    {
+      "id": "C10-alternative-type-unregistered",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] }
+      ],
+      "request": { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1", "urn:example:library:1"] }, "claims": [["member_name"]] },
+      "expected": [{ "path": ["member_name"], "result": "not_covered" }],
+      "reason": "The wallet may return the library type, which is not registered.",
+      "section": "OpenID4VP 1.0 appendix B.3.5"
+    },
+    {
+      "id": "C11-request-without-type",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] }
+      ],
+      "request": { "format": "dc+sd-jwt", "meta": {}, "claims": [["member_name"]] },
+      "expected": [{ "path": ["member_name"], "result": "not_covered" }],
+      "reason": "An empty meta places no constraint on the type, so the wallet may return an unregistered type.",
+      "section": "OpenID4VP 1.0 section 6.1"
+    },
+    {
+      "id": "C12-registered-mdoc-without-doctype",
+      "registered": [
+        { "format": "mso_mdoc", "meta": {}, "claims": [["org.example.ns1", "member_name"]] }
+      ],
+      "request": { "format": "mso_mdoc", "meta": { "doctype_value": "org.example.membership.1" }, "claims": [["org.example.ns1", "member_name"]] },
+      "expected": [{ "path": ["org.example.ns1", "member_name"], "result": "not_covered" }],
+      "reason": "A registered mdoc credential without doctype_value names no type and matches no request.",
+      "section": "OpenID4VP 1.0 appendix B.2.3; EUDI TS5 section 2.4.13"
+    },
+    {
+      "id": "C13-no-claims-registered-type",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] }
+      ],
+      "request": { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] } },
+      "expected": [{ "path": null, "result": "covered" }],
+      "reason": "Without claims the verifier requests no selectively disclosable claim; the credential type itself is registered.",
+      "section": "OpenID4VP 1.0 section 6.4.1"
+    },
+    {
+      "id": "C14-no-claims-unregistered-type",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] }
+      ],
+      "request": { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:library:1"] } },
+      "expected": [{ "path": null, "result": "not_covered" }],
+      "reason": "Without claims the wallet still presents the credential and its mandatory claims, and this credential type is not registered.",
+      "section": "OpenID4VP 1.0 section 6.4.1"
+    },
+    {
+      "id": "C15-claim-sets-unused-declaration",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] }
+      ],
+      "request": {
+        "format": "dc+sd-jwt",
+        "meta": { "vct_values": ["urn:example:membership:1"] },
+        "claims": [{ "id": "a", "path": ["member_name"] }, { "id": "b", "path": ["member_since"] }],
+        "claim_sets": [["a"]]
+      },
+      "expected": [{ "path": ["member_name"], "result": "covered" }],
+      "reason": "With claim_sets the verifier requests one listed combination; a declared claim in no combination is never requested.",
+      "section": "OpenID4VP 1.0 section 6.4.1"
+    },
+    {
+      "id": "C16-claim-sets-every-alternative",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] }
+      ],
+      "request": {
+        "format": "dc+sd-jwt",
+        "meta": { "vct_values": ["urn:example:membership:1"] },
+        "claims": [{ "id": "a", "path": ["member_name"] }, { "id": "b", "path": ["member_since"] }],
+        "claim_sets": [["a"], ["b"]]
+      },
+      "expected": [
+        { "path": ["member_name"], "result": "covered" },
+        { "path": ["member_since"], "result": "not_covered" }
+      ],
+      "reason": "Any listed combination may be returned, so every claim in any combination is audited.",
+      "section": "OpenID4VP 1.0 section 6.4.1"
+    },
+    {
+      "id": "C17-claim-sets-unknown-reference",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] }
+      ],
+      "request": {
+        "format": "dc+sd-jwt",
+        "meta": { "vct_values": ["urn:example:membership:1"] },
+        "claims": [{ "id": "a", "path": ["member_name"] }, { "id": "b", "path": ["member_since"] }],
+        "claim_sets": [["a", "zzz"]]
+      },
+      "expected": [
+        { "path": ["member_name"], "result": "covered" },
+        { "path": ["member_since"], "result": "not_covered" }
+      ],
+      "reason": "A claim_sets entry names an id that no claim has; the combinations cannot be resolved, so every declared claim is audited (fail closed).",
+      "section": "OpenID4VP 1.0 sections 6.1 and 6.4.1"
+    },
+    {
+      "id": "C18-empty-claim-combination-unregistered-type",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] }
+      ],
+      "request": {
+        "format": "dc+sd-jwt",
+        "meta": { "vct_values": ["urn:example:library:1"] },
+        "claims": [{ "id": "a", "path": ["member_name"] }],
+        "claim_sets": [[]]
+      },
+      "expected": [{ "path": null, "result": "not_covered" }],
+      "reason": "An empty combination selects no claim, but the wallet still presents the credential and its mandatory claims, so it is judged like a credential without claims: this type is not registered.",
+      "section": "OpenID4VP 1.0 sections 6.1 and 6.4.1"
+    },
+    {
+      "id": "C19-empty-claim-combination-registered-type",
+      "registered": [
+        { "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:example:membership:1"] }, "claims": [["member_name"]] }
+      ],
+      "request": {
+        "format": "dc+sd-jwt",
+        "meta": { "vct_values": ["urn:example:membership:1"] },
+        "claims": [{ "id": "a", "path": ["member_name"] }],
+        "claim_sets": [[]]
+      },
+      "expected": [{ "path": null, "result": "covered" }],
+      "reason": "An empty combination selects no claim, and the credential type itself is registered.",
+      "section": "OpenID4VP 1.0 sections 6.1 and 6.4.1"
+    }
+  ]
+}

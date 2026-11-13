@@ -57,7 +57,9 @@ fn overask_guardrail_demo_is_stable_and_cites_the_basis() {
         .failure()
         .stdout(contains("OVER-ASK"))
         .stdout(contains("Suggested minimal request"))
-        .stdout(contains("eIDAS Regulation (EU) 2024/1183"))
+        .stdout(contains(
+            "  Regulation (EU) No 910/2014, Article 5b(3)\n    Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c).\n",
+        ))
         .stdout(contains("GDPR (EU) 2016/679"));
 
     bin()

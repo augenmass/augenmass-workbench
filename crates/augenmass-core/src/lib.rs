@@ -35,7 +35,8 @@ pub use error::{RejectKind, RejectReason, VerifyResult};
 pub use inspector::{analyze, ClaimStatus, OverAskReport};
 pub use jar::{verify_jar, JarOptions, VerifiedJar};
 pub use regcert::{
-    decode_registration_jwt, scope_from_payload, RegisteredCredential, RegisteredScope,
+    decode_registration_jwt, path_covers, scope_from_payload, PathSeg, RegisteredCredential,
+    RegisteredScope,
 };
 pub use status::{
     check_presentation_status, check_status_list_token, status_ref_from_claims, CredentialStatus,

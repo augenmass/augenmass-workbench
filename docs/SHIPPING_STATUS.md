@@ -52,8 +52,9 @@ configured; hosted readiness is proven only by
 
 That proves:
 
-- GitHub Actions workflows cannot start on normal branch pushes or pull-request
-  activity. CI is manual-only, and release publishing is tag-only.
+- Only `check.yml` starts on branch pushes to `main` and on pull requests, on
+  GitHub-hosted `ubuntu-latest` with read-only permissions and no secrets. The
+  paid-runner CI is manual-only, and release publishing is tag-only.
 - The bundled plugin launcher is present, executable, current, and exposes the
   advertised command surfaces through both Claude Code and Codex metadata checks.
 - `just plugin-bundle-freshness` verifies the plugin bundle manifest, version,
@@ -75,9 +76,6 @@ That proves:
   `https://sandbox.eudi-wallet.org/api`.
 - The schema endpoint fetched `113804` bytes from the public sandbox, then served
   a cache hit.
-- The public sandbox snapshot gate saw 558 registration certificates across 90
-  relying parties, with newest public entries on 2026-06-23 and the configured RP
-  still returning one registration.
 - The configured RP
   `2af138a8-59ea-4a84-aea3-666cafdb1369` returned one cached-sandbox
   registration.
@@ -603,8 +601,9 @@ binaries may require manual OS approval after checksum verification.
 - Keep the known-good phone-wallet proof local or in a private evidence store.
   The exported bundles and raw debug artifacts are sensitive and intentionally
   ignored by git.
-- Keep GitHub CI manual-only unless runner-minute spending is explicitly
-  approved.
+- Keep the paid-runner CI (`ci.yml`, `blacksmith-smoke.yml`) manual-only unless
+  runner-minute spending is explicitly approved. `check.yml` is the one
+  automatic workflow, on GitHub-hosted `ubuntu-latest` only.
 - If the public sandbox is unstable, prewarm the cache with:
 
 ```sh
@@ -634,12 +633,10 @@ Last observed snapshot from this checkout:
   `W/"1bc8c-WSRXyNo0svH/T001YeId4arFQcA"`
 - Schema vocabularies: `1001` bytes, ETag
   `W/"3e9-7cccrHF9AzPEgRK9rDobOq2RzgI"`
-- Registration certificates: `558` entries, `90` distinct relying parties,
-  `3904849` bytes, ETag `W/"3b9551-SHeTwplNjFePA2Q4hUP1jbHPXFU"`
+- Registration certificates: `3904849` bytes, ETag
+  `W/"3b9551-SHeTwplNjFePA2Q4hUP1jbHPXFU"`
 - Created-at range: `2026-01-16T11:43:41.554Z` to
   `2026-06-23T16:02:23.831Z`
 - Configured demo RP `2af138a8-59ea-4a84-aea3-666cafdb1369`: `1`
   certificate, `6412` bytes, ETag `W/"190c-xdqSnhRlnpiTOm1GTAroSgPCrAs"`,
   newest `2026-06-02T20:03:35.028Z`
-- Highest-volume relying party in the public list:
-  `8b366b67-4ab3-4613-9a70-de0b88ba938a` with `315` certificates.

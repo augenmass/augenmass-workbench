@@ -80,15 +80,27 @@ impl CheckOutcome {
 }
 
 pub fn check_body(body: &Value) -> CheckOutcome {
-    let findings = validate_body_shape(body);
+    let mut findings = validate_body_shape(body);
     let has_blocking = findings
         .iter()
         .any(|finding| finding.severity == Severity::Blocking);
 
+    // A body the guardrail cannot read blocks, never passes unexamined.
     let report = if has_blocking {
         None
     } else {
-        analyze_body(body).ok()
+        match analyze_body(body) {
+            Ok(report) => report,
+            Err(_) => {
+                findings.push(Finding {
+                    id: "CHECK-UNREADABLE-REQUEST",
+                    severity: Severity::Blocking,
+                    message: "The requested credentials could not be read as a DCQL query, so the over-ask guardrail could not run.",
+                    fix: "Give every credentials[] entry a format, a meta object, and claims[] with array paths.",
+                });
+                None
+            }
+        }
     };
 
     CheckOutcome { report, findings }
@@ -100,18 +112,22 @@ pub fn check_body_str(input: &str) -> Result<(Value, CheckOutcome)> {
     Ok((body, outcome))
 }
 
-fn analyze_body(body: &Value) -> Result<OverAskReport> {
-    let paths = dcql::collect_claim_paths(body)?;
-    let query = dcql::dcql_from_paths(&paths)?;
+/// The over-ask report for a body, judged against itself as the registration
+/// (credential by credential, typed paths) and the age-gate baseline. `None`
+/// when the body requests no credentials.
+fn analyze_body(body: &Value) -> Result<Option<OverAskReport>> {
+    let Some(query) = dcql::dcql_from_registration_body(body)? else {
+        return Ok(None);
+    };
     let registered = regcert::scope_from_payload(body).context("registration body shape")?;
     let baseline = inspector::baseline("age_gate_18");
-    Ok(inspector::analyze(
+    Ok(Some(inspector::analyze(
         PID_VCT,
         &query,
         Some(&registered),
         baseline.as_ref(),
         &[],
-    ))
+    )))
 }
 
 fn validate_body_shape(body: &Value) -> Vec<Finding> {
@@ -134,6 +150,24 @@ fn validate_body_shape(body: &Value) -> Vec<Finding> {
             severity: Severity::Blocking,
             message: "claims[].path must be an array of segments, not a string.",
             fix: "Change \"path\": \"age_equal_or_over\" to \"path\": [\"age_equal_or_over\", \"18\"].",
+        });
+    }
+
+    if invalid_claim_paths(body.get("credentials")) {
+        findings.push(Finding {
+            id: "CHECK-CLAIM-PATH",
+            severity: Severity::Blocking,
+            message: "Every credentials[] entry needs a non-empty claims[], and every claims[].path must be a non-empty array of strings, nulls and non-negative integers (OpenID4VP claims path pointer); for mso_mdoc exactly two strings, namespace and data element.",
+            fix: "Use paths such as [\"given_name\"], [\"address\", \"locality\"], or [\"nationalities\", null]; no booleans, negative or fractional numbers, or empty arrays. For mso_mdoc use [namespace, element], e.g. [\"eu.europa.ec.eudi.pid.1\", \"family_name\"].",
+        });
+    }
+
+    if invalid_credential_meta(body.get("credentials")) {
+        findings.push(Finding {
+            id: "CHECK-CREDENTIAL-META",
+            severity: Severity::Blocking,
+            message: "Every credentials[] entry needs a format and its type in meta: vct_values (a non-empty array of strings) for SD-JWT VC, doctype_value (a string) for mso_mdoc.",
+            fix: "Set \"meta\": { \"vct_values\": [\"urn:eudi:pid:de:1\"] } for dc+sd-jwt, or \"meta\": { \"doctype_value\": \"eu.europa.ec.eudi.pid.1\" } for mso_mdoc.",
         });
     }
 
@@ -199,6 +233,61 @@ fn contains_path_string(value: Option<&Value>) -> bool {
     }
 }
 
+/// True when a `credentials[]` entry has no non-empty claims array, or a claim
+/// whose path is neither a string (reported as CHECK-PATH-STRING) nor a valid
+/// claims path pointer.
+fn invalid_claim_paths(credentials: Option<&Value>) -> bool {
+    let Some(credentials) = credentials.and_then(Value::as_array) else {
+        return false;
+    };
+    credentials.iter().any(|credential| {
+        let Some(claims) = credential
+            .get("claims")
+            .or_else(|| credential.get("claim"))
+            .and_then(Value::as_array)
+            .filter(|claims| !claims.is_empty())
+        else {
+            return true;
+        };
+        let format = credential
+            .get("format")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        claims.iter().any(|claim| match claim.get("path") {
+            Some(Value::String(_)) => false,
+            Some(path) => regcert::parse_claim_path(path)
+                .is_none_or(|segs| !regcert::valid_claim_path(format, &segs)),
+            None => true,
+        })
+    })
+}
+
+/// True when a `credentials[]` entry has no string format, or its type is
+/// missing or malformed for SD-JWT VC (`vct_values`) or mso_mdoc
+/// (`doctype_value`). Other formats are not type-checked here.
+fn invalid_credential_meta(credentials: Option<&Value>) -> bool {
+    let Some(credentials) = credentials.and_then(Value::as_array) else {
+        return false;
+    };
+    credentials.iter().any(|credential| {
+        let Some(format) = credential.get("format").and_then(Value::as_str) else {
+            return true;
+        };
+        let meta = credential.get("meta");
+        match format {
+            regcert::FORMAT_MSO_MDOC => meta
+                .and_then(|m| m.get("doctype_value"))
+                .and_then(Value::as_str)
+                .is_none(),
+            "dc+sd-jwt" | "vc+sd-jwt" => meta
+                .and_then(|m| m.get("vct_values"))
+                .and_then(Value::as_array)
+                .is_none_or(|vcts| vcts.is_empty() || vcts.iter().any(|v| !v.is_string())),
+            _ => false,
+        }
+    })
+}
+
 fn malformed_purpose(value: Option<&Value>) -> bool {
     let Some(value) = value else {
         return true;
@@ -262,5 +351,135 @@ mod tests {
         let outcome = check_body(&body);
         assert!(outcome.has_over_ask());
         assert!(!outcome.has_blocking_format_error());
+    }
+
+    #[test]
+    fn non_pointer_path_blocks_instead_of_skipping_the_guardrail() {
+        for path in [
+            json!(["birthdate", true]),
+            json!([]),
+            json!(["nationalities", -1]),
+            json!(["nationalities", 0.5]),
+            json!(["a", { "b": 1 }]),
+        ] {
+            let mut body = min_body();
+            body["credentials"][0]["claims"][0]["path"] = path.clone();
+            let outcome = check_body(&body);
+            assert!(outcome.should_block(), "{path}");
+            assert!(outcome.has_blocking_format_error(), "{path}");
+            assert!(
+                outcome.findings.iter().any(|f| f.id == "CHECK-CLAIM-PATH"),
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_or_empty_claims_block() {
+        let mut body = min_body();
+        body["credentials"][0]["claims"] = json!([]);
+        assert!(check_body(&body)
+            .findings
+            .iter()
+            .any(|f| f.id == "CHECK-CLAIM-PATH"));
+        let mut body = min_body();
+        body["credentials"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("claims");
+        assert!(check_body(&body)
+            .findings
+            .iter()
+            .any(|f| f.id == "CHECK-CLAIM-PATH"));
+    }
+
+    #[test]
+    fn invalid_credential_metadata_blocks() {
+        for meta in [
+            json!({}),
+            json!({ "vct_values": [] }),
+            json!({ "vct_values": ["a", 1] }),
+        ] {
+            let mut body = min_body();
+            body["credentials"][0]["meta"] = meta.clone();
+            let outcome = check_body(&body);
+            assert!(
+                outcome
+                    .findings
+                    .iter()
+                    .any(|f| f.id == "CHECK-CREDENTIAL-META"),
+                "{meta}"
+            );
+        }
+        let mut body = min_body();
+        body["credentials"][0]["format"] = json!("mso_mdoc");
+        body["credentials"][0]["meta"] = json!({ "vct_values": ["urn:eudi:pid:de:1"] });
+        assert!(check_body(&body)
+            .findings
+            .iter()
+            .any(|f| f.id == "CHECK-CREDENTIAL-META"));
+    }
+
+    #[test]
+    fn null_and_index_segments_are_within_their_own_registration() {
+        let mut body = min_body();
+        body["credentials"][0]["claims"] = json!([
+            { "path": ["age_equal_or_over", "18"] },
+            { "path": ["nationalities", null] },
+            { "path": ["nationalities", 0] },
+        ]);
+        let outcome = check_body(&body);
+        assert!(
+            !outcome.has_blocking_format_error(),
+            "{:?}",
+            outcome.findings
+        );
+        let report = outcome.report.expect("report");
+        assert_eq!(
+            report.counts.beyond_registration, 0,
+            "{:?}",
+            report.requested
+        );
+        assert_eq!(report.counts.requested, 3);
+    }
+
+    #[test]
+    fn mdoc_body_is_judged_as_mdoc() {
+        let mut body = min_body();
+        body["credentials"][0]["format"] = json!("mso_mdoc");
+        body["credentials"][0]["meta"] = json!({ "doctype_value": "eu.europa.ec.eudi.pid.1" });
+        body["credentials"][0]["claims"] =
+            json!([{ "path": ["eu.europa.ec.eudi.pid.1", "given_name"] }]);
+        let outcome = check_body(&body);
+        let report = outcome.report.expect("report");
+        assert_eq!(report.counts.beyond_registration, 0);
+        assert_eq!(
+            report.requested[0].key,
+            "eu.europa.ec.eudi.pid.1.given_name"
+        );
+    }
+
+    #[test]
+    fn invalid_mdoc_path_blocks_even_against_itself() {
+        for path in [
+            json!(["eu.europa.ec.eudi.pid.1", null]),
+            json!(["eu.europa.ec.eudi.pid.1", "address", "locality"]),
+            json!(["eu.europa.ec.eudi.pid.1"]),
+        ] {
+            let mut body = min_body();
+            body["credentials"][0]["format"] = json!("mso_mdoc");
+            body["credentials"][0]["meta"] = json!({ "doctype_value": "eu.europa.ec.eudi.pid.1" });
+            body["credentials"][0]["claims"] = json!([{ "path": path }]);
+            let outcome = check_body(&body);
+            assert!(
+                outcome.findings.iter().any(|f| f.id == "CHECK-CLAIM-PATH"),
+                "{path}: {:?}",
+                outcome.findings
+            );
+            assert!(outcome.has_blocking_format_error(), "{path}");
+            if let Some(report) = outcome.report {
+                assert_eq!(report.counts.beyond_registration, 1, "{path}");
+            }
+        }
     }
 }

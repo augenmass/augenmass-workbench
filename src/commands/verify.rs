@@ -643,8 +643,14 @@ mod render_tests {
     #[test]
     fn numeric_date_json_renders_integral_as_integer_and_fractional_as_float() {
         assert_eq!(numeric_date_json(None), Value::Null);
-        assert_eq!(numeric_date_json(Some(1_780_434_972.0)), json!(1_780_434_972_i64));
-        assert_eq!(numeric_date_json(Some(1_780_434_972.5)), json!(1_780_434_972.5));
+        assert_eq!(
+            numeric_date_json(Some(1_780_434_972.0)),
+            json!(1_780_434_972_i64)
+        );
+        assert_eq!(
+            numeric_date_json(Some(1_780_434_972.5)),
+            json!(1_780_434_972.5)
+        );
     }
 
     #[test]
@@ -664,8 +670,7 @@ mod render_tests {
             .contains("trust anchored: yes, but the verified leaf is self-issued"));
         assert!(trust_summary(true, false)
             .contains("trust anchored: yes (the leaf chains to a supplied anchor)"));
-        assert!(trust_summary(false, true)
-            .contains("trust anchored: no; the leaf is self-issued"));
+        assert!(trust_summary(false, true).contains("trust anchored: no; the leaf is self-issued"));
         assert!(trust_summary(false, false).contains("trust anchored: no anchor supplied"));
     }
 }

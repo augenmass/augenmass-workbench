@@ -1,0 +1,32 @@
+{
+  "credentials": [
+    {
+      "id": "pid",
+      "format": "dc+sd-jwt",
+      "meta": {
+        "vct_values": [
+          "urn:eudi:pid:de:1"
+        ]
+      },
+      "claims": [
+        {
+          "path": [
+            "given_name"
+          ]
+        },
+        {
+          "path": [
+            "nationalities",
+            null
+          ]
+        },
+        {
+          "path": [
+            "address",
+            "locality"
+          ]
+        }
+      ]
+    }
+  ]
+}
