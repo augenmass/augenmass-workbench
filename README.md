@@ -20,7 +20,7 @@ The current release is `v0.5.0`. It adds a third result, NOT EVALUATED with exit
 - A deployed cached-sandbox backend at `https://cache.augenmass.tech/api` for stable public sandbox reads and demo prewarming.
 - A deployed wallet-only relay at `https://wallet.augenmass.tech`, proven with `just hosted-relay-proof`, so a phone wallet can reach `augenmass serve` without exposing trace, inspect, evidence, or unsafe debug artifacts publicly. The hosted relay is protected; operators configure the token through `AUGENMASS_RELAY_TOKEN`.
 
-If you have 0.4.1 installed, these results differ in 0.5.0. Exit code 3 is new, so a script that tests for exit code 1 only needs a case for 3. `audit --purpose <unknown id>` is a usage error with exit code 2, where 0.4.1 printed OK with exit code 0. `audit` gives NOT EVALUATED for a query that says `claim` for `claims`, where 0.4.1 says OK. `validate dcql` exits 1 for a claims query without `path`, where 0.4.1 exits 0. The line under the headline reads `Registration purpose:`, where 0.4.1 printed `Purpose:`. The plugin bundle in this repository carries the 0.4.1 binaries until it is rebuilt from the 0.5.0 release archives; `augenmass --version` shows which binary runs.
+If you have 0.4.1 installed, these results differ in 0.5.0. Exit code 3 is new, so a script that tests for exit code 1 only needs a case for 3. `audit --purpose <unknown id>` is a usage error with exit code 2, where 0.4.1 printed OK with exit code 0. `audit` gives NOT EVALUATED for a query that says `claim` for `claims`, where 0.4.1 says OK. `validate dcql` exits 1 for a claims query without `path`, where 0.4.1 exits 0. The line under the headline reads `Registration purpose:`, where 0.4.1 printed `Purpose:`. The plugin bundle in this repository carries the 0.5.0 binaries, rebuilt from the 0.5.0 release archives; `augenmass --version` shows which binary runs.
 
 The strongest demo path is still skill first, CLI underneath: ask the agent what an artifact is, have it run the Rust tool, show the over-ask finding with the legal basis, then switch to `serve --relay augenmass` for the real wallet exchange.
 
@@ -64,7 +64,7 @@ When the plugin was installed from a marketplace without the full repository che
 
 ## CLI and bundled launcher
 
-The plugin includes a small launcher plus native `v0.4.1` target binaries for macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64. The skill resolves `AUGENMASS_BIN` first; otherwise it uses the bundled launcher and picks the matching target binary. Set `AUGENMASS_BIN` when you want to override the bundled binary, use an unsupported target, or point the skill at a source-built binary.
+The plugin includes a small launcher plus native `v0.5.0` target binaries for macOS Apple Silicon, macOS Intel, Linux x64, and Windows x64. The skill resolves `AUGENMASS_BIN` first; otherwise it uses the bundled launcher and picks the matching target binary. Set `AUGENMASS_BIN` when you want to override the bundled binary, use an unsupported target, or point the skill at a source-built binary.
 
 Windows binaries are not code-signed
 yet; verify the release checksum first, then approve the binary manually through

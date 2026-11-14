@@ -10,6 +10,33 @@ imply wall-clock timing for releases.
 
 ## [Unreleased]
 
+### Changed
+
+- Plugin bundle: the four target binaries under `plugins/augenmass-workbench/bin`
+  and `bin/manifest.json` are rebuilt from the `v0.5.0` release archives with
+  `just bundle`, so the plugin carries the 0.5.0 changes. Both plugin manifests
+  (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) say version
+  0.5.0. The skill texts describe the 0.5.0 binary: the three results OK,
+  OVER-ASK and NOT EVALUATED with the exit codes 0, 1 and 3, and the rule that
+  an assistant does not report "no over-ask" on exit code 3; the usage error
+  with exit code 2 for an unknown purpose id and for `register --force`
+  without `--yes`; the line `Registration purpose:`; `--baseline FILE` with the
+  label `draft baseline, no legal review`; the warning `DCQL-MEMBER-NEAR-MISS`;
+  the blocking findings of `validate dcql` for a claims query without `path` or
+  with an empty `path`; the exit code of `doctor` (1 for a blocking finding
+  only); the `--json` members `outcome`, `counts.could_not_judge`, `baseline`
+  and `warnings`; the plain request object as an input of `inspect` and
+  `decode request`; and the exit code that stays when a reader closes the pipe.
+  The printed samples (`baselines`, the legal basis, the audit results) are
+  those of the 0.5.0 binary. `reference/commands.md` lists the `serve` options
+  `--relay`, `--relay-token`, `--relay-ttl`, `--relay-optional` and
+  `--age-only`, and says that `audit --vct` changes no verdict.
+  `reference/phone-wallet-proof.md` says how to resolve the launcher where
+  `CLAUDE_PLUGIN_ROOT` is not set. The sentences on standard input name the
+  commands whose artifact argument reads `-` and the arguments that take a file
+  path only. `README.md` and `docs/SHIPPING_STATUS.md` name the 0.5.0 plugin
+  binaries, and `docs/RELEASE.md` gains the section "v0.5.0 release proof".
+
 ## [0.5.0]
 
 This release adds a third result, NOT EVALUATED with exit code 3, to `check`,

@@ -16,9 +16,9 @@ claims as claims path pointers, segment by segment, states that a registration
 certificate is decoded and not verified, rejects a DCQL query with an empty
 `credential_sets` option, refreshed `Cargo.lock`, and runs the strict
 `check.yml` workflow on pushes and pull requests (see `CHANGELOG.md`). The
-committed plugin binaries are the `v0.4.1` ones (see `docs/RELEASE.md`, "v0.4.1
-release proof") and stay until the bundle is rebuilt from the `v0.5.0` release
-archives in a follow-up change. The German sandbox
+committed plugin binaries are the `v0.5.0` ones, rebuilt from the `v0.5.0`
+release archives (see `docs/RELEASE.md`, "v0.5.0 release proof"), and the
+plugin skill texts describe the `v0.5.0` behavior. The German sandbox
 registrar says on its landing page (read on 13 November 2026) that testing in it is possible until 19
 November 2026; see `docs/SANDBOX.md`.
 
@@ -82,7 +82,7 @@ That proves:
 - `just plugin-bundle-freshness` verifies the plugin bundle manifest, version,
   launcher, and every committed target-binary hash.
 - All four committed plugin target binaries (macOS Apple Silicon, macOS
-  Intel, Linux x64, and Windows x64) are rebuilt from the `v0.4.1` release
+  Intel, Linux x64, and Windows x64) are rebuilt from the `v0.5.0` release
   archives (they were first refreshed for `v0.3.0`) and expose evidence replay,
   `walletOverDisclosureAnalyzed`, fail-closed trust/status proof behavior, and
   append-only unsafe artifact behavior.
@@ -613,12 +613,12 @@ binaries may require manual OS approval after checksum verification.
   Run `just bundesdruckerei-preprod-material-smoke` before a demo to confirm the
   public root, signer, and BMI trustlist material are still reachable and
   parseable.
-- Full release rebuild: done for `v0.4.1`. All platform archives were rebuilt
+- Full release rebuild: done for `v0.5.0`. All platform archives were rebuilt
   by the tag release run, and every bundled target binary is taken from those
   archives (`plugins/augenmass-workbench/bin/manifest.json`, checked by
   `just plugin-bundle-freshness`).
 - PR caveat: the plugin bundle is no longer limited to the macOS proof; the
-  bundled Linux and Windows binaries come from the same `v0.4.1` release.
+  bundled Linux and Windows binaries come from the same `v0.5.0` release.
 - Keep the known-good phone-wallet proof local or in a private evidence store.
   The exported bundles and raw debug artifacts are sensitive and intentionally
   ignored by git.

@@ -13,7 +13,7 @@ All commands are shown relative to the repo root with bare `augenmass` for reada
 
 ## Part 1: registration-body gotchas (caught by `check`)
 
-`check` reads a registrar registration body and reports two kinds of finding: format errors (the registrar DTO shape) and over-ask (proportionality). It exits 1 on a blocking format error or on over-ask, 0 when the body is clean. The examples below use the committed fixtures under `examples/`.
+`check` reads a registrar registration body and reports two kinds of finding: format errors (the registrar DTO shape) and over-ask (proportionality). It exits 1 on a blocking format error or on over-ask, 3 when no judged claim over-asks but a requested claim could not be judged (NOT EVALUATED, for example a credential type the baseline does not model), and 0 when every requested claim was judged and the body is clean. The examples below use the committed fixtures under `examples/`.
 
 A clean body passes:
 
@@ -82,7 +82,8 @@ Right:
 Caught by `check`:
 
 ```
-CHECK-PROVIDED-ATTESTATIONS [blocking]: Requested claims are under provided_attestations; the registrar reads requests from credentials.
+Format findings:
+  CHECK-PROVIDED-ATTESTATIONS [blocking]: Requested claims are under provided_attestations; the registrar reads requests from credentials.
     Fix: Move the requested credential into credentials[], with format, meta, and claims[].path.
 ```
 
@@ -111,7 +112,8 @@ Right:
 Caught by `check`:
 
 ```
-CHECK-PURPOSE-SHAPE [blocking]: purpose must be a list of {lang, content} objects, not a string.
+Format findings:
+  CHECK-PURPOSE-SHAPE [blocking]: purpose must be a list of {lang, content} objects, not a string.
     Fix: Use "purpose": [{ "lang": "en", "content": "Age verification" }].
 ```
 
@@ -138,7 +140,8 @@ Right:
 Caught by `check`:
 
 ```
-CHECK-PRIVACY-POLICY-URL [blocking]: privacy_policy must be a valid URL.
+Format findings:
+  CHECK-PRIVACY-POLICY-URL [blocking]: privacy_policy must be a valid URL.
     Fix: Set privacy_policy to a URL, for example https://example.com/privacy.
 ```
 
@@ -176,7 +179,7 @@ Mistake: requesting attributes beyond what the stated purpose requires (asking f
 Why it happens: it is cheaper to request a wide set once than to scope each registration, and PID exposes many attributes. This is the central problem Augenmaß exists to prevent. The legal basis, cited verbatim by the engine:
 
 1. Regulation (EU) No 910/2014, Article 5b(3): "Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c)."
-2. GDPR (EU) 2016/679, Art. 5(1)(c): data minimisation ("adequate, relevant and limited to what is necessary").
+2. GDPR (EU) 2016/679, Art. 5(1)(c): "Personal data shall be: [...] (c) adequate, relevant and limited to what is necessary in relation to the purposes for which they are processed (‘data minimisation’);"
 3. EUDI ARF, registration certificate, RPRC_21: "After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes."
 
 Fix: request only the attributes the purpose needs. The curated baselines are the reference for "what is necessary":
@@ -186,7 +189,7 @@ Fix: request only the attributes the purpose needs. The curated baselines are th
 - `car_rental` (Car rental, over 21, named): `given_name`, `family_name`, `age_equal_or_over.21`
 - `bank_kyc` (Bank onboarding, KYC): `given_name`, `family_name`, `birthdate`, `place_of_birth.{locality,region,country}`, `nationalities`, `address.{resident_street,house_number,resident_city,resident_postal_code,region,resident_country,formatted}`, and the mdoc element `eu.europa.ec.eudi.pid.1/place_of_birth`
 
-Run `augenmass baselines` to print them with the legal basis, or `augenmass baselines age_gate_18` for one in detail.
+Run `augenmass baselines` to print them with the legal basis, or `augenmass baselines age_gate_18` for one in detail. They model the PID only (`dc+sd-jwt` and `vc+sd-jwt` with vct `urn:eudi:pid:de:1` or `urn:eudi:pid:1`, `mso_mdoc` with doctype `eu.europa.ec.eudi.pid.1`); a claim of another format or type is not evaluated, and a baseline file passed with `--baseline` can cover it.
 
 Caught by `check` (over-ask is reported alongside format findings, and over-ask alone is enough to exit 1). To lint a DCQL request rather than a registration body, use `audit`:
 
@@ -194,13 +197,13 @@ Caught by `check` (over-ask is reported alongside format findings, and over-ask 
 augenmass audit --request overask --purpose age_gate_18
 ```
 
-`audit` exits 1 on over-ask, 0 otherwise. Pass `--request minimal`, `--request overask`, or a path to a DCQL JSON file, and `--purpose` to pick the baseline.
+`audit` exits 1 on over-ask, 3 when no judged claim over-asks but something could not be judged (NOT EVALUATED; never read it as "no over-ask"), and 0 only when every requested claim was judged and is within the baseline. A `--purpose` id that `augenmass baselines` does not list is a usage error with exit 2 and no verdict. Pass `--request minimal`, `--request overask`, or a path to a DCQL JSON file, and `--purpose` to pick the baseline.
 
 ---
 
 ## Part 2: signed-request / JAR gotchas (caught by `doctor`)
 
-`doctor` reads an OpenID4VP signed request (the `oauth-authz-req+jwt` JAR, as JSON or as a compact JWT) and reports the gotchas that make a wallet refuse it. It exits 1 if there are findings. These are not the same fields as a registration body; do not run `check` here.
+`doctor` reads an OpenID4VP signed request (the `oauth-authz-req+jwt` JAR, as JSON or as a compact JWT) and reports the gotchas that make a wallet refuse it. It exits 1 if there is a blocking finding. A warning alone exits 0: for a `dcql_query` member name that resembles a defined one (for example `claim` for `claims`), `doctor` prints the finding `DCQL-MEMBER-NEAR-MISS` and the line `No blocking finding (warnings only).` instead of its `OK` line. These are not the same fields as a registration body; do not run `check` here.
 
 ### 2.1 x5c is a string, not a list
 
@@ -306,7 +309,7 @@ The sandbox wallet supports the `x509_hash` client_id scheme only. It does not s
 
 ### 3.4 mdoc 2-element claim paths vs SD-JWT nested paths
 
-Claim path shape differs by credential format. An mdoc claim path is exactly two elements, `[namespace, element]`. An SD-JWT VC path is a nested array of object keys (for example `["age_equal_or_over", "18"]` or `["address", "resident_city"]`), as deep as the claim nests. Reusing an mdoc-shaped path in an SD-JWT request (or the reverse) selects nothing. Registration bodies in this ecosystem use the SD-JWT nested form; `check` enforces the array shape (see 1.1) but the segments themselves must match the format you are requesting. The purpose verdict follows the format too: the mdoc age request `["eu.europa.ec.eudi.pid.1", "age_over_18"]` is within `age_gate_18` (`augenmass audit --request examples/age-minimal-request-mdoc.json --purpose age_gate_18` exits 0), as `["age_equal_or_over", "18"]` is for SD-JWT VC.
+Claim path shape differs by credential format. An mdoc claim path is exactly two elements, `[namespace, element]`. An SD-JWT VC path is a nested array of object keys (for example `["age_equal_or_over", "18"]` or `["address", "resident_city"]`), as deep as the claim nests. Reusing an mdoc-shaped path in an SD-JWT request (or the reverse) selects nothing. Registration bodies in this ecosystem use the SD-JWT nested form; `check` enforces the array shape (see 1.1) but the segments themselves must match the format you are requesting. The purpose verdict follows the format too: the mdoc age request `["eu.europa.ec.eudi.pid.1", "age_over_18"]` is within `age_gate_18` (`augenmass audit --request examples/age-minimal-request-mdoc.json --purpose age_gate_18` exits 0), as `["age_equal_or_over", "18"]` is for SD-JWT VC. `validate dcql` blocks a claims query without `path` (`DCQL-PATH-MISSING`) or with an empty `path` (`DCQL-PATH-EMPTY`, or `DCQL-MDOC-PATH` for `mso_mdoc`) with exit 1. A member name that resembles a defined one (`claim` for `claims`, `paths` next to `path`) is ignored by a wallet that does not know it: `validate dcql`, `inspect`, `decode request` and `doctor` print the warning `DCQL-MEMBER-NEAR-MISS`, and `audit` then gives NOT EVALUATED with exit 3, never OK, as long as the query still parses. A query that does not parse gets no verdict: with `paths` in place of the required `path`, `audit` (also with `--json`) prints an error that names the member on standard error and nothing on stdout, and exits 1, which is then an error and not OVER-ASK; `validate dcql` lists the warning next to `DCQL-PATH-MISSING` and exits 1.
 
 ### 3.5 nonce and aud binding for the KB-JWT
 
@@ -377,8 +380,11 @@ Fix: set `--trust-anchor <PEM>` for the PID issuer and `--status-signer <PEM>` f
 | `privacy_policy` not a URL | registration body | `check` | CHECK-PRIVACY-POLICY-URL (blocking) |
 | `support_uri` empty | registration body | `check` | CHECK-SUPPORT-URI-EMPTY (warning, exit 0) |
 | over-asking for attributes | registration body / DCQL | `check` / `audit` | over-ask (exit 1) |
-| `x5c` is a string | signed request / JAR | `doctor` | DOCTOR-X5C-STRING (blocking) |
-| `client_id` not x509_hash | signed request / JAR | `doctor` | DOCTOR-CLIENT-ID-X509HASH (blocking) |
+| credential format or type the baseline does not model | registration body / DCQL | `check` / `audit` | NOT EVALUATED (exit 3), not an OK |
+| DCQL member name resembles a defined one (`claim` for `claims`) | DCQL / signed request | `validate dcql`, `inspect`, `decode request`, `doctor`, `audit` | DCQL-MEMBER-NEAR-MISS (warning; `audit`: NOT EVALUATED, exit 3) |
+| mistyped `--purpose` id | DCQL | `audit` | usage error (exit 2), no verdict |
+| `x5c` is a string | signed request / JAR | `doctor` | DOCTOR-X5C-STRING (blocking, exit 1) |
+| `client_id` not x509_hash | signed request / JAR | `doctor` | DOCTOR-CLIENT-ID-X509HASH (blocking, exit 1) |
 | compute / verify the binding | leaf cert / JAR | `x509-hash` | MATCH / MISMATCH (exit 1 on mismatch) |
 | missing `Content-Type: application/json` | POST transport | checklist | not a body finding |
 | `vct` assumed to be a URL | presentation / request | `inspect`, `decode`, `verify presentation` | URN `urn:eudi:pid:de:1` is valid |

@@ -36,7 +36,13 @@ Resolve the binary. In plugin-only installs, use the bundled launcher; it picks
 the native target binary for macOS Apple Silicon, macOS Intel, Linux x64, or
 Windows x64. If the platform is unsupported or the user does not want to approve
 an unsigned bundled binary, ask them to set `AUGENMASS_BIN` to a native build or
-release archive:
+release archive. `CLAUDE_PLUGIN_ROOT` is a Claude Code variable. In Codex, or
+wherever it is not set, set `CLAUDE_PLUGIN_ROOT` yourself to the plugin
+directory, the one that holds `bin/` and `skills/` (it is `../..` seen from the
+skill's `SKILL.md`). Never set `AUGENMASS_BIN` to the bundled launcher: the
+launcher runs the program that `AUGENMASS_BIN` names, so it would call itself
+without end and print nothing. With neither variable set, the first line below
+stops with the message `set to the plugin directory`:
 
 ```sh
 AUGENMASS=${AUGENMASS_BIN:-${CLAUDE_PLUGIN_ROOT:?set to the plugin directory}/bin/augenmass}
