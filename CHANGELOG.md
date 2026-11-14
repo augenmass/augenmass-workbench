@@ -10,9 +10,15 @@ imply wall-clock timing for releases.
 
 ## [Unreleased]
 
-The changes below, except the plugin bundle entry, are on the main branch and
-not in the 0.4.1 binaries (the release archives and the binaries bundled in the
-plugin). The version number stays 0.4.1 until the next release.
+## [0.5.0]
+
+This release adds a third result, NOT EVALUATED with exit code 3, to `check`,
+`audit` and `register`; makes an unknown purpose id a usage error with exit
+code 2; states the credential types the built-in baselines model; adds
+`--baseline FILE` to `audit` and `check`; warns about a DCQL member name that
+resembles a defined one; and keeps the exit code of a command when the reader
+of its output closes it early. Several exit codes differ from 0.4.1; the
+entries under "Changed" and "Fixed" name each case.
 
 ### Changed
 
@@ -89,7 +95,10 @@ plugin). The version number stays 0.4.1 until the next release.
   type: a claim beyond the baseline under a PID type is still an over-ask; a
   claim within it is not evaluated when another accepted type is not modelled.
   Verdicts for PID requests are unchanged, including the claims each baseline
-  treats as minimal.
+  treats as minimal. To get a verdict for a request of another type, write a
+  baseline file with an entry for that type and pass it with `--baseline`
+  (see "Added" and `docs/BASELINES.md`). The option `--vct` of `audit` does
+  not do that: it changes the `vct` member of `--json` and no verdict.
 - A credential without `claims` of a format or type the baseline does not model
   gets one not evaluated row (`<id> (credential, no claims)`). Before, the
   request printed `OK: No claims requested.` and exited 0. A PID credential
@@ -170,6 +179,21 @@ plugin). The version number stays 0.4.1 until the next release.
   extension. `doctor --json` has the new member `warnings` (the array of
   `audit --json`, empty when there is no such member); `ok` is true when there
   is no blocking finding.
+- `validate dcql`: a claims query without the member `path` is the blocking
+  finding `DCQL-PATH-MISSING`, in every credential format. A `path` that is
+  an empty array is the blocking finding `DCQL-PATH-EMPTY` in every format
+  except `mso_mdoc`. Both give exit code 1 (OpenID4VP 1.0, section 6.3:
+  `path` is required and its value is a non-empty array). In 0.4.1 the first
+  was `DCQL VALID` and the second a warning, both with exit code 0, while
+  `audit` stopped on the same query with the error `parse DCQL query` and
+  exit code 1. An empty `path` in an `mso_mdoc` credential query is
+  unchanged: it is the blocking finding `DCQL-MDOC-PATH`, as in 0.4.1. A
+  claims query that says `paths` for `path` gets the warning
+  `DCQL-MEMBER-NEAR-MISS` and the finding `DCQL-PATH-MISSING`. A query whose
+  claims queries all have a non-empty `path` is judged as before.
+  `validate dcql` still does not run the typed parse of `audit`: a query with
+  an empty `claims` array is valid for `validate dcql` and an error for
+  `audit` (`docs/COMMANDS.md`, `validate dcql`).
 - Plugin bundle: the four target binaries under `plugins/augenmass-workbench/bin`
   and `bin/manifest.json` are rebuilt from the `v0.4.1` release archives with
   `just bundle`, so the plugin carries the 0.4.0 and 0.4.1 changes. Both plugin
@@ -226,7 +250,19 @@ plugin). The version number stays 0.4.1 until the next release.
   of the baseline file entry), `counts.could_not_judge` and
   `counts.acceptable_alternative` (0 under a built-in baseline). `requested[].status`
   gains the value `AcceptableAlternative` (only under a baseline file).
-  Existing members keep their names and types.
+  Existing members keep their names and types. A filter that decides from
+  `counts.beyond_purpose`, `counts.beyond_registration` or
+  `requested[].status` needs to read `outcome` (or the exit code) as well:
+  both counts are 0 for a result that was not evaluated, as they are for an
+  OK. `counts.could_not_judge` counts the requested claims that the baseline
+  or the registration could not judge. `counts.not_evaluated`, a member that
+  0.4.1 already has, counts the rows of `requested` with the status
+  `NotEvaluated`; in `audit` and `check` the two numbers are equal in this
+  version. Both count claims, not members of the query: when the result is
+  not evaluated because of a member name that resembles a defined one, the
+  member is listed in `warnings` and the counts hold only the claims that
+  were read. For `examples/age-request-ignored-member.json`, `requested` is
+  empty and every count is 0 while `outcome` is `not_evaluated`.
 - An authoring warning for a member name of a DCQL query that resembles a
   defined one, in `validate dcql`, `inspect` and `audit`. It is printed for a
   member of the query object, of a credential query, of a claims query or of
@@ -248,7 +284,8 @@ plugin). The version number stays 0.4.1 until the next release.
   names the place, the member and the defined name, and says that a wallet
   ignores a member it does not know unless it implements an extension that
   defines it. `validate dcql` lists it as the finding `DCQL-MEMBER-NEAR-MISS`
-  with severity `warning`; the query stays valid and the exit code stays 0.
+  with severity `warning`; the warning alone leaves the query valid and the
+  exit code 0.
   `inspect` prints it under `authoring warnings` and exits 0. `audit` prints
   it under `Authoring warnings:` and gives NOT EVALUATED (see "Changed"). A
   query that the typed parse rejects stays an error with exit code 1, and the
@@ -297,11 +334,16 @@ Documentation and test data only, no change in behavior:
   public source snapshot "Public release 2026-09-09". Every value is invented.
   CLI tests cover `decode regcert` and `audit --cert` on it, and a test checks
   that every readable payload file matches its certificate.
+- `docs/COMMANDS.md`, `baselines`: a known limit of the built-in baselines. The
+  mdoc age element `age_over_NN` gets the same verdict in the EU namespace
+  `eu.europa.ec.eudi.pid.1` as in the German one, although the suggested
+  minimal request names it in the German namespace only.
+- AGENTS.md names the directory `fixtures/hub-shape/`.
 
-The section and the recipe describe the behavior on main: the shown outputs
-are from this build, and where the 0.4.1 binaries differ (the label
-`Purpose:`, the note for an unknown purpose id with exit 0, no exit code 3)
-the text names the 0.4.1 form.
+The section and the recipe describe the behavior of this release: the shown
+outputs are from the 0.5.0 build, and where the 0.4.1 binaries differ (the
+label `Purpose:`, the note for an unknown purpose id with exit 0, no exit code
+3) the text names the 0.4.1 form.
 
 ### Fixed
 
@@ -346,6 +388,10 @@ the text names the 0.4.1 form.
   the binary prints it (`OVER-ASK: Over-ask vs purpose: ...`).
 - AGENTS.md: the sentence on stdin input names the commands it applies to; the
   `evidence` commands take file paths only.
+
+The plugin binaries committed under `plugins/augenmass-workbench/` are the
+0.4.1 ones at this tag and do not carry the other changes of this release; the
+plugin bundle is rebuilt from the 0.5.0 release archives in a follow-up change.
 
 ## [0.4.1]
 

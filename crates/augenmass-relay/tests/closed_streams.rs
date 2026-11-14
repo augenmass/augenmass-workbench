@@ -29,11 +29,29 @@ fn empty_dir() -> PathBuf {
     dir
 }
 
-/// The relay with an empty environment except `envs`. `closed_out` and
-/// `closed_err` say which streams have no reader; the others are piped.
+/// Clears the environment of `cmd`. On Windows the child keeps one variable,
+/// `SystemRoot` (the Windows directory): the socket library of Windows
+/// stores the paths of its provider DLLs with `%SystemRoot%` in them, and
+/// without that variable the relay could not bind its port (error 10106,
+/// "The requested service provider could not be loaded or initialized").
+/// The variable holds no configuration of the relay. On every other
+/// platform the environment is empty.
+fn clear_env(cmd: &mut Command) -> &mut Command {
+    cmd.env_clear();
+    if cfg!(windows) {
+        if let Some(root) = std::env::var_os("SystemRoot") {
+            cmd.env("SystemRoot", root);
+        }
+    }
+    cmd
+}
+
+/// The relay with an empty environment except `envs` (and what
+/// [`clear_env`] keeps on Windows). `closed_out` and `closed_err` say which
+/// streams have no reader; the others are piped.
 fn relay(args: &[&str], envs: &[(&str, String)], closed_out: bool, closed_err: bool) -> Command {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_augenmass-relay"));
-    cmd.env_clear().current_dir(empty_dir()).args(args);
+    clear_env(&mut cmd).current_dir(empty_dir()).args(args);
     for (key, value) in envs {
         cmd.env(key, value);
     }

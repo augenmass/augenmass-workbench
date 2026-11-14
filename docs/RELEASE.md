@@ -473,8 +473,8 @@ just platform-smoke
 Then tag from a clean tree:
 
 ```sh
-git tag v0.4.1
-git push origin v0.4.1
+git tag -s v0.5.0 -m "Augenmass Workbench v0.5.0"
+git push origin v0.5.0
 ```
 
 That tag push starts the release workflow and spends runner minutes. For the
@@ -489,7 +489,7 @@ working tree, and the files are written outside the repository. The last two
 commands download the assets again and check the checksum:
 
 ```sh
-tag=v0.4.1
+tag=v0.5.0
 out="$(mktemp -d)"
 gh release view "$tag" --repo augenmass/augenmass-workbench
 git show "$tag:fixtures/claim-paths/path-vectors.json" > "$out/path-vectors.json"

@@ -93,7 +93,7 @@ verify path is unit-tested via verify_vp_token against the oracle fixtures and t
 request/trace path is integration-tested on an ephemeral port (tests/serve.rs).
 
 Exit codes are CI-friendly: non-zero on the "bad" outcome (over-ask, blocking format error,
-verification reject, untrusted, revoked, x509_hash mismatch, doctor findings). On main,
+verification reject, untrusted, revoked, x509_hash mismatch, doctor findings). From version 0.5.0 on,
 `check`, `audit` and `register` also exit 3 when a requested claim could not be judged
 (NOT EVALUATED), and `audit` does so for a DCQL query with a member name that resembles a
 defined one (for example `claim` for `claims`); the full table is in `docs/COMMANDS.md`.

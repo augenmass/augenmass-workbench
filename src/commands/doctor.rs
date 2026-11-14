@@ -113,10 +113,11 @@ fn diagnose(input: &str) -> Result<Diagnosis> {
     // member `dcql_query` of the input, and the direct member `dcql_query`
     // of its `payload` when that is an object (a compact JWT is parsed into
     // a `{"header", "payload"}` pair). A member of the header is never read,
-    // and no other depth is searched. The warnings of both are reported,
-    // each once per query; when both places hold a query, the place of each
-    // warning names its query (`dcql_query.credentials[0]`,
-    // `payload.dcql_query.credentials[0]`).
+    // and no other depth is searched. A member whose value is not a JSON
+    // object (`null`, for example) holds no query and is not counted. The
+    // warnings of both are reported, each once per query; when both places
+    // hold a query, the place of each warning names its query
+    // (`dcql_query.credentials[0]`, `payload.dcql_query.credentials[0]`).
     let queries = request_queries(&value);
     let qualify = queries.len() > 1;
     let mut warnings = Vec::new();
@@ -151,16 +152,20 @@ fn parse_json_or_jwt(input: &str) -> Result<Value> {
 
 /// The queries of the request, each with the name of the member it was read
 /// from: the direct member `dcql_query` of the input, then the direct member
-/// `dcql_query` of the input's `payload` when that is an object.
+/// `dcql_query` of the input's `payload` when that is an object. A member
+/// holds a query only when its value is a JSON object: a DCQL query is an
+/// object, and `ignored_members` returns nothing for any other value, so a
+/// `"dcql_query": null` next to a query must not count as a second query.
 fn request_queries(value: &Value) -> Vec<(&'static str, &Value)> {
     let mut queries = Vec::new();
-    if let Some(query) = value.get("dcql_query") {
+    if let Some(query) = value.get("dcql_query").filter(|query| query.is_object()) {
         queries.push(("dcql_query", query));
     }
     if let Some(query) = value
         .get("payload")
         .filter(|payload| payload.is_object())
         .and_then(|payload| payload.get("dcql_query"))
+        .filter(|query| query.is_object())
     {
         queries.push(("payload.dcql_query", query));
     }
@@ -443,5 +448,41 @@ mod tests {
         assert!(diagnosis.warnings[1]
             .message
             .starts_with("payload.dcql_query: member \"credential_set\""));
+    }
+
+    /// A member `dcql_query` whose value is not a JSON object (`null`, a
+    /// string, an array, a number) holds no query. It does not count as a
+    /// second query, so the warning of the one query keeps the place
+    /// `validate dcql` gives it. An empty object is a query.
+    #[test]
+    fn a_member_that_is_not_an_object_is_not_a_query() {
+        for other in ["null", "\"x\"", "[]", "7", "true"] {
+            let top = format!(
+                r#"{{ "dcql_query": {other},
+                    "payload": {{ "client_id": "x509_hash:abc", "dcql_query": {NEAR_MISS_QUERY} }} }}"#
+            );
+            let diagnosis = diagnose(&top).expect("doctor input");
+            assert_eq!(places(&diagnosis), ["credentials[0]"], "{top}");
+            assert!(
+                diagnosis.findings[0]
+                    .message
+                    .starts_with("credentials[0]: member \"claim\""),
+                "{top}"
+            );
+
+            let payload = format!(
+                r#"{{ "client_id": "x509_hash:abc", "dcql_query": {NEAR_MISS_QUERY},
+                    "payload": {{ "dcql_query": {other} }} }}"#
+            );
+            let diagnosis = diagnose(&payload).expect("doctor input");
+            assert_eq!(places(&diagnosis), ["credentials[0]"], "{payload}");
+        }
+
+        let both = format!(
+            r#"{{ "dcql_query": {{}},
+                "payload": {{ "client_id": "x509_hash:abc", "dcql_query": {NEAR_MISS_QUERY} }} }}"#
+        );
+        let diagnosis = diagnose(&both).expect("doctor input");
+        assert_eq!(places(&diagnosis), ["payload.dcql_query.credentials[0]"]);
     }
 }

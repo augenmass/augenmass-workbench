@@ -4,7 +4,7 @@ A baseline file states, for one or more use cases, which claims a request needs 
 
 A baseline file is its author's assessment, not law and not legal advice. The tool reports what the file says; it does not check that the file is right. Every result under a baseline file names the file, the entry, its version and its status, and ends with the sentence "A baseline file is its author's assessment, not law and not legal advice."
 
-This page describes format version `augenmass-baselines/0.1`. It is not part of the released 0.4.1 binaries; it is on the main branch and listed under `[Unreleased]` in `CHANGELOG.md`.
+This page describes format version `augenmass-baselines/0.1`. It is part of version 0.5.0; version 0.4.1 has no `--baseline` option.
 
 ## Try it
 

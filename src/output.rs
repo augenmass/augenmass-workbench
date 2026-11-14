@@ -64,7 +64,7 @@ pub fn emit(format: OutputFormat, json: &Value, text: &str) -> Result<()> {
 /// replace the exit code of a verdict by 101; clippy denies them in this
 /// crate (`print_stdout`, `print_stderr` in `lib.rs` and `main.rs`).
 pub fn out(text: &str) -> Result<()> {
-    write_guarded(&mut io::stdout().lock(), &STDOUT_CLOSED, text.as_bytes())
+    write_guarded(&mut stdout_writer(), &STDOUT_CLOSED, text.as_bytes())
         .context("write standard output")
 }
 
@@ -83,7 +83,7 @@ pub fn diag(text: &str) {
     let mut line = String::with_capacity(text.len() + 1);
     line.push_str(text);
     line.push('\n');
-    let _ = write_guarded(&mut io::stderr().lock(), &STDERR_CLOSED, line.as_bytes());
+    let _ = write_guarded(&mut stderr_writer(), &STDERR_CLOSED, line.as_bytes());
 }
 
 /// [`diag`] with the arguments of `format!`; without arguments, an empty
@@ -113,7 +113,56 @@ pub struct LogWriter;
 
 impl Write for LogWriter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        log_write(&mut io::stdout().lock(), &STDOUT_CLOSED, buf)
+        log_write(&mut stdout_writer(), &STDOUT_CLOSED, buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Standard output as the writer of [`out`] and [`LogWriter`].
+#[cfg(not(test))]
+fn stdout_writer() -> impl Write {
+    io::stdout().lock()
+}
+
+/// Standard error as the writer of [`diag`].
+#[cfg(not(test))]
+fn stderr_writer() -> impl Write {
+    io::stderr().lock()
+}
+
+/// In the unit tests of this crate the two streams are written with the
+/// print macros, which the test harness captures and shows only for a test
+/// that fails. Without this, the output of every command a unit test calls
+/// appears between the lines of `cargo test`. The binary and the integration
+/// tests are never built with `cfg(test)`, so they use the functions above.
+#[cfg(test)]
+fn stdout_writer() -> impl Write {
+    Captured { stderr: false }
+}
+
+#[cfg(test)]
+fn stderr_writer() -> impl Write {
+    Captured { stderr: true }
+}
+
+#[cfg(test)]
+struct Captured {
+    stderr: bool,
+}
+
+#[cfg(test)]
+impl Write for Captured {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let text = String::from_utf8_lossy(buf);
+        if self.stderr {
+            eprint!("{text}");
+        } else {
+            print!("{text}");
+        }
+        Ok(buf.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {

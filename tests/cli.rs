@@ -1745,6 +1745,64 @@ fn doctor_reads_the_payload_query_when_the_top_level_has_none() {
     doctor_warns_exactly(&input, &[claim_for_claims_line()]);
 }
 
+/// A member `dcql_query` whose value is not a JSON object (`null`, a string,
+/// an array) holds no query, so `doctor` does not count it as a second query
+/// and does not prefix the warning of the one query with its place: the
+/// place, and the start of both messages, are the ones `validate dcql` gives.
+#[test]
+fn doctor_does_not_count_a_member_that_is_not_an_object_as_a_query() {
+    for other in [json!(null), json!("x"), json!([])] {
+        let top = json!({
+            "dcql_query": other,
+            "payload": {
+                "client_id": "x509_hash:abc",
+                "dcql_query": age_query_with_claims_under("claim"),
+            },
+        })
+        .to_string();
+        let value = doctor_warns_exactly(&top, &[claim_for_claims_line()]);
+        assert_eq!(value["warnings"][0]["place"], "credentials[0]");
+        for message in [
+            &value["warnings"][0]["message"],
+            &value["findings"][0]["message"],
+        ] {
+            let message = message.as_str().expect("message");
+            assert!(message.starts_with("credentials[0]: member"), "{message}");
+        }
+
+        let payload = json!({
+            "client_id": "x509_hash:abc",
+            "dcql_query": age_query_with_claims_under("claim"),
+            "payload": { "dcql_query": other },
+        })
+        .to_string();
+        let value = doctor_warns_exactly(&payload, &[claim_for_claims_line()]);
+        assert_eq!(value["warnings"][0]["place"], "credentials[0]");
+    }
+
+    // A warning about a member of the query object itself has the place
+    // `query`, not the name of the member the query was read from.
+    let query_level = json!({
+        "dcql_query": null,
+        "payload": { "client_id": "x509_hash:abc", "dcql_query": { "credential_set": [] } },
+    })
+    .to_string();
+    let value = json_of(&["doctor", &query_level, "--json"], 0);
+    assert_eq!(value["ok"], true);
+    assert_eq!(value["warnings"].as_array().expect("warnings").len(), 1);
+    assert_eq!(value["warnings"][0]["place"], "query");
+    for message in [
+        &value["warnings"][0]["message"],
+        &value["findings"][0]["message"],
+    ] {
+        let message = message.as_str().expect("message");
+        assert!(
+            message.starts_with("query: member \"credential_set\""),
+            "{message}"
+        );
+    }
+}
+
 /// A `dcql_query` in the header only is not the request's query: the OK
 /// lines stay.
 #[test]
@@ -2876,8 +2934,13 @@ fn demo_minimal_age_requests_pass() {
 #[test]
 fn check_integer_age_segment_is_not_minimal() {
     // examples/min.json with the integer 18, which selects an array element
-    // and does not name the member "18" of the age object.
-    let body = std::fs::read_to_string("examples/min.json").expect("min.json");
+    // and does not name the member "18" of the age object. Git on Windows
+    // can check the file out with CRLF line ends (core.autocrlf); the check
+    // of the replacement below is written with LF, so the body is read with
+    // LF line ends.
+    let body = std::fs::read_to_string("examples/min.json")
+        .expect("min.json")
+        .replace("\r\n", "\n");
     let body = body.replace("\"18\"", "18");
     assert!(
         body.contains("\"age_equal_or_over\",\n            18"),
@@ -2981,12 +3044,31 @@ fn isolated_dir() -> PathBuf {
     dir
 }
 
-/// The binary with an empty environment except `envs`, run in an isolated
-/// directory. Proxy variables point at a closed local port, so a request that
-/// a regression might send cannot leave the machine.
+/// Clears the environment of `cmd`. On Windows the child keeps one variable,
+/// `SystemRoot` (the Windows directory): the socket library of Windows
+/// stores the paths of its provider DLLs with `%SystemRoot%` in them, and
+/// without that variable a process cannot open a socket (error 10106, "The
+/// requested service provider could not be loaded or initialized"), which
+/// `serve`, `cache serve` and `list` need. The variable holds no
+/// configuration of the binary. On every other platform the environment is
+/// empty.
+fn clear_env(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    cmd.env_clear();
+    if cfg!(windows) {
+        if let Some(root) = std::env::var_os("SystemRoot") {
+            cmd.env("SystemRoot", root);
+        }
+    }
+    cmd
+}
+
+/// The binary with an empty environment except `envs` (and what
+/// [`clear_env`] keeps on Windows), run in an isolated directory. Proxy
+/// variables point at a closed local port, so a request that a regression
+/// might send cannot leave the machine.
 fn isolated_command(args: &[&str], envs: &[(&str, &str)]) -> std::process::Command {
     let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_augenmass"));
-    cmd.env_clear()
+    clear_env(&mut cmd)
         .current_dir(isolated_dir())
         .args(args)
         .env("HTTPS_PROXY", "http://127.0.0.1:9")
@@ -5739,6 +5821,11 @@ fn register_force_without_yes_is_a_usage_error() {
     }]));
     let over = fs::read_to_string("examples/over.json").expect("over.json");
     let min = fs::read_to_string("examples/min.json").expect("min.json");
+    // This usage error comes from the argument parser while it reads the
+    // command line. There it names the binary by the file name it was
+    // started under, which ends in `.exe` on Windows and has no suffix
+    // elsewhere.
+    let usage = format!("Usage: augenmass{} register", std::env::consts::EXE_SUFFIX);
     for body in [&not_evaluated, &over, &min] {
         for args in [
             vec!["register", body.as_str(), "--force"],
@@ -5748,7 +5835,7 @@ fn register_force_without_yes_is_a_usage_error() {
             assert_eq!(code, 2, "{stdout}\n{stderr}");
             assert!(stdout.is_empty(), "{stdout}");
             assert!(stderr.contains("--yes"), "{stderr}");
-            assert!(stderr.contains("Usage: augenmass register"), "{stderr}");
+            assert!(stderr.contains(&usage), "{stderr}");
         }
     }
 
@@ -6351,12 +6438,60 @@ fn closed_output_streams_never_panic_any_command() {
     let _ = fs::remove_dir_all(bundle_dir);
 }
 
+/// Exit code and standard error of `child`, whose standard error is piped.
+/// The wait has a limit: a child that is still running after `limit` is
+/// stopped, and the test fails with `what` and the standard error up to
+/// then. Without the limit a child that never leaves a write would block
+/// the test, and with it the whole test run.
+fn exit_within(
+    mut child: std::process::Child,
+    limit: std::time::Duration,
+    what: &str,
+) -> (i32, String) {
+    use std::io::Read;
+    use std::time::{Duration, Instant};
+    let mut pipe = child.stderr.take().expect("stderr");
+    let reader = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        pipe.read_to_end(&mut bytes).expect("read standard error");
+        bytes
+    });
+    let deadline = Instant::now() + limit;
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("try_wait") {
+            break Some(status);
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            break None;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    let stderr = String::from_utf8(reader.join().expect("reader of standard error")).expect("utf8");
+    let Some(status) = status else {
+        panic!("{what}: the binary was still running after {limit:?} and was stopped\n{stderr}");
+    };
+    (status.code().expect("exit code, not a signal"), stderr)
+}
+
 /// One run with a reader of standard output that stops early: it reads
 /// `take` bytes (or up to the first line break for `None`) and closes.
 /// Returns the exit code and standard error.
+///
+/// The run relies on the operating system: it must end the child's write
+/// with an error once the reader is gone. Two other results are possible in
+/// principle, and both fail the test with a message that names them. If the
+/// write fails with an error that the standard library does not report as a
+/// closed reader, the binary exits with code 1 and standard error starts
+/// with `Error: write standard output`, followed by the error of the
+/// operating system. If the write never ends, the child is stopped after one
+/// minute (see [`exit_within`]); a write that does end takes a fraction of a
+/// second.
 fn run_with_a_reader_that_stops(args: &[&str], take: Option<usize>) -> (i32, String) {
     use std::io::{BufRead, Read};
     use std::process::Stdio;
+    let limit = std::time::Duration::from_secs(60);
     let mut child = augenmass(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -6380,11 +6515,13 @@ fn run_with_a_reader_that_stops(args: &[&str], take: Option<usize>) -> (i32, Str
         }
     }
     // The reader is dropped here: the pipe has no reader from now on.
-    let out = child.wait_with_output().expect("wait");
-    (
-        out.status.code().expect("exit code, not a signal"),
-        String::from_utf8(out.stderr).expect("utf8"),
-    )
+    let what = match take {
+        None => format!("{args:?}, the reader of standard output stopped after the first line"),
+        Some(count) => {
+            format!("{args:?}, the reader of standard output stopped after {count} bytes")
+        }
+    };
+    exit_within(child, limit, &what)
 }
 
 /// A DCQL query with 3000 invented claim paths of a credential type that no
@@ -6569,6 +6706,11 @@ fn full_disk_on_stdout_is_an_error_not_a_panic() {
 /// as done, so the binary cannot see it: nothing is written, nothing is
 /// reported, and the exit code is the one the command computed, as with a
 /// closed reader. A later change of that handle shows up here.
+///
+/// Unix only, because this limit does not exist in that form on Windows:
+/// there the standard library reports a write as done only when the stream
+/// has no valid handle at all (the error ERROR_INVALID_HANDLE), and a file
+/// opened for reading is a valid handle.
 #[cfg(unix)]
 #[test]
 fn stdout_not_open_for_writing_keeps_the_exit_code() {
@@ -6670,7 +6812,7 @@ fn list_survives_a_closed_stdout() {
         let base = format!("http://127.0.0.1:{port}/api");
         let command = || {
             let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_augenmass"));
-            cmd.env_clear()
+            clear_env(&mut cmd)
                 .current_dir(isolated_dir())
                 .env("AUGENMASS_CLONE_API_BASE", &base)
                 .args(["list", "--target", "clone", "--rp", "rp-example"]);
@@ -6946,7 +7088,7 @@ fn validate_dcql_warns_on_a_near_miss_and_stays_valid() {
     }] } })
     .to_string();
     let (code, stdout, _) = run_cli(&["validate", "dcql", &paths]);
-    assert_eq!(code, 0, "{stdout}");
+    assert_eq!(code, 1, "{stdout}");
     assert!(
         stdout.contains(&near_miss_line(
             "credentials[0].claims[1]",
@@ -6956,7 +7098,80 @@ fn validate_dcql_warns_on_a_near_miss_and_stays_valid() {
         )),
         "{stdout}"
     );
-    assert!(stdout.ends_with("DCQL OK (warnings only).\n"), "{stdout}");
+    // The claims query that says `paths` has no `path`: a blocking finding,
+    // like `option` for `options` above.
+    assert!(
+        stdout.contains(
+            "  DCQL-PATH-MISSING [blocking]: credentials[0].claims[1] has no member path\n"
+        ),
+        "{stdout}"
+    );
+    assert!(stdout.ends_with("DCQL INVALID: at least one blocking error above.\n"));
+}
+
+/// `validate dcql` and `audit` agree on a claims query without the required
+/// member `path` and on an empty `path` (OpenID4VP 1.0, section 6.3):
+/// `validate dcql` lists a blocking finding and exits 1, `audit` stops with
+/// the parse error and exits 1. A query whose claims queries all have a
+/// non-empty path stays valid in both.
+#[test]
+fn validate_dcql_blocks_a_claims_query_without_a_path_like_audit() {
+    let query = |claims: serde_json::Value| {
+        json!({ "credentials": [{
+            "id": "pid", "format": "dc+sd-jwt",
+            "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+            "claims": claims,
+        }] })
+        .to_string()
+    };
+    for (claims, id, message) in [
+        (
+            json!([{ "id": "a" }]),
+            "DCQL-PATH-MISSING",
+            "credentials[0].claims[0] has no member path",
+        ),
+        (
+            json!([{ "path": ["age_equal_or_over", "18"] }, {}]),
+            "DCQL-PATH-MISSING",
+            "credentials[0].claims[1] has no member path",
+        ),
+        (
+            json!([{ "path": [] }]),
+            "DCQL-PATH-EMPTY",
+            "credentials[0].claims[0].path is an empty array",
+        ),
+    ] {
+        let request = query(claims);
+        let (code, stdout, stderr) = run_cli(&["validate", "dcql", &request]);
+        assert_eq!(code, 1, "{request}: {stdout}{stderr}");
+        assert!(
+            stdout.contains(&format!("  {id} [blocking]: {message}\n")),
+            "{request}: {stdout}"
+        );
+        assert!(
+            stdout.ends_with("DCQL INVALID: at least one blocking error above.\n"),
+            "{request}: {stdout}"
+        );
+        let value = json_of(&["validate", "dcql", &request, "--json"], 1);
+        assert_eq!(value["valid"], false, "{request}");
+        assert_eq!(value["findings"][0]["id"], id, "{request}");
+        assert_eq!(value["findings"][0]["severity"], "blocking", "{request}");
+
+        let (code, stdout, stderr) = audit_age_gate(&request);
+        assert_eq!(code, 1, "{request}: {stdout}{stderr}");
+        assert_eq!(stdout, "", "{request}");
+        assert!(stderr.contains("parse DCQL query"), "{request}: {stderr}");
+    }
+
+    let valid = query(json!([{ "path": ["age_equal_or_over", "18"] }]));
+    let (code, stdout, _) = run_cli(&["validate", "dcql", &valid]);
+    assert_eq!(code, 0, "{stdout}");
+    assert_eq!(
+        stdout,
+        "DCQL VALID: no structural or reference issues found.\n"
+    );
+    let (code, _, _) = audit_age_gate(&valid);
+    assert_eq!(code, 0);
 }
 
 #[test]
