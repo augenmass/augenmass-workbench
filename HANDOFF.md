@@ -5,7 +5,7 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
 
 ## TL;DR of status
 
-- Repo: `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench`, its own git repo on `main`.
+- Repo: `<workspace>/augenmass-workbench`, its own git repo on `main`.
 - A working, fully-tested Rust CLI `augenmass` (v0.2.0) plus a Claude Code skill, cache backend, Docker image, and full docs.
 - Build green, zero warnings, clippy clean, `cargo fmt --check` clean.
 - Tests: 201 at last shipping pass (measured 2026-08-13), 116 unit + 64 CLI integration + 15 cache integration + 5 demo-proof integration + 1 serve integration, all passing against real committed offline fixtures. Same item-by-item breakdown as `AGENTS.md`; keep the two in step.

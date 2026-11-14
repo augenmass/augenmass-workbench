@@ -19,10 +19,10 @@ runs, path dependencies, and fixture sizes.
 
 The three builds live at:
 
-- V1 baseline: `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench`
-- Mine (v2): `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench-v2`
-- Codex (v2): `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench-v2-codex`
-- Shared crypto engine: `/Users/bioharz/git/eudi-wallet-hackathon/verifier/verifier-core/src`
+- V1 baseline: `<workspace>/augenmass-workbench`
+- Mine (v2): `<workspace>/augenmass-workbench-v2`
+- Codex (v2): `<workspace>/augenmass-workbench-v2-codex`
+- Shared crypto engine: `<workspace>/verifier/verifier-core/src`
 
 ## The three builds, verified
 

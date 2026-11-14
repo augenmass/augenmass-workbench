@@ -4,9 +4,9 @@ Date: 2026-06-23
 
 ## Executive Verdict
 
-Use `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench-v2` as the canonical trunk.
-Treat `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench-v2-codex` as the donor branch.
-Treat `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench` as legacy.
+Use `<workspace>/augenmass-workbench-v2` as the canonical trunk.
+Treat `<workspace>/augenmass-workbench-v2-codex` as the donor branch.
+Treat `<workspace>/augenmass-workbench` as legacy.
 
 The right next move is consolidation, not another separate feature branch.
 
@@ -109,7 +109,7 @@ Both v2 repos are real expansions, not README-only work. But keeping both as sep
 
 ## Recommended Next Goal
 
-Make `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench-v2` the unified standalone Rust workbench by porting the high-leverage Codex pieces into it.
+Make `<workspace>/augenmass-workbench-v2` the unified standalone Rust workbench by porting the high-leverage Codex pieces into it.
 
 Priority order:
 
