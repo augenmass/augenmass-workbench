@@ -9,18 +9,20 @@ use crate::artifact::{sniff, ArtifactKind};
 use crate::checkbody::check_body_str;
 use crate::commands::decode;
 use crate::dcql;
-use crate::output::{emit, OutputFormat};
+use crate::output::{diagln, emit, OutputFormat};
 use crate::x509util::parse_certificate;
 
 pub fn run(input: &str, format: OutputFormat) -> Result<()> {
     let kind = sniff(input);
-    eprintln!("Detected: {}", kind.label());
+    diagln!("Detected: {}", kind.label());
 
     let decoded = match kind {
         ArtifactKind::SdJwtVc => decode::decode_sd_jwt(input)?,
         ArtifactKind::RegistrationCert => decode::decode_regcert(input)?,
         ArtifactKind::StatusListToken => decode::decode_status_list(input)?,
-        ArtifactKind::AuthorizationRequest => decode::decode_request(input)?,
+        ArtifactKind::AuthorizationRequest | ArtifactKind::AuthorizationRequestObject => {
+            decode::decode_request(input)?
+        }
         ArtifactKind::KbJwt | ArtifactKind::Jwt => decode::decode_jwt(input)?,
         ArtifactKind::CredentialOffer | ArtifactKind::Openid4vpUri => decode::decode_offer(input)?,
         ArtifactKind::DcqlQuery => decode_dcql(input)?,
@@ -40,12 +42,13 @@ pub fn run(input: &str, format: OutputFormat) -> Result<()> {
 }
 
 fn decode_dcql(input: &str) -> Result<decode::Decoded> {
-    let query = dcql::parse_dcql(input)?;
+    let dcql::ParsedDcql { query, warnings } = dcql::parse_dcql_with_warnings(input)?;
     let keys = augenmass_core::inspector::requested_keys(&query);
     let json = json!({
         "artifact": "dcql-query",
         "requestedKeys": keys,
         "query": serde_json::to_value(&query).unwrap_or(Value::Null),
+        "warnings": warnings,
     });
     let mut text = String::new();
     text.push_str("DCQL query\n");
@@ -53,6 +56,9 @@ fn decode_dcql(input: &str) -> Result<decode::Decoded> {
     for key in &keys {
         text.push_str(&format!("    {key}\n"));
     }
+    // A member that a wallet ignores unless it knows it from an extension
+    // (`dcql::ignored_members`): the typed query above no longer has it.
+    text.push_str(&dcql::warning_block(&warnings));
     Ok(decode::Decoded { json, text })
 }
 

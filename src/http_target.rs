@@ -12,6 +12,7 @@ use std::net::{IpAddr, Ipv6Addr};
 use std::time::Duration;
 
 use crate::config::{sandbox_target_notice, trim_base, Config};
+use crate::output::diagln;
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub enum Target {
@@ -99,7 +100,7 @@ pub async fn list_registrations(target: Target, rp_id: &str, config: &Config) ->
 fn print_sandbox_notice(target: Target, config: &Config) {
     if matches!(target, Target::Sandbox) {
         if let Some(notice) = sandbox_target_notice(config) {
-            eprintln!("{notice}");
+            diagln!("{notice}");
         }
     }
 }

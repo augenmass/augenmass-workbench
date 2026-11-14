@@ -669,7 +669,9 @@ async fn record_over_ask(st: &AppState, sid: Uuid, disclosed: &[String]) {
     );
     let over_ask = report.has_over_ask();
     let over_disclosed_count = report.over_disclosed.len();
-    let has_issue = over_ask || over_disclosed_count > 0;
+    // A request that could not be evaluated is not a clean result either.
+    let not_evaluated = report.outcome() == inspector::Outcome::NotEvaluated;
+    let has_issue = over_ask || not_evaluated || over_disclosed_count > 0;
     let level = if has_issue {
         TraceLevel::Warn
     } else {
@@ -688,6 +690,7 @@ async fn record_over_ask(st: &AppState, sid: Uuid, disclosed: &[String]) {
             summary,
             Some(json!({
                 "verdict": report.verdict_line,
+                "outcome": report.outcome(),
                 "overAsk": over_ask,
                 "overDisclosed": report.over_disclosed,
                 "overDisclosedCount": over_disclosed_count,
@@ -2051,6 +2054,7 @@ mod tests {
         assert!(over_ask.summary.contains("over-disclosed 5"));
         let detail = over_ask.detail.as_ref().expect("over-ask detail");
         assert_eq!(detail["overAsk"], false);
+        assert_eq!(detail["outcome"], "ok");
         assert_eq!(detail["overDisclosedCount"], 5);
         assert_eq!(detail["beyondPurpose"], 0);
 

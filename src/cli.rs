@@ -8,8 +8,11 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use clap::{Args, Parser, Subcommand, ValueEnum};
+use augenmass_core::inspector::{self, PurposeBaseline};
+use clap::error::ErrorKind;
+use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum};
 
+use crate::baseline_file;
 use crate::cache_server::{
     DEFAULT_CACHE_DB, DEFAULT_CACHE_HOST, DEFAULT_CACHE_MAX_ENTRIES, DEFAULT_CACHE_PORT,
     DEFAULT_CACHE_TIMEOUT_SECS, DEFAULT_CACHE_TTL_SECS,
@@ -66,6 +69,15 @@ enum Command {
     Check {
         /// Registration body: a file path, inline JSON, or `-` for stdin.
         body: String,
+        /// Judge against one entry of a baseline file (schema id
+        /// augenmass-baselines/0.1) instead of the built-in age_gate_18
+        /// baseline. A file path only. See docs/BASELINES.md.
+        #[arg(long, value_name = "FILE")]
+        baseline: Option<PathBuf>,
+        /// Entry id of the baseline file. Optional when the file has one
+        /// entry that states no applies_when. Only with --baseline.
+        #[arg(long, value_name = "ENTRY_ID", requires = "baseline")]
+        purpose: Option<String>,
     },
     /// Audit an OpenID4VP request for over-asking against a purpose baseline.
     Audit(AuditCommand),
@@ -345,8 +357,16 @@ struct AuditCommand {
     #[arg(long, default_value = "minimal")]
     request: String,
     /// Purpose baseline id (age_gate_18, event_checkin, car_rental, bank_kyc).
-    #[arg(long, default_value = "event_checkin")]
-    purpose: String,
+    /// Defaults to event_checkin; an unknown id is a usage error. With
+    /// --baseline: the id of an entry of that file, optional when the file
+    /// has one entry that states no applies_when.
+    #[arg(long)]
+    purpose: Option<String>,
+    /// Judge against one entry of a baseline file (schema id
+    /// augenmass-baselines/0.1) instead of a built-in purpose baseline. A
+    /// file path only. See docs/BASELINES.md.
+    #[arg(long, value_name = "FILE")]
+    baseline: Option<PathBuf>,
     /// Path to a registration certificate (compact JWT, entity JSON, or array).
     #[arg(long)]
     cert: Option<PathBuf>,
@@ -364,8 +384,9 @@ struct RegisterCommand {
     /// Confirm a write. Without this flag the command is a dry-run.
     #[arg(long)]
     yes: bool,
-    /// Write past an over-ask warning. Requires --yes.
-    #[arg(long)]
+    /// Write past an over-ask warning, or past a body that could not be
+    /// evaluated. Requires --yes. A forced write that succeeds exits 0.
+    #[arg(long, requires = "yes")]
     force: bool,
 }
 
@@ -469,21 +490,47 @@ pub async fn run() -> Result<()> {
             inspect::run(&read_input(&input)?, fmt)?;
         }
         Command::Decode { what } => run_decode(what, fmt)?,
-        Command::Check { body } => {
-            let block = check::run(&body, &read_input(&body)?, fmt)?;
-            exit_if(block);
+        Command::Check {
+            body,
+            baseline,
+            purpose,
+        } => {
+            // Resolved before the body is read: a baseline file that does not
+            // match the format, or an entry that is not named, never ends in
+            // a check against something else.
+            let entry = match &baseline {
+                Some(file) => Some(resolve_entry("check", file, purpose.as_deref())?),
+                None => None,
+            };
+            let result = check::run(&body, &read_input(&body)?, entry.as_ref(), fmt)?;
+            exit_with(result.exit_code());
         }
         Command::Audit(cmd) => {
-            let ok = audit::run(
+            // Resolved before anything is read or printed: an unknown purpose
+            // id is a usage error, never a run without the purpose check.
+            // With --baseline, --purpose names an entry of the file and no
+            // built-in purpose is used.
+            let baseline = match &cmd.baseline {
+                Some(file) => audit::AuditBaseline::File(resolve_entry(
+                    "audit",
+                    file,
+                    cmd.purpose.as_deref(),
+                )?),
+                None => audit::AuditBaseline::BuiltIn(resolve_purpose(
+                    "audit",
+                    cmd.purpose.as_deref().unwrap_or(DEFAULT_AUDIT_PURPOSE),
+                )),
+            };
+            let outcome = audit::run(
                 audit::AuditArgs {
                     request: cmd.request,
-                    purpose: cmd.purpose,
+                    baseline,
                     cert: cmd.cert,
                     vct: cmd.vct,
                 },
                 fmt,
             )?;
-            exit_if(!ok);
+            exit_with(outcome.exit_code());
         }
         Command::Baselines { id } => baselines::run(id.as_deref(), fmt)?,
         Command::Verify { what } => {
@@ -598,7 +645,10 @@ pub async fn run() -> Result<()> {
                 .await?
             }
         },
-        Command::Serve(args) => serve::run(args).await?,
+        Command::Serve(args) => {
+            resolve_purpose("serve", &args.purpose);
+            serve::run(args).await?
+        }
     }
     Ok(())
 }
@@ -741,6 +791,61 @@ fn run_verify(what: VerifyCmd, fmt: OutputFormat) -> Result<bool> {
 fn exit_if(bad: bool) {
     if bad {
         std::process::exit(1);
+    }
+}
+
+/// Exit with `code` unless it is 0. The codes of `audit`, `check` and
+/// `register`: 1 for an over-ask (or a blocking format error), 3 when nothing
+/// judged asks for too much and something could not be evaluated.
+fn exit_with(code: i32) {
+    if code != 0 {
+        std::process::exit(code);
+    }
+}
+
+/// The purpose `audit` judges against when `--purpose` is not given.
+const DEFAULT_AUDIT_PURPOSE: &str = "event_checkin";
+
+/// The built-in baseline for a purpose id. An unknown id is a usage error of
+/// `subcommand`: it names the id, lists the valid ids, and exits with clap's
+/// usage error code (2) before the command reads or prints anything.
+fn resolve_purpose(subcommand: &str, id: &str) -> PurposeBaseline {
+    match inspector::baseline(id) {
+        Some(baseline) => baseline,
+        None => usage_error(
+            subcommand,
+            format!(
+                "unknown purpose '{id}'. Valid purpose ids: {} (see: augenmass baselines)",
+                baselines::KNOWN_BASELINES.join(", ")
+            ),
+        ),
+    }
+}
+
+/// The entry of a baseline file a run judges against. A file that cannot be
+/// read or does not match the format is an error (exit code 1, like an
+/// unreadable request). An entry that is not named where it must be, or an id
+/// the file does not hold, is a usage error of `subcommand` (exit code 2).
+/// Both happen before the command reads or prints anything else.
+fn resolve_entry(
+    subcommand: &str,
+    file: &Path,
+    purpose: Option<&str>,
+) -> Result<augenmass_core::typed_baseline::TypedBaseline> {
+    let loaded = baseline_file::load(file)?;
+    match loaded.select(purpose) {
+        Ok(entry) => Ok(entry),
+        Err(message) => usage_error(subcommand, message),
+    }
+}
+
+/// Print a usage error for `subcommand` through clap and exit with code 2.
+fn usage_error(subcommand: &str, message: String) -> ! {
+    let mut cmd = Cli::command();
+    cmd.build();
+    match cmd.find_subcommand_mut(subcommand) {
+        Some(sub) => sub.error(ErrorKind::InvalidValue, message).exit(),
+        None => cmd.error(ErrorKind::InvalidValue, message).exit(),
     }
 }
 

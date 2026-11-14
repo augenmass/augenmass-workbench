@@ -1,0 +1,130 @@
+{
+  "schema": "augenmass-baselines/0.1",
+  "info": {
+    "note": "Synthetic example. The use case, the shop, the age rules and the legal source are invented.",
+    "documentation": "docs/BASELINES.md"
+  },
+  "entries": [
+    {
+      "id": "example.wine-shop.age-check.wine",
+      "version": "0.1",
+      "status": "draft",
+      "reviewer": null,
+      "label": "Example Wine Shop: age check for an order of wine",
+      "applies_when": "the order holds wine and no spirits (invented rule: wine is sold from 18)",
+      "claims": [
+        {
+          "format": "dc+sd-jwt",
+          "vct_values": ["urn:eudi:pid:de:1"],
+          "minimal": [
+            { "path": ["age_equal_or_over", "18"], "one_of": "age-claim" }
+          ]
+        },
+        {
+          "format": "mso_mdoc",
+          "doctype_value": "eu.europa.ec.eudi.pid.1",
+          "minimal": [
+            { "path": ["eu.europa.ec.eudi.pid.de.1", "age_over_18"], "one_of": "age-claim" }
+          ],
+          "alternatives": [
+            {
+              "path": ["eu.europa.ec.eudi.pid.1", "age_over_18"],
+              "one_of": "age-claim",
+              "reason": "Invented for this example: the same yes-or-no answer, named in the other namespace of the PID."
+            }
+          ]
+        },
+        {
+          "format": "mso_mdoc",
+          "doctype_value": "eu.europa.ec.av.1",
+          "alternatives": [
+            {
+              "path": ["eu.europa.ec.av.1", "age_over_18"],
+              "one_of": "age-claim",
+              "reason": "Invented for this example: a Proof of Age attestation offered as an option next to the PID gives the same yes-or-no answer."
+            }
+          ]
+        }
+      ],
+      "one_of": [
+        {
+          "id": "age-claim",
+          "reason": "invented rule: one age answer is enough for one order"
+        }
+      ],
+      "legal_sources": [
+        {
+          "instrument": "Invented Example Ordinance (not a real law, written for this example file)",
+          "locator": "section 1 (invented)",
+          "quote": "Invented for this example: wine is sold only to buyers aged 18 or over, spirits only to buyers aged 21 or over."
+        }
+      ]
+    },
+    {
+      "id": "example.wine-shop.age-check.spirits",
+      "version": "0.1",
+      "status": "draft",
+      "reviewer": null,
+      "label": "Example Wine Shop: age check for an order with spirits",
+      "applies_when": "the order holds spirits (invented rule: spirits are sold from 21)",
+      "claims": [
+        {
+          "format": "dc+sd-jwt",
+          "vct_values": ["urn:eudi:pid:de:1"],
+          "minimal": [
+            { "path": ["age_equal_or_over", "21"], "one_of": "age-claim" }
+          ]
+        },
+        {
+          "format": "mso_mdoc",
+          "doctype_value": "eu.europa.ec.eudi.pid.1",
+          "minimal": [
+            { "path": ["eu.europa.ec.eudi.pid.de.1", "age_over_21"], "one_of": "age-claim" }
+          ]
+        }
+      ],
+      "one_of": [
+        {
+          "id": "age-claim",
+          "reason": "invented rule: one age answer is enough for one order"
+        }
+      ],
+      "legal_sources": [
+        {
+          "instrument": "Invented Example Ordinance (not a real law, written for this example file)",
+          "locator": "section 1 (invented)",
+          "quote": "Invented for this example: wine is sold only to buyers aged 18 or over, spirits only to buyers aged 21 or over."
+        }
+      ]
+    },
+    {
+      "id": "example.wine-shop.loyalty-card",
+      "version": "0.1",
+      "status": "draft",
+      "reviewer": null,
+      "label": "Example Wine Shop: loyalty card at checkout",
+      "claims": [
+        {
+          "format": "dc+sd-jwt",
+          "vct_values": ["urn:example:loyalty:1"],
+          "minimal": [
+            { "path": ["member_id"] }
+          ],
+          "undecided": [
+            {
+              "path": ["tier"],
+              "reason": "Invented for this example: whether the discount tier is needed at checkout is left open."
+            }
+          ]
+        }
+      ],
+      "legal_sources": [
+        {
+          "instrument": "Invented Example Ordinance (not a real law, written for this example file)",
+          "locator": "section 1 (invented)",
+          "quote": "Invented for this example: wine is sold only to buyers aged 18 or over, spirits only to buyers aged 21 or over."
+        }
+      ]
+    }
+  ]
+}

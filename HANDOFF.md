@@ -5,7 +5,7 @@ It records what exists, what is verified, the (expanded) goal, and the prioritiz
 
 ## TL;DR of status
 
-- Repo: `/Users/bioharz/git/eudi-wallet-hackathon/augenmass-workbench`, its own git repo on `main`.
+- Repo: `<workspace>/augenmass-workbench`, its own git repo on `main`.
 - A working, fully-tested Rust CLI `augenmass` (v0.2.0) plus a Claude Code skill, cache backend, Docker image, and full docs.
 - Build green, zero warnings, clippy clean, `cargo fmt --check` clean.
 - Tests: 201 at last shipping pass (measured 2026-08-13), 116 unit + 64 CLI integration + 15 cache integration + 5 demo-proof integration + 1 serve integration, all passing against real committed offline fixtures. Same item-by-item breakdown as `AGENTS.md`; keep the two in step.
@@ -93,7 +93,10 @@ verify path is unit-tested via verify_vp_token against the oracle fixtures and t
 request/trace path is integration-tested on an ephemeral port (tests/serve.rs).
 
 Exit codes are CI-friendly: non-zero on the "bad" outcome (over-ask, blocking format error,
-verification reject, untrusted, revoked, x509_hash mismatch, doctor findings).
+verification reject, untrusted, revoked, x509_hash mismatch, doctor findings). On main,
+`check`, `audit` and `register` also exit 3 when a requested claim could not be judged
+(NOT EVALUATED), and `audit` does so for a DCQL query with a member name that resembles a
+defined one (for example `claim` for `claims`); the full table is in `docs/COMMANDS.md`.
 
 ## Architecture
 
@@ -139,7 +142,7 @@ just bundle                # release build -> plugins/augenmass-workbench/bin/au
   eudiplo JAR client_id = `x509_hash:7zvIjJaM1KQPpN7IZBuVLuh8anw1gcbZ0a6Wj3M9i4w`.
 - Over-ask legal basis (verbatim from the engine): eIDAS (EU) 2024/1183 Art. 5b(3); GDPR
   (EU) 2016/679 Art. 5(1)(c); EUDI ARF registration certificate RPRC_21.
-- Curated baselines: age_gate_18, event_checkin, car_rental, bank_kyc (taste judgments).
+- Curated baselines: age_gate_18, event_checkin, car_rental, bank_kyc (curated assessments, not law and not legal advice).
 - Our relying party (write only under it): "Hackathon - Reza", id `2af138a8-59ea-4a84-aea3-666cafdb1369`.
 - Sandbox: Keycloak resource-owner password grant, working client_id `swagger`. Env in `.env.example`.
 

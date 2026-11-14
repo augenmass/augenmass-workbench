@@ -40,13 +40,14 @@ fn list_all(format: OutputFormat) -> Result<()> {
             if !b.mdoc_elements.is_empty() {
                 text.push_str(&format!("    mdoc elements: {}\n", mdoc_elements(&b)));
             }
+            text.push_str(&format!("    credential types: {}\n", credential_types(&b)));
         }
     }
     text.push_str("\nLegal basis cited on every over-ask finding:\n");
     for l in LEGAL_BASIS {
         text.push_str(&format!("  {}, {}\n    {}\n", l.source, l.locator, l.text));
     }
-    text.push_str("\nNote: the baselines are curated taste judgments, not Rulebook derivations.\n");
+    text.push_str("\nNote: the baselines are curated assessments, not law and not legal advice.\n");
     emit(format, &json, &text)?;
     Ok(())
 }
@@ -59,6 +60,12 @@ fn mdoc_elements(b: &inspector::PurposeBaseline) -> String {
         .map(|[namespace, element]| format!("{namespace}/{element}"))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// The credential types the baseline models, one phrase per type set,
+/// separated by "; ".
+fn credential_types(b: &inspector::PurposeBaseline) -> String {
+    inspector::describe_credential_types(&b.credential_types).join("; ")
 }
 
 fn show_one(id: &str, format: OutputFormat) -> Result<()> {
@@ -74,6 +81,7 @@ fn show_one(id: &str, format: OutputFormat) -> Result<()> {
             if !b.mdoc_elements.is_empty() {
                 text.push_str(&format!("  mdoc elements: {}\n", mdoc_elements(&b)));
             }
+            text.push_str(&format!("  credential types: {}\n", credential_types(&b)));
             text.push_str(&format!("  note: {}\n", b.note));
             emit(format, &json, &text)?;
             Ok(())

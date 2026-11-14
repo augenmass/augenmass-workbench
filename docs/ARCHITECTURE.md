@@ -217,14 +217,25 @@ the agent skill and CI scripts consume.
 Read-only commands that make a judgment exit non-zero on the bad outcome, so they
 work as gates in a pipeline without parsing output:
 
-- `check`: exit 1 on over-ask or a blocking format error; exit 0 if clean.
-- `audit`: exit 1 on over-ask; exit 0 otherwise.
+- `check`: exit 1 on over-ask or a blocking format error; exit 3 when no
+  judged claim asks for too much but a requested claim could not be judged
+  (NOT EVALUATED); exit 0 if clean.
+- `audit`: exit 1 on over-ask; exit 3 when not evaluated (a requested claim
+  could not be judged, or the DCQL query has a member that OpenID4VP 1.0 does
+  not define at its level and that resembles a defined one, for example `claim`
+  for `claims`); exit 0 when every requested claim was judged, none asks for
+  too much and the query has no such member. An over-ask wins over not
+  evaluated.
 - `verify presentation`, `verify request`, `verify trust`, `verify status`, `verify status-list`:
   exit 1 if not verified, untrusted, revoked, or on error; exit 0 on success.
 - `x509-hash --client-id`: exit 1 on mismatch.
-- `doctor`: exit 1 if it has findings.
-- `register`: refuses with exit 1 on over-ask without `--force`, and bails on
-  blocking format errors.
+- `doctor`: exit 1 if it has blocking findings; a warning alone exits 0.
+- `register`: refuses with exit 1 on over-ask without `--force`, refuses with
+  exit 3 a body that was not evaluated without `--force`, and bails on
+  blocking format errors. `--force` without `--yes` is a usage error (exit 2).
+  A write forced with `--yes --force` exits 0 when it succeeded.
+- A usage error (including an unknown purpose id) exits 2. The full table is in
+  `docs/COMMANDS.md`.
 
 Verified examples:
 
@@ -237,7 +248,8 @@ augenmass verify presentation fixtures/presentations/erica-vp-VALID.sdjwt \
 ```
 
 Writes are conservative by default: `register` is a dry-run until `--yes`, and
-will not write past an over-ask warning without `--force`.
+will not write past an over-ask warning, or past a body that could not be
+evaluated, without `--force`.
 
 ## Reuse versus net-new
 
@@ -275,7 +287,11 @@ written fresh for this Workbench.
   credential types can be inspected and decoded, but the proportionality
   baselines and generation defaults are PID-shaped. `audit` accepts a `--vct`
   override for other credential types, but the curated baselines themselves are
-  PID claims.
-- The baselines are curated taste judgments, not Rulebook derivations. The tool
+  PID claims. Each built-in baseline states the PID credential types it models
+  (`augenmass baselines`); a requested claim of another credential format or
+  type is not evaluated (exit 3) instead of being judged against PID claim
+  names. A baseline file passed with `--baseline` (`docs/BASELINES.md`) can
+  model other credential types.
+- The baselines are curated assessments, not law and not legal advice. The tool
   says so itself in `baselines` output. They encode a reasonable minimum per
   purpose, not a normative entitlement set.

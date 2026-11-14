@@ -15,8 +15,11 @@ pub enum ArtifactKind {
     RegistrationCert,
     /// Token status list (JWT typ `statuslist+jwt`).
     StatusListToken,
-    /// OpenID4VP authorization request / signed JAR.
+    /// OpenID4VP authorization request as a signed JAR (a compact JWT).
     AuthorizationRequest,
+    /// OpenID4VP authorization request as a plain request object (a JSON
+    /// object, not signed).
+    AuthorizationRequestObject,
     /// Key Binding JWT (typ `kb+jwt`).
     KbJwt,
     /// A generic JWT/JWS we could not classify further.
@@ -46,6 +49,9 @@ impl ArtifactKind {
             ArtifactKind::RegistrationCert => "WRPRC registration certificate",
             ArtifactKind::StatusListToken => "token status list",
             ArtifactKind::AuthorizationRequest => "OpenID4VP authorization request (JAR)",
+            ArtifactKind::AuthorizationRequestObject => {
+                "OpenID4VP authorization request object (plain JSON, not a signed JAR)"
+            }
             ArtifactKind::KbJwt => "Key Binding JWT",
             ArtifactKind::Jwt => "JWT/JWS",
             ArtifactKind::CredentialOffer => "OpenID4VCI credential offer",
@@ -166,7 +172,7 @@ fn classify_json(value: &Value) -> ArtifactKind {
         || value.get("client_metadata").is_some()
         || (value.get("dcql_query").is_some() && value.get("client_id").is_some())
     {
-        return ArtifactKind::AuthorizationRequest;
+        return ArtifactKind::AuthorizationRequestObject;
     }
     // DCQL query: a top-level `credentials` array of query objects, or a wrapper
     // carrying a `dcql_query` field, with no registrar-only fields.
@@ -227,6 +233,34 @@ mod tests {
     fn detects_dcql() {
         assert_eq!(
             sniff(r#"{"credentials":[{"id":"pid","format":"dc+sd-jwt"}]}"#),
+            ArtifactKind::DcqlQuery
+        );
+    }
+
+    /// The two forms of an authorization request are two kinds, so the
+    /// label of a plain request object does not call it a JAR.
+    #[test]
+    fn detects_the_form_of_an_authorization_request() {
+        for object in [
+            r#"{"response_type":"vp_token"}"#,
+            r#"{"client_metadata":{}}"#,
+            r#"{"client_id":"x509_hash:example-not-a-real-hash","dcql_query":{"credentials":[]}}"#,
+        ] {
+            let kind = sniff(object);
+            assert_eq!(kind, ArtifactKind::AuthorizationRequestObject, "{object}");
+            assert!(!kind.label().contains("(JAR)"), "{object}");
+            assert!(kind.label().contains("not a signed JAR"), "{object}");
+        }
+        let jar = std::fs::read_to_string("fixtures/requests/eudiplo-request.jwt")
+            .expect("read request fixture");
+        assert_eq!(sniff(&jar), ArtifactKind::AuthorizationRequest);
+        assert_eq!(
+            ArtifactKind::AuthorizationRequest.label(),
+            "OpenID4VP authorization request (JAR)"
+        );
+        // A wrapper with a `dcql_query` and no `client_id` stays a DCQL query.
+        assert_eq!(
+            sniff(r#"{"dcql_query":{"credentials":[]}}"#),
             ArtifactKind::DcqlQuery
         );
     }

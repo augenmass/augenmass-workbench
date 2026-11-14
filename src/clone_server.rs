@@ -20,6 +20,8 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+use crate::output::outln;
+
 #[derive(Clone)]
 struct AppState {
     db: Arc<Mutex<Connection>>,
@@ -45,7 +47,7 @@ pub async fn serve(db_path: &str, port: u16) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .with_context(|| format!("bind {addr}"))?;
-    println!("clone target listening on http://{addr}/api");
+    outln(&format!("clone target listening on http://{addr}/api"))?;
     axum::serve(listener, app)
         .await
         .context("serve clone target")

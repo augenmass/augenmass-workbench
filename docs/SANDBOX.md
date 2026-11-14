@@ -137,11 +137,14 @@ augenmass audit --request examples/age-minimal-request-sdjwt.json --purpose age_
 ```
 OK: Minimal: all 1 requested claims are within purpose and registration.
 Registration certificate: payload decoded; signature, issuer and revocation status not verified.
-Purpose: Example Bottle Shop: confirm the buyer is over 18   Baseline: Age gate (over 18)
+Registration purpose: Example Bottle Shop: confirm the buyer is over 18   Baseline: Age gate (over 18)
 
 Requested claims:
   [ok]  age_equal_or_over.18         Within the purpose-minimal baseline.
 ```
+
+The released 0.4.1 binary labels the third line `Purpose:` where this build
+says `Registration purpose:`; the rest of this output is the same.
 
 A request with a claim outside the certificate exits 1, with a row that names
 the registered scope. The recipe
@@ -169,23 +172,41 @@ about transfer. Run the steps in this order:
 2. Audit the request that the verifier sends against it with
    `augenmass audit --request <request> --purpose <id> --cert <certificate>`.
    `<request>` is DCQL JSON; the recipe says how to get it out of a signed
-   request object.
+   request object. `<id>` is one of the ids that `augenmass baselines` lists.
+   Any other id (a mistyped one, for example) is a usage error: the command
+   prints `error: unknown purpose '<id>'` with the valid ids on stderr,
+   compares nothing and exits 2. Correct the id and run this step again.
 3. On exit 1, read the first line and the rows as steps 2 and 3 of the recipe
    describe. Only the rows that name the registered scope are about the
    certificate.
-4. On exit 0, read the `OK` line:
+4. On exit 3, the first line starts with `NOT EVALUATED`. No judged claim asks
+   for too much, but something could not be judged, so this is not an OK. A
+   row that starts with `[n/a]` names a claim that was not judged and says
+   why, for example that the purpose baseline does not model the requested
+   credential type. A block `Authoring warnings:` names a member of the
+   request that OpenID4VP 1.0 does not define at its level and that resembles
+   a defined one, `claim` for `claims` for example; a wallet that does not
+   know such a member ignores it. The recipe describes both cases.
+5. On exit 0, read the `OK` line:
    - `OK: Minimal: all N requested claims are within purpose and registration.`
      Every requested claim is covered by the certificate under the
      Workbench's rules and is within the purpose baseline.
-   - `OK: Within registered scope; purpose not evaluated (no baseline supplied).`
-     The purpose was not checked, because `<id>` is not one of the ids that
-     `augenmass baselines` lists (a mistyped id, for example). The run also
-     printed `note: unknown purpose` on stderr. Correct the id and run step 2
-     again.
+   - `OK: No claims requested.` The request asks for no claim (its
+     credentials carry no `claims`), and the format and type of each
+     requested credential are registered.
 
    Neither line says that the request and the certificate are identical; the
    limits of the recipe say how to compare the paths by hand.
-5. Repeat steps 1 to 4 whenever the request or the certificate changes.
+6. Repeat steps 1 to 5 whenever the request or the certificate changes.
+
+The released 0.4.1 binary differs in steps 2, 4 and 5. It has no exit code 3:
+a request written with `claim` for `claims` gets `OK: No claims requested.`
+and exit 0 there, and a claim of a credential type that the baseline does not
+model is judged by its name as if it were a PID claim. A mistyped `<id>` is no
+error there: the run prints `note: unknown purpose` on stderr and skips the
+purpose comparison, and when every claim is covered its first line is
+`OK: Within registered scope; purpose not evaluated (no baseline supplied).`
+with exit 0, which says nothing about the purpose.
 
 Neither command needs a phone, a wallet app or a registrar, so both can run
 before a test device is updated (see point 1 under
@@ -482,7 +503,7 @@ These guardrails apply to every `register` invocation:
 
 - Dry-run by default. `register` without `--yes` decodes, runs the over-ask and format gate, and prints the verdict, but writes nothing. The output ends with `DRY RUN: nothing written. Re-run with --yes to write to <target>.`
 - `--yes` is required to write. It confirms the write after the gate passes.
-- `--force` writes past an over-ask warning, and requires `--yes`. Without `--force`, an over-asking body is refused (exit 1) on every target. A blocking format error is fatal regardless of `--force`.
+- `--force` writes past an over-ask warning, or past a body that could not be evaluated, and requires `--yes`. On main, `--force` without `--yes` is a usage error (exit 2). Without `--force`, an over-asking body is refused (exit 1) on every target. A blocking format error is fatal regardless of `--force`.
 - Demo fixtures and defaults use relying party id `2af138a8-59ea-4a84-aea3-666cafdb1369` ("Hackathon - Reza"). That id is the default for `--rp` on `list` and for `--rp` on `generate regbody`, and it is the `rpId` in `examples/min.json` and `examples/over.json`. Do not reuse it for a user's production relying party.
 - One relying party per entity, many certificates under it. Never mint additional relying parties; add certificates to the existing one.
 - Secrets hygiene. Never log, echo, or commit tokens, certs, or keys. The repo gitignores `.env*`, `secrets*.md`, `*.sqlite`, and `*signing-key*`. Review staged changes before any git operation.
@@ -548,7 +569,7 @@ augenmass register examples/over.json --target clone --yes
 
 ```
 OVER-ASK: Over-ask vs purpose: 6 of 6 requested claims exceed the stated purpose.
-Purpose: Age verification   Baseline: Age gate (over 18)
+Registration purpose: Age verification   Baseline: Age gate (over 18)
 
 Requested claims:
   [over]  given_name                   Registered, but beyond what the stated purpose needs.
@@ -567,7 +588,7 @@ Legal basis:
   Regulation (EU) No 910/2014, Article 5b(3)
     Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c).
   GDPR (EU) 2016/679, Art. 5(1)(c)
-    Personal data shall be adequate, relevant and limited to what is necessary (data minimisation).
+    Personal data shall be: [...] (c) adequate, relevant and limited to what is necessary in relation to the purposes for which they are processed (‘data minimisation’);
   EUDI ARF, registration certificate, RPRC_21
     After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes.
 
@@ -580,7 +601,7 @@ The command exits 1, so CI catches it. To deliberately write the over-asking bod
 augenmass register examples/over.json --target clone --yes --force
 ```
 
-That reprints the same verdict, then writes with an explicit warning (`Warning: writing an over-asking registration because --force was given.`) and exits 0. Use `--force` only when over-asking is intentional and justified; the default refusal is the point of the gate.
+That reprints the same verdict, then writes with an explicit warning (`Warning: writing an over-asking registration because --force was given.`; on main the line continues with `A forced write that succeeds exits 0.`) and exits 0. Use `--force` only when over-asking is intentional and justified; the default refusal is the point of the gate.
 
 The same gate runs before a confirmed write to any target, so a body that the clone refuses will be refused against the sandbox too. Prove proportionality locally, then rehearse against the sandbox.
 

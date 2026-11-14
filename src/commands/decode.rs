@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 use ssi::claims::sd_jwt::SdJwt;
 use url::Url;
 
+use crate::dcql;
 use crate::jose::{self, decode_compact};
 use crate::render::{regcert_status_json, REGCERT_NOTICE};
 
@@ -198,22 +199,49 @@ pub fn decode_regcert(input: &str) -> Result<Decoded> {
 
 // --- OpenID4VP authorization request (JAR) ---------------------------------
 
+/// Decode an authorization request: a signed JAR (a compact JWT) or a plain
+/// request object (a JSON object, for example the `payload` member of this
+/// command's `--json` output). A plain request object has no header, so
+/// `header` is null and the `typ`, `alg` and `x5c` lines are left out. When
+/// the request carries a `dcql_query`, the authoring warnings of that query
+/// (`dcql::ignored_members`) are part of both outputs, as for a DCQL query
+/// given on its own.
 pub fn decode_request(input: &str) -> Result<Decoded> {
-    let decoded = decode_compact(input).context("decode authorization request JAR")?;
-    let p = &decoded.payload;
+    let plain = serde_json::from_str::<Value>(input.trim())
+        .ok()
+        .filter(Value::is_object);
+    let (header, payload) = match plain {
+        Some(object) => (None, object),
+        None => {
+            let decoded = decode_compact(input).context("decode authorization request JAR")?;
+            (Some(decoded.header), decoded.payload)
+        }
+    };
+    let p = &payload;
     let get = |k: &str| p.get(k).and_then(Value::as_str).map(str::to_string);
+    let header_text = |k: &str| {
+        header
+            .as_ref()
+            .and_then(|h| h.get(k))
+            .and_then(Value::as_str)
+            .unwrap_or("(none)")
+    };
 
     let client_id = get("client_id");
     let scheme = client_id.as_deref().and_then(client_id_scheme);
-    let x5c_present = decoded.header.get("x5c").is_some();
+    let x5c_present = header.as_ref().is_some_and(|h| h.get("x5c").is_some());
     let query = p
         .get("dcql_query")
         .cloned()
         .or_else(|| p.get("presentation_definition").cloned());
+    let warnings = p
+        .get("dcql_query")
+        .map(dcql::ignored_members)
+        .unwrap_or_default();
 
     let json = json!({
         "artifact": "authorization-request",
-        "header": decoded.header,
+        "header": header,
         "x5cPresent": x5c_present,
         "clientId": client_id,
         "clientIdScheme": scheme,
@@ -224,14 +252,19 @@ pub fn decode_request(input: &str) -> Result<Decoded> {
         "state": get("state"),
         "aud": p.get("aud").cloned(),
         "query": query,
-        "payload": decoded.payload,
+        "warnings": warnings,
+        "payload": payload,
     });
 
     let mut text = String::new();
-    text.push_str("OpenID4VP authorization request / JAR (no signature verified)\n");
-    text.push_str(&format!("  typ: {}\n", decoded.typ().unwrap_or("(none)")));
-    text.push_str(&format!("  alg: {}\n", decoded.alg().unwrap_or("(none)")));
-    text.push_str(&format!("  x5c present: {x5c_present}\n"));
+    if header.is_some() {
+        text.push_str("OpenID4VP authorization request / JAR (no signature verified)\n");
+        text.push_str(&format!("  typ: {}\n", header_text("typ")));
+        text.push_str(&format!("  alg: {}\n", header_text("alg")));
+        text.push_str(&format!("  x5c present: {x5c_present}\n"));
+    } else {
+        text.push_str("OpenID4VP authorization request object (plain JSON, not a signed JAR)\n");
+    }
     if let Some(cid) = &client_id {
         text.push_str(&format!("  client_id: {cid}\n"));
     }
@@ -253,6 +286,7 @@ pub fn decode_request(input: &str) -> Result<Decoded> {
     } else if p.get("presentation_definition").is_some() {
         text.push_str("  query: presentation_definition present (legacy PE)\n");
     }
+    text.push_str(&dcql::warning_block(&warnings));
     Ok(Decoded { json, text })
 }
 

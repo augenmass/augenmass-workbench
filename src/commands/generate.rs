@@ -6,11 +6,11 @@ use serde_json::{json, Value};
 
 use crate::dcql;
 use crate::generator::{age_check_body, GenerateOptions};
+use crate::output::outln;
 
 pub fn regbody(options: &GenerateOptions) -> Result<()> {
     let body = age_check_body(options);
-    println!("{}", serde_json::to_string_pretty(&body)?);
-    Ok(())
+    outln(&serde_json::to_string_pretty(&body)?)
 }
 
 /// Build a German-PID DCQL query from claim path specs (dotted or slashed).
@@ -21,6 +21,5 @@ pub fn dcql_query(claim_specs: &[String]) -> Result<()> {
         .collect();
     let query = dcql::dcql_from_paths(&paths)?;
     let value: Value = serde_json::to_value(&query).unwrap_or(json!({}));
-    println!("{}", serde_json::to_string_pretty(&value)?);
-    Ok(())
+    outln(&serde_json::to_string_pretty(&value)?)
 }

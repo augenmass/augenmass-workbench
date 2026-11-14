@@ -324,7 +324,7 @@ augenmass decode regcert fixtures/regcert/rc-by-id.json
 augenmass audit --request overask --purpose age_gate_18 --cert fixtures/regcert/rc-by-id.json
 ```
 
-Exit 1 means over-ask; the rendering cites eIDAS Art. 5b(3), GDPR Art. 5(1)(c), and ARF RPRC_21, and suggests the minimal request. To see the baselines and legal basis on their own:
+Exit 1 means over-ask; the rendering cites eIDAS Art. 5b(3), GDPR Art. 5(1)(c), and ARF RPRC_21, and suggests the minimal request. On main, exit 3 means not evaluated: no judged claim asks for too much, but a requested claim could not be judged (for example a credential type the baseline does not model), or the DCQL query has a member that OpenID4VP 1.0 does not define at its level and that resembles a defined one (for example `claim` for `claims`). To see the baselines and legal basis on their own:
 
 ```
 augenmass baselines
@@ -359,7 +359,7 @@ augenmass register /tmp/regbody.json         # dry-run first
 augenmass register /tmp/regbody.json --yes   # writes to the local clone (default target)
 ```
 
-Writes are dry-run by default. `--yes` performs the write. The local `clone` target is a registrar-compatible store with no signing and no auth, safe for rehearsal; `--target sandbox` reaches the real registrar and is for off-stage rehearsal only. If `check` flags over-ask but you have a defensible reason, `register --yes --force` writes past the warning, but `--force` requires `--yes` and you should be certain.
+Writes are dry-run by default. `--yes` performs the write. The local `clone` target is a registrar-compatible store with no signing and no auth, safe for rehearsal; `--target sandbox` reaches the real registrar and is for off-stage rehearsal only. If `check` flags over-ask but you have a defensible reason, `register --yes --force` writes past the warning, but `--force` requires `--yes` (on main, `--force` alone is a usage error) and you should be certain. A forced write that succeeds exits 0.
 
 To read registrations back from the running local clone store:
 
@@ -415,4 +415,4 @@ Common gotchas:
 
 ## CI notes
 
-Every command in this guide exits non-zero on the "bad" outcome, so you can wire them straight into a pipeline: `check` and `audit` exit 1 on over-ask (and `check` also on blocking format errors); `verify presentation`, `verify request`, `verify trust`, `verify status`, and `verify status-list` exit 1 when not verified, untrusted, revoked, or on error; `x509-hash --client-id` exits 1 on mismatch; `doctor` exits 1 on findings; `register` refuses (exit 1) on over-ask without `--force` and bails on blocking format errors. Add `--json` for structured output an agent or CI step can parse.
+Every command in this guide exits non-zero on the "bad" outcome, so you can wire them straight into a pipeline: `check` and `audit` exit 1 on over-ask (and `check` also on blocking format errors), and on main 3 when a requested claim could not be judged; `verify presentation`, `verify request`, `verify trust`, `verify status`, and `verify status-list` exit 1 when not verified, untrusted, revoked, or on error; `x509-hash --client-id` exits 1 on mismatch; `doctor` exits 1 on findings; `register` refuses (exit 1) on over-ask without `--force`, on main refuses (exit 3) a body that was not evaluated without `--force`, and bails on blocking format errors. Add `--json` for structured output an agent or CI step can parse. On main, when the reader of standard output or standard error closes it early (for example `augenmass audit --request overask --purpose age_gate_18 | head -n 1`), the command writes nothing more to that stream and exits with the same code as with an open reader.

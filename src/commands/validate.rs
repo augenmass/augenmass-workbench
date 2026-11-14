@@ -14,6 +14,7 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 
 use crate::checkbody::Severity;
+use crate::dcql::{ignored_members, NEAR_MISS_FIX, NEAR_MISS_ID};
 use crate::output::{emit, OutputFormat};
 
 struct Finding {
@@ -60,16 +61,26 @@ const KNOWN_FORMATS: &[&str] = &[
 
 /// Validate a DCQL query (bare or wrapped under `dcql_query`). Emits the findings
 /// and returns true if a blocking error was found (so the CLI exits non-zero).
+/// A member name that resembles a defined one (`dcql::ignored_members`) is a
+/// warning, listed before the other findings: a wallet ignores a member it
+/// does not know, so such a query is valid, and a warning alone does not
+/// change the result or the exit code.
 pub fn dcql(input: &str, fmt: OutputFormat) -> Result<bool> {
     let value: Value = serde_json::from_str(input.trim()).context("DCQL is not JSON")?;
     let query = value.get("dcql_query").unwrap_or(&value);
-    let findings = validate(query);
+    let warnings = ignored_members(query);
+    let mut findings: Vec<Finding> = warnings
+        .iter()
+        .map(|w| Finding::warning(NEAR_MISS_ID, w.message.clone(), NEAR_MISS_FIX))
+        .collect();
+    findings.extend(validate(query));
     let blocking = findings.iter().any(|f| f.severity == Severity::Blocking);
 
     let json = json!({
         "valid": !blocking,
         "findingCount": findings.len(),
         "findings": findings.iter().map(Finding::to_json).collect::<Vec<_>>(),
+        "warnings": warnings,
     });
     let text = render(&findings, blocking);
     emit(fmt, &json, &text)?;

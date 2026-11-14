@@ -10,9 +10,266 @@ imply wall-clock timing for releases.
 
 ## [Unreleased]
 
+The changes below, except the plugin bundle entry, are on the main branch and
+not in the 0.4.1 binaries (the release archives and the binaries bundled in the
+plugin). The version number stays 0.4.1 until the next release.
+
+### Changed
+
+- Exit codes of `check`, `audit` and `register`: a new result, NOT EVALUATED,
+  with the new exit code 3. Exit code 0 now means that everything that was
+  asked to be checked was checked and no requested claim asks for too much
+  (one exception: a write forced with `register --yes --force` exits 0 when
+  the write succeeded, see below).
+  NOT EVALUATED is printed when no judged claim asks for too much and the
+  purpose baseline or the registration comparison could not judge at least one
+  requested claim, and by `audit` also for a query with a member name that
+  resembles a defined one (the next entry). OVER-ASK keeps exit code 1 and
+  wins over NOT EVALUATED. The
+  headline, the per-claim lines (`[n/a]`), the new `outcome` member of `--json`
+  and the exit code agree in every case but the forced write. Scripts that
+  treat every non-zero code
+  as a failure keep working; scripts that test for exit code 1 need a case for
+  3. Several requests that exited 0 or 1 now exit 3 (the entries below). All
+  exit codes are in one table in `docs/COMMANDS.md`.
+- `audit` no longer prints OK for a DCQL query with a member that OpenID4VP 1.0
+  does not define at its level and that resembles a defined one. Example: a
+  credential query that says `claim` for `claims` and lists `given_name`,
+  `birthdate` and `address` under it. A wallet ignores a member it does not
+  know (OpenID4VP 1.0, section 6: "Implementations MUST ignore any unknown
+  properties."), so 0.4.1 read such a query as a request for no claim and
+  printed `OK: No claims requested.` with exit code 0, where the correctly
+  spelled query is an OVER-ASK with exit code 1. The result is now NOT
+  EVALUATED with exit code 3, with the reason line `Not evaluated: 1 member(s)
+  of the query that a wallet ignores unless it knows them from an extension.`
+  and the warning described under "Added". A request that over-asks stays
+  OVER-ASK with exit code 1 and lists the warning. A request that was OK and
+  has such a member (for example `value` for `values`, or `credential_set` for
+  `credential_sets`) changes from exit code 0 to 3. A script that reads exit
+  code 0 of `audit` as "nothing asks for too much" is not affected by a
+  correctly spelled query. Limit: an extension may define a member whose name
+  differs from a defined one only in the ways the warning covers (for example
+  a plural ending, a separator or upper and lower case); `audit` reports it
+  too, and this version has no option to accept it (`docs/COMMANDS.md`,
+  `audit`).
+- Text output of `audit`, `check` and `register`: the line under the headline
+  reads `Registration purpose: <text>   Baseline: <label>` (before: `Purpose:
+  <text>   Baseline: <label>`). Its first value is the purpose text of the
+  registration, not the id given with `--purpose`, so it now says `no
+  registration given` when no registration certificate was given (before: `not
+  stated`, also when `--purpose` was given) and `not stated in the
+  registration` when the registration has no purpose text, or a purpose text
+  that shows nothing: empty, or only white space, code points that Unicode
+  16.0.0 lists with the property Default_Ignorable_Code_Point (for example
+  U+200B, U+034F and U+FE0F) and the blank Braille pattern U+2800. The
+  bidirectional formatting characters among them are printed as their escape
+  instead. A script that matches the old line needs the new label. No `--json`
+  member changes.
+- `audit --purpose <unknown id>` is a usage error with exit code 2 that names
+  the id and lists the valid ids, with nothing on stdout. Before, it printed
+  `OK` with exit code 0 and a note on stderr, without any purpose check.
+  `serve --purpose <unknown id>` (also through the `PURPOSE` environment
+  variable) fails at startup the same way; before, the server started without a
+  purpose check.
+- A claim of a credential format the baselines do not model (anything but
+  `dc+sd-jwt`, `vc+sd-jwt` and `mso_mdoc`, for example `jwt_vc_json` or
+  `ldp_vc`) is not evaluated, with the line `Not evaluated: the purpose
+  baselines model only SD-JWT VC (dc+sd-jwt, vc+sd-jwt) and mso_mdoc claim
+  paths, not the format <format>.` In 0.4.1 it was counted as beyond the
+  purpose (`BeyondPurpose`, `Purpose not judged for this credential format`)
+  and exited 1.
+- The four built-in baselines state the credential types they model: SD-JWT VC
+  (`dc+sd-jwt`, `vc+sd-jwt`) with vct `urn:eudi:pid:de:1` or `urn:eudi:pid:1`,
+  and `mso_mdoc` with doctype `eu.europa.ec.eudi.pid.1`. A requested credential
+  of another type (for example the mDL doctype `org.iso.18013.5.1.mDL`, the
+  Proof of Age doctype `eu.europa.ec.av.1`, or a non-PID vct), or one whose
+  `meta` names no type, is not evaluated. Before, its claims were judged against
+  PID claim names, which gave OK or OVER-ASK depending on whether a claim name
+  happened to match. A credential that accepts several types is judged per
+  type: a claim beyond the baseline under a PID type is still an over-ask; a
+  claim within it is not evaluated when another accepted type is not modelled.
+  Verdicts for PID requests are unchanged, including the claims each baseline
+  treats as minimal.
+- A credential without `claims` of a format or type the baseline does not model
+  gets one not evaluated row (`<id> (credential, no claims)`). Before, the
+  request printed `OK: No claims requested.` and exited 0. A PID credential
+  without claims is unchanged.
+- The registration comparison (`audit --cert`, and the body itself in `check`)
+  for a credential format whose type it does not read (anything but the SD-JWT
+  VC formats and `mso_mdoc`): when a registered credential of the same format
+  covers the requested path, the claim is not evaluated against the
+  registration. Before, it was reported as outside the registered scope ("No
+  registered credential of this format and type"), so `check` called such a
+  body an over-ask against itself. When no registered credential of that format
+  covers the path, the claim is still beyond the registration, exit 1, with the
+  line `Not in the registered scope: no registered <format> credential covers
+  this path, whatever its type.` when the registration holds credentials of
+  that format.
+- `register` refuses a body that was not evaluated unless `--yes --force` is
+  given, with exit code 3, also in a dry-run: `Refusing to write: this request
+  could not be evaluated (see above). Re-run with --yes --force to write it
+  anyway.` With `--yes --force` it writes with a warning. The over-ask and
+  format-error refusals are unchanged.
+- `register --force` without `--yes` is a usage error with exit code 2,
+  before the body is read. In 0.4.1 the flag was accepted alone: an
+  over-asking body then skipped the refusal and ended as a dry-run with exit
+  code 0 under the headline OVER-ASK. The help text of `--force` names both
+  cases it writes past (an over-ask, a body that could not be evaluated).
+- `register --yes --force`: the warning line printed before a forced write
+  ends with `A forced write that succeeds exits 0.` (`Warning: writing an
+  over-asking registration because --force was given. A forced write that
+  succeeds exits 0.`, and the same for `a registration that could not be
+  evaluated`). The exit code of a forced write is unchanged: 0 when the write
+  succeeded, under the headline OVER-ASK or NOT EVALUATED. It is the one case
+  in which exit code 0 does not mean that the body was judged and passed; the
+  exit code table in `docs/COMMANDS.md` says so.
+- "Suggested minimal request" for a PID requested as `vc+sd-jwt` (the earlier
+  SD-JWT VC format identifier, vct `urn:eudi:pid:de:1` or `urn:eudi:pid:1`) is
+  printed as claim paths, like for `dc+sd-jwt`. Before, the block said `No
+  claim names are known for this credential type.` although the claims of
+  that credential were judged as PID claims.
+- Text output of `audit`, `check` and `register`: strings that come from a
+  request, a registration or a baseline file (claim paths, credential types,
+  the purpose text, format findings) are printed on one line each. A line
+  break, any other control character, and the Unicode characters that
+  separate lines or change the reading direction are printed as an escape
+  such as `\n` or `\u{1b}`. A path of a baseline file that is
+  printed as a JSON array (its minimal claims and acceptable alternatives)
+  uses the JSON escape instead, for example `\u202e`, so the array stays
+  valid JSON. `--json` is unchanged.
+- `check --json`: `block` is true whenever `outcome` is not `ok`, so a body
+  that was not evaluated blocks (`overAsk` stays false for it).
+- `audit --help`: the `--purpose` text names the default `event_checkin` and
+  says that an unknown id is a usage error.
+- The note of the built-in baselines, the last line of `augenmass baselines`,
+  and the footers of the `serve` pages say that the baselines are curated
+  assessments, not law and not legal advice (before: "taste judgment, not a
+  Rulebook derivation").
+- The GDPR line of the printed legal basis (text output, `--json`
+  `legal_basis`, `baselines`, the `serve` inspect page) quotes Article 5(1) of
+  Regulation (EU) 2016/679 verbatim from its opening words and point (c), with
+  the omitted points marked: `Personal data shall be: [...] (c) adequate,
+  relevant and limited to what is necessary in relation to the purposes for
+  which they are processed (‘data minimisation’);`. Before, it was a
+  paraphrase. The locator `Art. 5(1)(c)` is unchanged.
+- `docs/COMMANDS.md`: `check` states its scope. The format checks apply to any
+  registration body in the shape of the German sandbox registrar; without
+  `--baseline`, the over-ask verdict is measured against the built-in
+  `age_gate_18` baseline only, and other built-in purposes go through
+  `audit --purpose` on the request. `README.md` links the
+  new section of `docs/SANDBOX.md`. Documentation only, no change in behavior.
+- `doctor`: a request whose `dcql_query` has a member that resembles a defined
+  one (for example `claim` for `claims`, the rule of the entry on member names
+  above) no longer gets the line `OK: no signed-request gotchas found.`
+  `doctor` lists the member as the finding `DCQL-MEMBER-NEAR-MISS` with the
+  severity `warning`, with the message and fix of `validate dcql`, and closes
+  with `No blocking finding (warnings only).` The exit code does not change:
+  it is 1 for a blocking finding (`DOCTOR-X5C-STRING`,
+  `DOCTOR-CLIENT-ID-X509HASH`, both unchanged) and 0 otherwise, because a
+  wallet ignores a member it does not know and the member may belong to an
+  extension. `doctor --json` has the new member `warnings` (the array of
+  `audit --json`, empty when there is no such member); `ok` is true when there
+  is no blocking finding.
+- Plugin bundle: the four target binaries under `plugins/augenmass-workbench/bin`
+  and `bin/manifest.json` are rebuilt from the `v0.4.1` release archives with
+  `just bundle`, so the plugin carries the 0.4.0 and 0.4.1 changes. Both plugin
+  manifests (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) say
+  version 0.4.1. The skill reference files quote Article 5b(3) and RPRC_21 as
+  the binary prints them, show the `bank_kyc` baseline, the registration
+  certificate notice, the suggested minimal request in the spelling of the
+  request, the mdoc age request under `age_gate_18`, the `serve` startup banner,
+  and the stderr notice for the built-in sandbox address as the 0.4.1 binary
+  prints them. `docs/RELEASE.md` gains the section "v0.4.1 release proof".
+
 ### Added
 
-Documentation and test data only, no change in behavior.
+- `audit --baseline FILE` and `check BODY --baseline FILE`: judge against one
+  entry of a baseline file with the schema id `augenmass-baselines/0.1`
+  instead of a built-in purpose baseline. `--purpose <entry id>` selects the
+  entry; it may be left out only when the file has one entry that states no
+  `applies_when`, so an entry written for a stated case is never applied
+  without being named. `check` gains `--purpose` only together with
+  `--baseline`. A built-in purpose id together with `--baseline`, an entry id
+  that is not in the file, or a missing `--purpose` where one is needed is a
+  usage error with exit code 2. Results per claim: minimal, acceptable
+  alternative (`[alt]`, not an over-ask, the reason is printed), beyond the
+  baseline (over-ask), not evaluated (a format or type the entry does not
+  model, or a claim the entry leaves open). A `one_of` group allows one of its
+  rows per request; two rows that one response can hold together are an
+  over-ask in `audit` and not evaluated in `check` (`claim_sets` and
+  `credential_sets` can keep two rows apart; `multiple: true` on a credential
+  lets one response hold several credentials, so its `claim_sets` options no
+  longer keep rows apart). Two rows of one block may not overlap: no path may
+  be covered by both, which also excludes crossed wildcards such as
+  `["a", null, 0]` and `["a", 0, null]`. Free text of the file (label,
+  version, `applies_when`, reasons) is printed on one line each with control
+  characters escaped, so a file cannot print a second `Baseline file` line or
+  remove the draft label on a terminal. Every result names the file
+  by file name only, the entry id, its version and its status; an entry that
+  is not `reviewed` is labelled `draft baseline, no legal review`; every result
+  ends with `A baseline file is its author's assessment, not law and not legal
+  advice.` The same facts are in `--json` under `baseline`. A file that does
+  not match the format (an unknown schema id, an unknown or misspelt member, a
+  duplicate entry id, an entry without claims, a malformed or overlapping path,
+  and more) is an error with exit code 1 and nothing on stdout, never a pass.
+  A file that starts with a UTF-8 byte order mark is rejected with an error
+  that names the mark. The error for overlapping rows quotes its paths as JSON
+  arrays with the JSON escape, like the minimal and alternative rows.
+  See `docs/BASELINES.md`.
+- `examples/baselines-example.json`: a synthetic baseline file with three
+  entries for an invented shop; its legal source is marked as invented.
+- `docs/BASELINES.md`: the baseline file format, the results, the one-of rule,
+  what format 0.1 does not express, and how to write a file.
+- `--json` of `audit` and `check`: `outcome` (`ok`, `over_ask`,
+  `not_evaluated`; `check` also `format_error`), `baseline` (which baseline the
+  request was judged against: built-in with its credential types, or the facts
+  of the baseline file entry), `counts.could_not_judge` and
+  `counts.acceptable_alternative` (0 under a built-in baseline). `requested[].status`
+  gains the value `AcceptableAlternative` (only under a baseline file).
+  Existing members keep their names and types.
+- An authoring warning for a member name of a DCQL query that resembles a
+  defined one, in `validate dcql`, `inspect` and `audit`. It is printed for a
+  member of the query object, of a credential query, of a claims query or of
+  a credential set query whose name OpenID4VP 1.0 does not define at that
+  level and that differs from a name it does define there only by the plural
+  ending of a word, by upper and lower case, by a letter written twice, or by
+  characters that are not letters (the separator between its words, a space
+  or a tab before or after the name, a digit, a dot):
+  `claim` for `claims`, `claims_set` or `claim_set` for `claim_sets`,
+  `credential_set` for `credential_sets`, `credential` for `credentials`,
+  `option` for `options`, `paths` for `path`, `value` for `values`, and also
+  `claimS`, `claims1`, `claimss` and `claims` with a space after it. In a
+  credential query that has no `claims` member, a member that OpenID4VP 1.0
+  does not define there and whose value has the form of a `claims` value (a
+  non-empty array of objects that each have a `path` member) is reported in
+  the same way, whatever its name, for example `klaims`. The comparison of
+  names is not an edit distance. A character of the member name that is not
+  ASCII, and a control character, is printed as its escape. The line
+  names the place, the member and the defined name, and says that a wallet
+  ignores a member it does not know unless it implements an extension that
+  defines it. `validate dcql` lists it as the finding `DCQL-MEMBER-NEAR-MISS`
+  with severity `warning`; the query stays valid and the exit code stays 0.
+  `inspect` prints it under `authoring warnings` and exits 0. `audit` prints
+  it under `Authoring warnings:` and gives NOT EVALUATED (see "Changed"). A
+  query that the typed parse rejects stays an error with exit code 1, and the
+  error names the member. An unknown member that resembles no defined one gets
+  no warning. Registration bodies and registration certificates, where
+  `claim` is a defined name, are not examined.
+- `--json` of `audit`, `inspect` (for a DCQL query and for an authorization
+  request), `decode request` and `validate dcql`: the member `warnings`, an
+  array that is empty when the query has no such member. Each element has
+  `id`, `place`, `level`, `member`, `resembles` and `message`.
+- `inspect` and `decode request` print the same authoring warnings for the
+  `dcql_query` of an authorization request, under the line `query: dcql_query
+  present`.
+- `examples/age-request-ignored-member.json`: a DCQL query that says `claim`
+  for `claims`, to show the warning.
+- `augenmass baselines` prints the credential types of each built-in baseline
+  (`credential_types` in `--json`).
+- The `serve` trace event `OVER_ASK_ANALYZED` carries `outcome` and uses the
+  warning level for a result that was not evaluated.
+
+Documentation and test data only, no change in behavior:
 
 - `docs/SANDBOX.md`: section "After 19 November 2026". It gives what the EUDI
   Hub's page on sandbox migration says, by quote with the read date; what keeps
@@ -41,23 +298,54 @@ Documentation and test data only, no change in behavior.
   CLI tests cover `decode regcert` and `audit --cert` on it, and a test checks
   that every readable payload file matches its certificate.
 
-### Changed
+The section and the recipe describe the behavior on main: the shown outputs
+are from this build, and where the 0.4.1 binaries differ (the label
+`Purpose:`, the note for an unknown purpose id with exit 0, no exit code 3)
+the text names the 0.4.1 form.
 
-- `docs/COMMANDS.md`: `check` states its scope. The format checks apply to any
-  registration body in the shape of the German sandbox registrar, the over-ask
-  verdict is measured against the `age_gate_18` baseline only, and other
-  purposes go through `audit --purpose` on the request. `README.md` links the
-  new section of `docs/SANDBOX.md`. Documentation only, no change in behavior.
-- Plugin bundle: the four target binaries under `plugins/augenmass-workbench/bin`
-  and `bin/manifest.json` are rebuilt from the `v0.4.1` release archives with
-  `just bundle`, so the plugin carries the 0.4.0 and 0.4.1 changes. Both plugin
-  manifests (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) say
-  version 0.4.1. The skill reference files quote Article 5b(3) and RPRC_21 as
-  the binary prints them, show the `bank_kyc` baseline, the registration
-  certificate notice, the suggested minimal request in the spelling of the
-  request, the mdoc age request under `age_gate_18`, the `serve` startup banner,
-  and the stderr notice for the built-in sandbox address as the 0.4.1 binary
-  prints them. `docs/RELEASE.md` gains the section "v0.4.1 release proof".
+### Fixed
+
+- A reader that closes standard output or standard error early no longer ends
+  a command with a panic and exit code 101. In 0.4.1, `augenmass audit
+  --request overask --purpose age_gate_18 | head -c 0` ended `audit` with `failed printing to stdout: Broken pipe` and exit code 101
+  instead of 1, and a result larger than the pipe buffer did the same with
+  `| head -n 1`. The command now writes nothing more to the closed stream and
+  exits with the code it computes with an open reader: 0, 1 or 3 for `check`,
+  `audit` and a `register` dry run, and the codes of the other commands
+  (`decode`, `inspect`, `validate dcql`, `baselines`, `verify`, `x509-hash`,
+  `doctor`, `generate`, `evidence`, `list`, `cache warm`, `cache status`). The
+  log lines of `serve` and of `augenmass-relay` no longer stop the server when
+  both streams are closed, and `augenmass-relay --help` and `--version` no
+  longer panic. A write to standard output that fails for another reason, for
+  example a full disk, is the error `Error: write standard output` with exit
+  code 1 (before: a panic). A confirmed write (`register --yes`) whose check
+  report could not be read because standard output was closed stops before
+  anything is sent, with exit code 1, as it did through the panic before.
+- `inspect` and `decode request` read an authorization request given as a
+  plain request object (a JSON object, for example the `payload` member of
+  `decode request --json`). In 0.4.1 both tried to decode such a JSON object
+  as a compact JWT and ended with `Error: decode authorization request JAR`
+  and exit code 1, although `docs/COMMANDS.md` names the plain request object
+  as an input of `decode request`. The first line of the text output is then
+  `OpenID4VP authorization request object (plain JSON, not a signed JAR)`, the
+  `typ`, `alg` and `x5c present` lines are left out, and `header` is `null` in
+  `--json`. The `Detected:` line of `inspect` carries the same words for a
+  plain request object, `Detected: OpenID4VP authorization request object
+  (plain JSON, not a signed JAR)`; for a signed JAR it stays `Detected:
+  OpenID4VP authorization request (JAR)`.
+- `check` and `register` no longer pass a body whose `credentials` member is
+  not an array (for example one credential object without the array). Such a
+  body printed `OK: no over-ask, no format errors` with exit code 0, and
+  `check --json` reported `block: false` with `report: null`, although no claim
+  had been judged. It is now the blocking format error
+  `CHECK-CREDENTIALS-SHAPE`, exit code 1. A body without `credentials`, or with
+  an empty array, still passes, and the line says `OK: the body requests no
+  credentials; no format errors. <path> is ready to register.`
+- README: the `serve` banner sample says `<local>/trace/<session>`, as the
+  binary prints it, and the `check` and `audit` samples show the headline as
+  the binary prints it (`OVER-ASK: Over-ask vs purpose: ...`).
+- AGENTS.md: the sentence on stdin input names the commands it applies to; the
+  `evidence` commands take file paths only.
 
 ## [0.4.1]
 
