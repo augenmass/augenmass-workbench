@@ -2423,6 +2423,103 @@ fn demo_pair_is_inside_registration_beyond_purpose() {
     assert_eq!(report["registration_certificate"]["decoded"], true);
 }
 
+/// A synthetic registration certificate whose field names follow the public
+/// source snapshot of the EUDI Hub; every value is invented.
+const HUB_SHAPE_CERT: &str = "fixtures/hub-shape/registration-hub-shape.jwt";
+const MERGED_PATH_CERT: &str = "examples/merged-path-registration.jwt";
+
+#[test]
+fn hub_shape_registration_decodes() {
+    let text = stdout_of(&["decode", "regcert", HUB_SHAPE_CERT], 0);
+    let lines: Vec<&str> = text.lines().collect();
+    assert!(lines.contains(&REGCERT_NOTICE), "{text}");
+    assert!(
+        lines.contains(&"      claim age_equal_or_over.18"),
+        "{text}"
+    );
+    assert!(lines.contains(&"      claim address.postal_code"), "{text}");
+
+    let out = stdout_of(&["decode", "regcert", HUB_SHAPE_CERT, "--json"], 0);
+    let decoded: serde_json::Value = serde_json::from_str(&out).expect("decode json");
+    let scope = &decoded["scope"];
+    assert_eq!(
+        scope["purpose"][0]["content"],
+        "Example Bottle Shop: confirm the buyer is over 18"
+    );
+    assert_eq!(
+        scope["privacy_policy"],
+        "https://bottles.example.org/privacy"
+    );
+    assert_eq!(scope["support_uri"], "support@bottles.example.org");
+    assert_eq!(
+        scope["credentials"].as_array().expect("credentials").len(),
+        1
+    );
+    let credential = &scope["credentials"][0];
+    assert_eq!(credential["format"], "dc+sd-jwt");
+    assert_eq!(credential["vct_values"], json!(["urn:eudi:pid:de:1"]));
+    assert_eq!(
+        credential["claims"],
+        json!([["age_equal_or_over", "18"], ["address", "postal_code"]])
+    );
+    assert_eq!(decoded["registration_certificate"], not_verified_json());
+}
+
+#[test]
+fn hub_shape_registration_audits_inside_and_beyond() {
+    let inside = audit_json(
+        "examples/age-minimal-request-sdjwt.json",
+        "age_gate_18",
+        Some(HUB_SHAPE_CERT),
+        true,
+    );
+    assert_eq!(inside["counts"]["requested"], 1, "{inside}");
+    assert_eq!(inside["counts"]["beyond_registration"], 0, "{inside}");
+    assert_eq!(inside["counts"]["beyond_purpose"], 0, "{inside}");
+    assert_eq!(inside["registration_certificate"], not_verified_json());
+
+    let request = r#"{"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["urn:eudi:pid:de:1"]},"claims":[{"path":["age_equal_or_over","18"]},{"path":["given_name"]}]}]}"#;
+    let beyond = audit_json(request, "age_gate_18", Some(HUB_SHAPE_CERT), false);
+    assert_eq!(beyond["counts"]["requested"], 2, "{beyond}");
+    assert_eq!(beyond["counts"]["beyond_registration"], 1, "{beyond}");
+    assert_eq!(beyond["counts"]["beyond_purpose"], 0, "{beyond}");
+    let rows = beyond["requested"].as_array().expect("requested");
+    assert_eq!(rows[0]["status"], "MinimalForPurpose", "{}", rows[0]);
+    assert_eq!(rows[1]["status"], "BeyondRegistration", "{}", rows[1]);
+    assert_eq!(
+        rows[1]["rationale"], "Not in the relying party's registered scope.",
+        "{}",
+        rows[1]
+    );
+}
+
+#[test]
+fn merged_path_example_is_beyond_registration() {
+    let report = audit_json(
+        "examples/merged-path-request.json",
+        "event_checkin",
+        Some(MERGED_PATH_CERT),
+        false,
+    );
+    assert_eq!(report["counts"]["requested"], 2, "{report}");
+    assert_eq!(report["counts"]["beyond_registration"], 2, "{report}");
+    assert_eq!(report["counts"]["beyond_purpose"], 0, "{report}");
+    for row in report["requested"].as_array().expect("requested") {
+        assert_eq!(row["status"], "BeyondRegistration", "{row}");
+        assert_eq!(
+            row["rationale"], "Not in the relying party's registered scope.",
+            "{row}"
+        );
+    }
+
+    let out = stdout_of(&["decode", "regcert", MERGED_PATH_CERT, "--json"], 0);
+    let decoded: serde_json::Value = serde_json::from_str(&out).expect("decode json");
+    assert_eq!(
+        decoded["scope"]["credentials"][0]["claims"],
+        json!([["given_name", "family_name"]])
+    );
+}
+
 #[test]
 fn demo_minimal_age_requests_pass() {
     for request in [

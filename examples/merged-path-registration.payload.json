@@ -1,0 +1,17 @@
+{
+  "name": "Example Event Desk",
+  "purpose": [
+    { "lang": "en", "content": "Example Event Desk: check in a registered guest by name" }
+  ],
+  "privacy_policy": "https://events.example.org/privacy",
+  "support_uri": "support@events.example.org",
+  "credentials": [
+    {
+      "format": "dc+sd-jwt",
+      "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+      "claim": [
+        { "path": ["given_name", "family_name"] }
+      ]
+    }
+  ]
+}
