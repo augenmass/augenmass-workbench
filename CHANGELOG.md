@@ -10,8 +10,44 @@ imply wall-clock timing for releases.
 
 ## [Unreleased]
 
+### Added
+
+Documentation and test data only, no change in behavior.
+
+- `docs/SANDBOX.md`: section "After 19 November 2026". It gives what the EUDI
+  Hub's page on sandbox migration says, by quote with the read date; what keeps
+  working in the Workbench (the static artifact commands, the `clone` target,
+  `audit --request ... --cert ...` on a registration certificate given as a
+  compact JWT or as a JSON entry with `id` and `jwt`); what does not or may not
+  (the `sandbox` target and the `cached-sandbox` reads; `serve` cannot carry
+  another registration certificate than the bundled one); which Workbench
+  commands to run, in which order, on a new registration certificate; and what
+  was not tested: nothing was run on a certificate issued by the EUDI Hub.
+- `docs/COMMANDS.md`: recipe "The wallet reports over-asking: reproduce it
+  offline" under `audit`, with the synthetic example pair
+  `examples/merged-path-registration.jwt` (readable payload
+  `examples/merged-path-registration.payload.json`) and
+  `examples/merged-path-request.json`: two requested claims, both beyond the
+  registration, exit 1. The recipe says how to pass a signed request object
+  (through `decode request --json`), which forms `--cert` reads, and how to
+  tell a registration verdict from a purpose verdict. It states its limits: a
+  registered parent path covers a requested child path in the Workbench, an OK
+  does not mean that request and certificate are identical, and the recipe was
+  not run against any wallet.
+- `fixtures/hub-shape/registration-hub-shape.jwt` with its readable payload
+  `fixtures/hub-shape/registration-hub-shape.payload.json`: a synthetic,
+  unsigned registration certificate whose field names follow the EUDI Hub's
+  public source snapshot "Public release 2026-09-09". Every value is invented.
+  CLI tests cover `decode regcert` and `audit --cert` on it, and a test checks
+  that every readable payload file matches its certificate.
+
 ### Changed
 
+- `docs/COMMANDS.md`: `check` states its scope. The format checks apply to any
+  registration body in the shape of the German sandbox registrar, the over-ask
+  verdict is measured against the `age_gate_18` baseline only, and other
+  purposes go through `audit --purpose` on the request. `README.md` links the
+  new section of `docs/SANDBOX.md`. Documentation only, no change in behavior.
 - Plugin bundle: the four target binaries under `plugins/augenmass-workbench/bin`
   and `bin/manifest.json` are rebuilt from the `v0.4.1` release archives with
   `just bundle`, so the plugin carries the 0.4.0 and 0.4.1 changes. Both plugin
