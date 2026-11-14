@@ -392,6 +392,8 @@ Format findings this command catches (grounded in the registrar DTO):
 
 The over-ask part reads the body credential by credential, in its own format and type, with the paths exactly as written (`null` and integer segments included), and compares them with the body itself as the registration under the rules described for `audit` below. A body is therefore always within its own registration; what `check` flags is the purpose axis (against the `age_gate_18` baseline) and the format.
 
+Scope: the format checks apply to any registration body in the shape of the German sandbox registrar (`sandbox.eudi-wallet.org`), whatever purpose it states; the over-ask verdict is always measured against the `age_gate_18` baseline, because `check` has no purpose option; for any other purpose, audit the request, not the body, with `audit --purpose <id>`.
+
 Exit code: 1 on over-ask or a blocking format error; 0 if clean.
 
 Clean body:
@@ -535,6 +537,98 @@ Requested claims:
 ```
 
 The second line appears on every audit with `--cert`, on the OK and the over-ask path, right under the verdict. The JSON output carries the same as `registration_certificate`, `{"decoded": true, "signature_verified": false, "issuer_verified": false, "revocation_checked": false}`, and `null` without `--cert`. Without `--cert` the verdict itself says `registration not evaluated`.
+
+### The wallet reports over-asking: reproduce it offline
+
+Use this when a wallet shows an over-asking message for a request and you want to see, without a phone, where the request and the registration certificate differ.
+
+The registration certificates page in the sandbox part of the German developer guide (`https://bmi.usercontent.opencode.de/eudi-wallet/developer-guide/sandbox/alpha/registration-certificates/`, read on 13 November 2026) states the rule: "If a presentation request later asks for fields outside what was declared, the wallet will flag it to the holder as over-asking." Its line on requested data reads: "one claim per line; nested attributes are comma-separated (e.g. address, city)." Issue 7 in the repository `german-national-wallet/de-eudi-wallet-android` (`https://github.com/german-national-wallet/de-eudi-wallet-android/issues/7`, closed, read on 13 November 2026) is a public report of this message. An answer there says: "the registration cert credentials object has the same structure as the DCQL, so it has to be identical." This recipe adds an offline comparison to that guidance.
+
+The example pair is synthetic, with an invented relying party at example.org. `examples/merged-path-registration.jwt` (readable payload in `examples/merged-path-registration.payload.json`) is a registration certificate in which one claim is registered with the path `["given_name", "family_name"]` where two claims were meant. `examples/merged-path-request.json` asks for the two claims.
+
+The guide's line on requested data names two different things: separate claims and nested attributes. In the Workbench's reading of a certificate, the two look like this: a nested attribute is one path with several segments (`["address", "locality"]` is the member `locality` inside `address`), and two claims are two paths. The example certificate has one path with the two segments `given_name` and `family_name` where two paths with one segment each were meant.
+
+The recipe starts from the certificate as issued and shows which of the two it holds (step 3). It cannot show how a path got into a certificate. No registrar's form was tested for this recipe, so whether a comma in a form entry produces one path with two segments is open. The claim entry of the EUDI Hub was not read (its portal needs a login).
+
+The recipe needs two inputs: the request as DCQL JSON and the registration certificate as a file.
+
+The request is DCQL JSON: a file, inline JSON, or `-` for stdin, bare or wrapped under `dcql_query`. `audit` does not read a signed request object (a JWT) in any of the three forms: it exits 1. Given the JWT as a file or on stdin, the error begins `Error: --request must be 'minimal', 'overask', or a DCQL JSON value`. Given the JWT inline, the error is `Error: --request must be 'minimal', 'overask', a DCQL file path, inline DCQL JSON, or '-'`. When the signed request object is what you have, decode it and pass its payload to `audit`. With a signed request from the fixtures, exit 0:
+
+```
+augenmass decode request fixtures/requests/eudiplo-request.jwt --json | jq '.payload' | augenmass audit --request - --purpose event_checkin
+```
+
+```
+OK: Within the purpose-minimal baseline; registration not evaluated.
+Purpose: not stated   Baseline: Event check-in
+
+Requested claims:
+  [ok]  given_name                   Within the purpose-minimal baseline.
+  [ok]  family_name                  Within the purpose-minimal baseline.
+  [ok]  age_equal_or_over.18         Within the purpose-minimal baseline.
+```
+
+`decode request` verifies no signature. Add `--cert <certificate>` to the `audit` call for the comparison of this recipe.
+
+The certificate is the registration certificate that your verifier sends with that request. The Workbench does not fetch it. `--cert` reads it from a file in one of three forms: the compact JWT, a JSON entry that carries the compact JWT under `jwt` next to an `id`, or a list with exactly one such entry.
+
+When your verifier embeds the certificate in the signed request object, take it from the decoded payload and save the compact JWT to a file. `augenmass decode request <request> --json | jq '.payload | keys'` lists the members of the payload. The Workbench's own [`serve`](#serve) embeds its certificate in two of them, `verifier_info` and `verifier_attestations`. Each is a list with one entry, and the member `data` of that entry is the compact JWT. For a request object from `serve`, `augenmass decode request <request> --json | jq -r '.payload.verifier_info[0].data' > certificate.jwt` writes the file, and `--cert certificate.jwt` reads it. If your verifier uses another member or another shape, find the compact JWT in its payload (three parts separated by dots) and save it the same way.
+
+A readable payload such as `examples/merged-path-registration.payload.json` is not one of the three forms: `audit` then stops with `Error: decode registration certificate` and exit 1 and prints no verdict line, so that exit 1 is an input error, not an over-ask. How the EUDI Hub hands out a certificate was not read (see [What was not tested](SANDBOX.md#what-was-not-tested)). The certificate sent with the request is the one to compare because RPRC_21, printed in the legal basis of an over-ask output, refers to the certificate included in the same request.
+
+Step 1: run the request against the registration certificate. For the example pair, exit 1, and the first line says `outside the registered scope`:
+
+```
+augenmass audit --request examples/merged-path-request.json --purpose event_checkin --cert examples/merged-path-registration.jwt
+```
+
+```
+OVER-ASK: Over-ask: 2 of 2 requested claims are outside the registered scope.
+Registration certificate: payload decoded; signature, issuer and revocation status not verified.
+Purpose: Example Event Desk: check in a registered guest by name   Baseline: Event check-in
+
+Requested claims:
+  [over]  given_name                   Not in the relying party's registered scope.
+  [over]  family_name                  Not in the relying party's registered scope.
+
+Over-asking 0 claim(s) beyond the stated purpose, and 2 beyond the registration.
+```
+
+The output goes on with a `Suggested minimal request` block and the legal basis. That block is built from the purpose baseline (for `event_checkin`: `given_name`, `family_name`, `age_equal_or_over.18`), not from the registration certificate, and it is not a fix for a row that names the registered scope. In this run it lists the path for `age_equal_or_over.18`, which the request does not ask for, and the certificate registers none of the three paths it lists.
+
+Step 2: read the rows that name the registered scope. `Not in the relying party's registered scope.` means that no registered path covers the requested path. `No registered credential of this format and type in the relying party's registered scope.` means that the certificate registers no credential of the requested format and type. The row for an invalid `mso_mdoc` path is described in the list above. The summary line counts these rows as `beyond the registration`, and in `--json` each of them has `status` `BeyondRegistration`.
+
+The purpose rows are a separate question. A row that says `Registered, but beyond what the stated purpose needs.` compares the request with the purpose baseline named by `--purpose` (default `event_checkin`). The baselines are the Workbench's own yardstick (see `baselines`) and are not part of the registration certificate. Pass the baseline closest to your use case and leave the purpose rows aside for this recipe. A claim that is beyond both the purpose and the registration gets the registered-scope text.
+
+`OVER-ASK` and exit 1 alone do not show that the request goes beyond the registration: a purpose row produces both, also when every requested claim is registered. Tell the two cases apart by the first line and the summary line. With at least one claim outside the registration, the first line reads `Over-ask: N of M requested claims are outside the registered scope.` and the summary line ends with `and N beyond the registration.` With purpose rows only, the first line reads `Over-ask vs purpose: N of M requested claims exceed the stated purpose.` and the summary line names no registration. The rows that name the registered scope are the same under every baseline, so when no baseline fits your use case, pass any of them and read only those rows.
+
+Step 3: compare the paths. Decode the certificate:
+
+```
+augenmass decode regcert examples/merged-path-registration.jwt
+```
+
+```
+WRPRC registration certificate (payload-only, no signature verified)
+Registration certificate: payload decoded; signature, issuer and revocation status not verified.
+  purpose: "Example Event Desk: check in a registered guest by name"
+  privacy_policy: https://events.example.org/privacy
+  support_uri: support@events.example.org
+  credentials: 1
+    format dc+sd-jwt  vct urn:eudi:pid:de:1
+      claim given_name.family_name
+```
+
+The certificate registers one path, shown dotted as `given_name.family_name`. With `--json` the path keeps its segments: `scope.credentials[0].claims` is `[["given_name","family_name"]]`, one path with two segments, which selects the member `family_name` inside `given_name`. The request asks for `["given_name"]` and `["family_name"]`, two paths with one segment each, and the registered path covers neither. On your own pair, compare format and type first (`vct_values` or `doctype_value`), then each path segment by segment, under the rules in the list above. In this example the registration would need two claims with one path each. How a registration is changed depends on the registrar and is not part of this recipe.
+
+Limits of this recipe:
+
+- What an OK means: with the first line `OK: Minimal: all N requested claims are within purpose and registration.`, every requested claim is covered by a registered path of a credential of the same format and type, under the Workbench's own coverage rules (the list above), and is within the chosen purpose baseline. It does not mean that the request and the certificate are identical. Under those rules a registered parent path covers a requested child path: `["address"]` covers `["address", "locality"]`. A registered path that the request does not ask for does not change the verdict. The answer quoted above says "has to be identical". An OK from the Workbench therefore does not predict that a wallet shows no over-asking message. This is a limit of what the Workbench predicts.
+- An OK can come from a run that made no purpose comparison. When `--purpose` is not one of the ids that `augenmass baselines` lists (a mistyped id, for example), `audit` prints `note: unknown purpose` on stderr, makes no purpose comparison and compares the request with the certificate only. If every claim is covered, the first line reads `OK: Within registered scope; purpose not evaluated (no baseline supplied).`, each row starts with `[n/a]`, and the exit code is 0. That OK says nothing about the purpose baseline.
+- The Workbench has no option that compares for identity. After an OK, compare by hand. `augenmass decode regcert <certificate> --json` prints the registered paths with their segments under `scope.credentials[].claims`, next to `format` and `vct_values` or `doctype_value`; the request has its paths under `credentials[].claims[].path`. Check that each requested path has a registered path with exactly the same segments, and note every registered path that the request leaves out. Whether a wallet compares this way was not tested.
+- The recipe was not run against any wallet. It reproduces the comparison in the Workbench only.
+- The certificate is decoded, not verified.
+- The example pair is synthetic.
 
 ## `baselines`
 

@@ -1,0 +1,31 @@
+{
+  "sub": "EXAMPLE-RP-0001",
+  "sub_ln": "Example Bottle Shop GmbH",
+  "name": "Example Bottle Shop",
+  "country": "DE",
+  "entitlements": ["https://registrar.example.org/entitlement/service-provider"],
+  "srv_description": [
+    { "lang": "en", "content": "Example Bottle Shop: online shop for age-restricted goods" }
+  ],
+  "credentials": [
+    {
+      "format": "dc+sd-jwt",
+      "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+      "claim": [
+        { "path": ["age_equal_or_over", "18"], "values": [true] },
+        { "path": ["address", "postal_code"] }
+      ]
+    }
+  ],
+  "purpose": [
+    { "lang": "en", "content": "Example Bottle Shop: confirm the buyer is over 18" }
+  ],
+  "privacy_policy": "https://bottles.example.org/privacy",
+  "registry_uri": "https://registrar.example.org/registry",
+  "support_uri": "support@bottles.example.org",
+  "supervisory_authority": {
+    "name": "Example Supervisory Authority",
+    "uri": "https://authority.example.org"
+  },
+  "intended_use_id": "00000000-0000-4000-8000-000000000001"
+}

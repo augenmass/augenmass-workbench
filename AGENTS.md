@@ -35,7 +35,7 @@ cargo build
 cargo test
 ```
 
-`cargo test` runs unit tests plus integration suites that drive the real binary against the committed fixtures. `cargo test --workspace` currently runs 323 tests, all passing (measured 2026-11-13): 199 unit tests under `src/` and `crates/`, 94 CLI integration tests, 15 cache integration tests, 9 claim-path integration tests (`tests/claim_paths.rs`, which runs the shared vectors in `fixtures/claim-paths/path-vectors.json`), 5 demo-proof integration tests, and 1 serve integration test. There is a `just verify` convenience target that wraps the build, the test run, and smoke checks; `cargo build` and `cargo test` are the canonical path and always work.
+`cargo test` runs unit tests plus integration suites that drive the real binary against the committed fixtures. `cargo test --workspace` currently runs 327 tests, all passing (measured 2026-11-14): 199 unit tests under `src/` and `crates/`, 97 CLI integration tests, 15 cache integration tests, 10 claim-path integration tests (`tests/claim_paths.rs`, which runs the shared vectors in `fixtures/claim-paths/path-vectors.json`), 5 demo-proof integration tests, and 1 serve integration test. There is a `just verify` convenience target that wraps the build, the test run, and smoke checks; `cargo build` and `cargo test` are the canonical path and always work.
 
 For presentation and skill wording changes, run the focused proof gate too:
 
@@ -86,7 +86,7 @@ When in doubt about command behavior, do not guess. Run the binary:
 - `tests/`: integration tests for the CLI, cache server, and serve debugger.
 - `scripts/`: local smoke gates wrapped by `just`, no Python and no remote CI.
 - `fixtures/`: committed offline test artifacts (see below).
-- `examples/`: sample registration bodies and requests (`min.json`, `over.json`, `bad-path.json`, `bad-request.json`) and demonstration inputs (`age-broad-registration.jwt` with its readable payload `age-broad-registration.payload.json`, `age-broad-request.json`, `age-minimal-request-sdjwt.json`, `age-minimal-request-mdoc.json`, `kyc-request-plus-birthdate.json`).
+- `examples/`: sample registration bodies and requests (`min.json`, `over.json`, `bad-path.json`, `bad-request.json`) and demonstration inputs (`age-broad-registration.jwt` with its readable payload `age-broad-registration.payload.json`, `age-broad-request.json`, `age-minimal-request-sdjwt.json`, `age-minimal-request-mdoc.json`, `kyc-request-plus-birthdate.json`, `merged-path-registration.jwt` with its readable payload `merged-path-registration.payload.json`, `merged-path-request.json`).
 - `docs/`: documentation.
   - `docs/DEPLOYMENT.md`: cache backend deployment notes for Railway, Docker, VPS, Cloudflare, and Vercel.
   - `docs/RELEASE.md`: CI, release archives, and platform support.

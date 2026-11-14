@@ -14,7 +14,9 @@ read on 13 November 2026) says that testing in it is possible until 19 November
 2026, that the new wallet app version then no longer accepts certificates from
 it, and that it admits no new users; after that date, the `sandbox` target, the
 `cached-sandbox` reads, and the live sandbox smokes on this page may stop
-working against it.
+working against it. The section
+[After 19 November 2026](#after-19-november-2026) says what keeps working in
+the Workbench, what does not, and what was not tested.
 
 The tool repeats this notice in one line on stderr whenever it falls back to
 the built-in registrar address `https://sandbox.eudi-wallet.org/api` without
@@ -60,6 +62,169 @@ under test. The `serve-smoke` gate proves the verifier runtime without a phone
 wallet. A specific phone-wallet environment is proven only after following
 `docs/PHONE_WALLET_PROOF.md` and passing `evidence assert-live` on the captured
 bundle.
+
+## After 19 November 2026
+
+The notice at the top of this page gives what the landing page of the German
+sandbox registrar says about 19 November 2026. This section says what keeps
+working in the Workbench after that date, what does not or may not, and what
+was not tested.
+
+### What the EUDI Hub says
+
+The EUDI Hub has a page on sandbox migration at
+`https://eudi-hub.gov.de/en/start/sandbox-migration` (undated, read on 13
+November 2026). It says: "The new EUDI Hub Sandbox is now open in beta." The
+date 19 November 2026 in this section is taken from the landing page of the
+German sandbox registrar (see the notice at the top of this page).
+
+The EUDI Hub's page says three things that matter for the rest of this section:
+
+1. The old certificates work "only as long as you don't update the Wallet Sandbox app. After an update, the old certificates will no longer work."
+2. A transfer does not happen automatically: "automatic transfer isn't possible. Please reconfigure your credential requests and credential issuances in the EUDI Hub Sandbox. Then create your certificates based on the new configuration."
+3. The EUDI Hub is used through its web interface: "For now, you can only use the EUDI Hub through the web interface. We plan to provide an API in early 2027."
+
+If your verifier sends a registration certificate issued by the German sandbox
+registrar (`sandbox.eudi-wallet.org`), the notice at the top of this page is
+about that certificate: the registrar's landing page says that testing in it
+is possible until 19 November 2026 and that the new wallet app version then no
+longer accepts certificates from it.
+
+The EUDI Hub's page has the full text and may have changed since the read
+date.
+
+### What keeps working
+
+- The static artifact commands need no target and no registrar (the row
+  "Offline fixtures and artifacts" in the table above). They are not affected.
+- The `clone` target is a local store on loopback and keeps working. It speaks
+  the registration endpoints of the German sandbox registrar, so it rehearses
+  writes in that shape only.
+- A request can be checked against a registration certificate offline with
+  `audit --request <request> --cert <certificate>`. The certificate is given as
+  a compact JWT, as a JSON entry with `id` and `jwt`, or as a list with exactly
+  one such entry. A decoded payload (a plain JSON object) is not accepted: the
+  command stops with `Error: decode registration certificate` and exit 1, and
+  prints no verdict line. The cause printed under that error varies with the
+  input, for example `invalid base64url payload` or `not a compact JWT`. The
+  certificate is decoded, not verified.
+
+The fixture `fixtures/hub-shape/registration-hub-shape.jwt` is a synthetic
+registration certificate (see "What was not tested" below). Decode it:
+
+```
+augenmass decode regcert fixtures/hub-shape/registration-hub-shape.jwt
+```
+
+```
+WRPRC registration certificate (payload-only, no signature verified)
+Registration certificate: payload decoded; signature, issuer and revocation status not verified.
+  purpose: "Example Bottle Shop: confirm the buyer is over 18"
+  privacy_policy: https://bottles.example.org/privacy
+  support_uri: support@bottles.example.org
+  credentials: 1
+    format dc+sd-jwt  vct urn:eudi:pid:de:1
+      claim age_equal_or_over.18
+      claim address.postal_code
+```
+
+Audit a request against it, exit 0:
+
+```
+augenmass audit --request examples/age-minimal-request-sdjwt.json --purpose age_gate_18 --cert fixtures/hub-shape/registration-hub-shape.jwt
+```
+
+```
+OK: Minimal: all 1 requested claims are within purpose and registration.
+Registration certificate: payload decoded; signature, issuer and revocation status not verified.
+Purpose: Example Bottle Shop: confirm the buyer is over 18   Baseline: Age gate (over 18)
+
+Requested claims:
+  [ok]  age_equal_or_over.18         Within the purpose-minimal baseline.
+```
+
+A request with a claim outside the certificate exits 1, with a row that names
+the registered scope. The recipe
+[The wallet reports over-asking: reproduce it offline](COMMANDS.md#the-wallet-reports-over-asking-reproduce-it-offline)
+shows how to read such rows.
+
+### What to run on a new registration certificate
+
+These steps are for a new registration certificate, such as one issued by the
+EUDI Hub. They start when you have that certificate as a file in one of the
+forms listed under [What keeps working](#what-keeps-working). The Workbench
+has no step inside the EUDI Hub; point 2 under
+[What the EUDI Hub says](#what-the-eudi-hub-says) gives what its page says
+about transfer. Run the steps in this order:
+
+1. Decode it with `augenmass decode regcert <certificate>`. Check that the
+   purpose, the privacy policy, the support contact and every claim path are
+   the ones meant. Each `claim` line is one registered path, with its segments
+   joined by dots (`--json` prints each path as a list of its segments). Watch
+   for a line that joins two claims that were meant to be separate:
+   `claim given_name.family_name` is one path, where one line for `given_name`
+   and one line for `family_name` were meant. The recipe
+   [The wallet reports over-asking: reproduce it offline](COMMANDS.md#the-wallet-reports-over-asking-reproduce-it-offline)
+   works through this case.
+2. Audit the request that the verifier sends against it with
+   `augenmass audit --request <request> --purpose <id> --cert <certificate>`.
+   `<request>` is DCQL JSON; the recipe says how to get it out of a signed
+   request object.
+3. On exit 1, read the first line and the rows as steps 2 and 3 of the recipe
+   describe. Only the rows that name the registered scope are about the
+   certificate.
+4. On exit 0, read the `OK` line:
+   - `OK: Minimal: all N requested claims are within purpose and registration.`
+     Every requested claim is covered by the certificate under the
+     Workbench's rules and is within the purpose baseline.
+   - `OK: Within registered scope; purpose not evaluated (no baseline supplied).`
+     The purpose was not checked, because `<id>` is not one of the ids that
+     `augenmass baselines` lists (a mistyped id, for example). The run also
+     printed `note: unknown purpose` on stderr. Correct the id and run step 2
+     again.
+
+   Neither line says that the request and the certificate are identical; the
+   limits of the recipe say how to compare the paths by hand.
+5. Repeat steps 1 to 4 whenever the request or the certificate changes.
+
+Neither command needs a phone, a wallet app or a registrar, so both can run
+before a test device is updated (see point 1 under
+[What the EUDI Hub says](#what-the-eudi-hub-says)). This order was not run on a
+certificate issued by the EUDI Hub, and `serve` cannot carry the new
+certificate to a phone; the two parts below give both limits.
+
+### What does not, or may not
+
+- The `sandbox` target and the `cached-sandbox` reads use the German sandbox
+  registrar and may stop working against it, as the notice at the top of this
+  page says. The Workbench has no target for the EUDI Hub.
+- `serve` embeds the registration certificate bundled with the binary
+  (`fixtures/regcert/rc-by-id.json`, issued by the German sandbox registrar) in
+  every request and has no option to load another one; `--key` and `--leaf` set
+  the signing key and its leaf certificate only. Phone tests with `serve` are
+  therefore not covered once the wallet app no longer accepts certificates from
+  that registrar.
+- `check` and `register` read a registration body in the shape of the German
+  sandbox registrar; see the scope note under [`check`](COMMANDS.md#check).
+
+### What was not tested
+
+- Nothing in the Workbench was run on a certificate issued by the EUDI Hub;
+  this project had none.
+- The fixture `fixtures/hub-shape/registration-hub-shape.jwt` is synthetic. Its
+  field names come from the EUDI Hub's public source repository
+  (`https://gitlab.opencode.de/bmi/eudi-wallet/eudi-hub-de-public`, snapshot
+  "Public release 2026-09-09", read on 13 November 2026). Every value is
+  invented, and so is the type of every value the Workbench does not read.
+  Whether a certificate issued by the EUDI Hub has this shape was not checked.
+- From a registration certificate the Workbench reads `purpose`,
+  `privacy_policy`, `support_uri` and `credentials` (format, type, claim
+  paths). It ignores every other field, `values` and `intended_use_id`
+  included.
+- How the EUDI Hub hands out a certificate was not read: its portal needs a
+  login. `audit --cert` reads a compact JWT or a JSON entry that carries one
+  under `jwt`; any other form has to be brought into one of these first.
+- No phone wallet was used for anything in this section.
 
 ## The clone target
 
