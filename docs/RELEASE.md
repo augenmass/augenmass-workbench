@@ -213,6 +213,66 @@ release. Tag pushes spend runner minutes and should happen only after explicit
 approval. On manual dispatch, it publishes workflow artifacts only. Tag builds
 fail unless the tag name matches `v$(Cargo.toml version)`.
 
+## v0.5.0 release proof
+
+Published release `v0.5.0` is available at:
+
+```text
+https://github.com/augenmass/augenmass-workbench/releases/tag/v0.5.0
+```
+
+The tag `v0.5.0` is an annotated tag with a PGP signature; `git tag -v v0.5.0`
+reports a good signature from the EdDSA key
+`0A82DD028B9B7AB8518530ECBF9E8C1F7CE705C3`. It points at commit
+`09e972dd3c6085090b3588766c47fc30060f538f`, the merge of pull request #13
+(`release/v0.5.0`) into `main`. The pull request check run `43573507457` passed
+on the branch head `1069c2c06ff060715856a73e762941d3e7edd705`, and the check run
+`43574153024` passed on `main` at the merge commit. The tag release run
+`43574619781` passed all four native build, package, and archive-smoke jobs
+(Linux x64, Windows x64, macOS Apple Silicon, macOS Intel) and the publish job.
+
+Before the merge, the workflow `Blacksmith Smoke` was started by hand with the
+scope `test` (`cargo test --workspace`) on the release branch. Run `43573504084`
+at commit `1069c2c06ff060715856a73e762941d3e7edd705` passed on Linux x64, macOS
+Apple Silicon, and Windows x64. The log of the Windows job has 14 test result
+lines (11 test binaries and 3 doc-test runs) with 505 tests passed and 0
+failed. An earlier run, `43568835703` at commit
+`5f263f08220617bd3d90d01636594eb909cfaf4a`, passed on Linux x64 and macOS Apple
+Silicon and failed on Windows in the relay test
+`the_relay_starts_and_runs_with_closed_streams`, which started the relay with
+an empty environment. Commit `1069c2c` fixed that in the tests; it changes test
+files only.
+
+The release carries fourteen assets: four native CLI archives plus a `.sha256`
+checksum and a `.manifest.json` sidecar for each, and the claim path test
+vectors `path-vectors.json` with their `.sha256` file. Every archive manifest
+records `gitCommit` `09e972dd3c6085090b3588766c47fc30060f538f`, `gitDirty`
+`false`, `layoutOnly` `false`, and `nativeExecution` `true`, so each binary is a
+native build of the tagged commit with no local modifications. The archives are:
+
+```text
+augenmass-v0.5.0-x86_64-unknown-linux-gnu.tar.gz
+augenmass-v0.5.0-x86_64-pc-windows-msvc.zip
+augenmass-v0.5.0-x86_64-apple-darwin.tar.gz
+augenmass-v0.5.0-aarch64-apple-darwin.tar.gz
+```
+
+The SHA-256 of `path-vectors.json` is
+`8f5972c370c7294126393c1f2f60cf7323f8aaccb90c1222876f16e56194af8b`; it matches
+its `.sha256` asset and the file `fixtures/claim-paths/path-vectors.json` at the
+tag. The vectors are the same file as in `v0.4.1`.
+
+The committed plugin bundle under `plugins/augenmass-workbench/bin` was rebuilt
+from these release archives by `scripts/assemble-plugin-bundle.sh` (`just
+bundle`), which checks every archive and binary hash against its sidecar and
+rejects layout-only or non-native manifests before copying.
+
+macOS notarization was not performed for v0.5.0: the release workflow has no
+signing or notarization step, the macOS Apple Silicon binary carries only an ad
+hoc linker signature with no team identifier and no stapled ticket, and the
+macOS Intel binary is not signed. Verify the release checksum and approve the
+binary locally if Gatekeeper or Windows blocks it.
+
 ## v0.4.1 release proof
 
 Published release `v0.4.1` is available at:

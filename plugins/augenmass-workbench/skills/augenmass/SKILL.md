@@ -70,15 +70,16 @@ The central idea is Augenmaß: a sense of proportion. A relying party should ask
 
 - Lead with the purpose, not the request. "Over-ask" is always relative to a stated purpose, so before you judge a request, know what it is for. An age check needs proof of being over 18, not a birthdate, a name, and an address.
 - Every extra claim has a cost. Data a relying party did not need is data it now has to protect, that can correlate a user across contexts, and that a regulator can ask about. "It is just one more field" is how over-ask happens.
-- A finding is a judgment, not a verdict. A soft over-ask is a proportionality signal, not a hard protocol violation; say so. The curated baselines are taste grounded in the legal basis, not a line-by-line derivation from an official rulebook.
+- A finding is a judgment, not a verdict. A soft over-ask is a proportionality signal, not a hard protocol violation; say so. The curated baselines are curated assessments, not law and not legal advice; each states the credential types it models.
 - Decode is not verify. Decoding shows you the contents of an artifact; it does not check a signature. mdoc support is decode and structure only: the COSE signature and value digests are not verified. Be precise about which one you did.
+- Not evaluated is not OK. `check`, `audit`, and `register` have three results: OK (exit 0), OVER-ASK (exit 1), and NOT EVALUATED (exit 3). Exit 0 means that everything asked was checked and nothing over-asks. On exit 3 no judged claim over-asks, but the tool could not judge at least one requested claim (a credential format or type the baseline does not model, or a DCQL member name that a wallet ignores). Say what was not judged; never report "no over-ask" on exit 3.
 - Prefer prevention. The same engine that explains an over-ask can stop the next one as a pre-commit hook or a CI gate. When someone keeps hitting the same trap, point them at the guardrail, not just the one-off fix.
 
 ## When to use this skill
 
 - Understand an unknown token or file: "what is this?" Run `inspect`; it sniffs the type and dispatches.
-- Decode a specific artifact offline: an SD-JWT VC presentation, a WRPRC registration certificate, an OpenID4VP request / JAR, an OpenID4VCI credential offer, a token status list, a DCQL query via `inspect`, or a generic JWT. Validate DCQL with `validate dcql`.
-- Audit a request for over-ask: lint a DCQL request against a purpose baseline and the legal basis (eIDAS, GDPR, ARF) before anyone is asked for data.
+- Decode a specific artifact offline: an SD-JWT VC presentation, a WRPRC registration certificate, an OpenID4VP request (a signed JAR or a plain JSON request object), an OpenID4VCI credential offer, a token status list, a DCQL query via `inspect`, or a generic JWT. Validate DCQL with `validate dcql`; it blocks a claims query without `path` or with an empty `path`. For a DCQL member name that resembles a defined one (for example `claim` for `claims`), which a wallet ignores, `validate dcql`, `inspect`, `decode request`, `doctor`, and `audit` print the authoring warning `DCQL-MEMBER-NEAR-MISS`.
+- Audit a request for over-ask: lint a DCQL request against a purpose baseline and the legal basis (eIDAS, GDPR, ARF) before anyone is asked for data. The built-in baselines model the PID only; for another credential type, `--baseline FILE` on `audit` and `check` judges against one entry of a baseline file. Every result under such a file names the file, entry, version and status, and an entry that is not `reviewed` carries the label `draft baseline, no legal review`; keep that label when you report the result.
 - Gate a registration body before a write: catch over-ask plus registrar schema mistakes (claims[].path shape, credentials vs provided_attestations, purpose shape, privacy_policy URL, support_uri).
 - Verify a presentation cryptographically: issuer signature, KB-JWT, nonce and aud, vct, freshness, trust anchoring, and revocation status.
 - Verify a signed request (JAR) cryptographically with `verify request`: the ES256 signature over the request object (`none` and alg-confusion rejected), the `x509_hash` client_id binding to the `x5c` leaf, and, with `--anchor`, that the leaf chains directly to a trust anchor. Missing `client_id` or any scheme other than `x509_hash` rejects with `JarClientIdUnbound`. This is the request-side counterpart to `verify presentation`; `doctor` only lints JAR shape.
@@ -95,10 +96,10 @@ The central idea is Augenmaß: a sense of proportion. A relying party should ask
 Writes are guarded. Reason before you write.
 
 - Always run `check` on a registration body, or a `register` dry-run (omit `--yes`), before any real write. The dry-run shows exactly what would be sent.
-- Never pass `--yes` or `--force` on the user's behalf. Only add them when the user explicitly asks to write, and `--force` only when they explicitly accept an over-ask warning. `--force` requires `--yes`.
+- Never pass `--yes` or `--force` on the user's behalf. Only add them when the user explicitly asks to write, and `--force` only when they explicitly accept an over-ask warning or a body that could not be evaluated. `--force` requires `--yes`; `--force` alone is a usage error (exit 2). `register` refuses an over-ask with exit 1 and a body that was not evaluated with exit 3, also in a dry-run. A forced write that succeeds exits 0, so exit 0 after `--yes --force` does not mean the body passed.
 - Default to the clone target (`--target clone`) for writes. Use `--target cached-sandbox` only for read-only cached sandbox reads, and only touch `--target sandbox` when the user asks to rehearse against the real registrar.
 - Never echo, log, or commit tokens, certificates, or keys. Decode and describe; do not paste raw secrets back.
-- Use `--json` whenever you feed output back into your own reasoning or into CI; it is effective on commands that render structured output.
+- Use `--json` whenever you feed output back into your own reasoning or into CI; it is effective on commands that render structured output. For `check` and `audit`, decide from the `outcome` member (`ok`, `over_ask`, `not_evaluated`; `check` also `format_error`) or the exit code, not from the over-ask counts alone: those are 0 for a result that was not evaluated.
 - Write only to the relying party and target the user explicitly names; never invent or reuse a demo relying party id.
 
 ## Explaining findings in plain language
@@ -156,13 +157,14 @@ For a live-wallet debugging report:
 | Decode a generic JWT/JWS | `$AUGENMASS decode jwt <input>` |
 | Decode an SD-JWT VC presentation | `$AUGENMASS decode sd-jwt <input>` |
 | Decode a WRPRC registration certificate | `$AUGENMASS decode regcert <input>` |
-| Decode an OpenID4VP request / JAR | `$AUGENMASS decode request <input>` |
+| Decode an OpenID4VP request (signed JAR or plain JSON request object) | `$AUGENMASS decode request <input>` |
 | Decode an OpenID4VCI credential offer | `$AUGENMASS decode offer <input>` |
 | Decode a token status list | `$AUGENMASS decode status-list <input>` |
 | Decode an ISO 18013-5 mdoc (mso_mdoc; CBOR, hex, or base64) | `$AUGENMASS decode mdoc <input>` |
 | Validate a DCQL query (ids, credential_sets refs, per-format claim paths) | `$AUGENMASS validate dcql <input>` |
-| Gate a registration body before a write | `$AUGENMASS check <body>` |
+| Gate a registration body before a write | `$AUGENMASS check <body> [--baseline FILE [--purpose <entry id>]]` |
 | Audit a request for over-ask | `$AUGENMASS audit --request {minimal\|overask\|FILE} --purpose <id> [--cert FILE]` |
+| Audit a request against one entry of a baseline file | `$AUGENMASS audit --request {minimal\|overask\|FILE} --baseline FILE [--purpose <entry id>] [--cert FILE]` |
 | List or show purpose baselines and legal basis | `$AUGENMASS baselines [<id>]` |
 | Verify a presentation cryptographically | `$AUGENMASS verify presentation <p> --nonce <n> --aud <a> [--vct --now --max-age --trust-anchor --status-token --status-key]` |
 | Verify a signed request / JAR cryptographically | `$AUGENMASS verify request <jar> [--anchor <pem> --now <secs>]` |
@@ -173,7 +175,7 @@ For a live-wallet debugging report:
 | Generate a proportionate registration body | `$AUGENMASS generate regbody [--use-case age-check --over-broad --rp --support-uri --privacy-policy --purpose]` |
 | Generate a DCQL query from claim paths | `$AUGENMASS generate dcql --claim <path> [--claim <path> ...]` |
 | Diagnose a signed request / JAR | `$AUGENMASS doctor <request>` |
-| Debug a live wallet interaction (verifier-in-a-box) | `$AUGENMASS serve [--port --host --public-url --key --leaf --purpose --trust-anchor --status-signer --live-status --quiet --unsafe-debug-artifacts]` |
+| Debug a live wallet interaction (verifier-in-a-box) | `$AUGENMASS serve [--port --host --public-url --key --leaf --purpose --trust-anchor --status-signer --live-status --quiet --unsafe-debug-artifacts --relay --relay-token --relay-ttl --relay-optional --age-only]` |
 | Export a local evidence bundle | `$AUGENMASS evidence export <session-dir> --out <bundle.json> [--signing-key <pem>]` |
 | Verify a local evidence bundle | `$AUGENMASS evidence verify <bundle.json> [--verify-key <pem>]` |
 | Replay a projector-safe timeline | `$AUGENMASS evidence replay <bundle.json> [--verify-key <pem>]` |
@@ -187,9 +189,9 @@ For a live-wallet debugging report:
 | Prewarm the cached-sandbox mirror before a demo | `$AUGENMASS cache warm [--api-base --admin-token --rp --timeout-secs]` |
 | Check what a cache has stored | `$AUGENMASS cache status [--api-base --admin-token --timeout-secs]` |
 
-Artifact inputs accept file paths, inline values, or `-` for stdin, except evidence bundles, which `evidence verify`, `replay`, and `assert-live` read only from a file path; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Commands that render structured output accept `--json`.
+The artifact argument of `inspect`, `decode`, `validate dcql`, `check`, `verify`, `x509-hash`, `doctor`, and `register` accepts a file path, an inline value, or `-` for stdin; `audit --request` accepts `minimal`, `overask`, a DCQL file, inline DCQL JSON, or `-`. Arguments that name a file take a path only: `audit --cert`, `--baseline`, and the bundle of the `evidence` commands (`verify`, `replay`, `profile`, `assert-live`, `prove-trust-status`). Commands that render structured output accept `--json`.
 
-The read-only commands exit non-zero on the bad outcome so they slot into CI: `check` and `audit` exit 1 on over-ask (and `check` also on a blocking format error), `verify` exits 1 when not verified, untrusted, revoked, or erroring, `x509-hash --client-id` exits 1 on mismatch, `doctor` exits 1 when it has findings, `evidence verify` / `evidence replay` exit non-zero when hashes, replay determinism, or signatures fail, and `evidence assert-live` exits non-zero unless the bundle proves the required live-wallet event spine.
+The read-only commands exit non-zero on the bad outcome so they slot into CI: `check` and `audit` exit 1 on over-ask (and `check` also on a blocking format error) and 3 on NOT EVALUATED (no judged claim over-asks, but a requested claim could not be judged; an over-ask wins over not evaluated), so exit 0 means that everything asked was checked and nothing over-asks. An unknown `--purpose` id is a usage error with exit 2: the error names the valid ids and nothing is compared. `verify` exits 1 when not verified, untrusted, revoked, or erroring, `x509-hash --client-id` exits 1 on mismatch, `doctor` exits 1 for a blocking finding only (a warning alone exits 0), `validate dcql` exits 1 on a blocking finding, `evidence verify` / `evidence replay` exit non-zero when hashes, replay determinism, or signatures fail, and `evidence assert-live` exits non-zero unless the bundle proves the required live-wallet event spine. A reader that closes the pipe early (for example `| head -n 1`) does not change the exit code.
 
 ## Relying party, examples, and fixtures
 

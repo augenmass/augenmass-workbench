@@ -4,9 +4,9 @@ Six complete walkthroughs. Every command here runs against the real binary as wr
 
 Conventions used throughout:
 
-- Artifact inputs accept a file path, an inline value, or `-` for stdin.
+- The artifact argument of `inspect`, `decode`, `validate dcql`, `check`, `audit --request`, `verify`, `x509-hash`, `doctor`, and `register` accepts a file path, an inline value, or `-` for stdin. `audit --cert`, `--baseline`, and the bundle of the `evidence` commands take a file path only.
 - Commands that render structured output take `--json` for machine output (CI and agents).
-- Exit codes are CI-friendly: a command exits non-zero on its "bad" outcome (over-ask, rejection, mismatch, findings) and `0` when clean. Each walkthrough notes the relevant codes.
+- Exit codes are CI-friendly: a command exits non-zero on its "bad" outcome (over-ask, rejection, mismatch, blocking findings) and `0` when clean. `check`, `audit`, and `register` exit `3` for NOT EVALUATED (no judged claim over-asks, but a requested claim could not be judged; not an OK), and a usage error such as an unknown `--purpose` id exits `2`. Each walkthrough notes the relevant codes.
 - Verification is offline. The clock is injectable with `--now` (Unix seconds), so fixture-based runs are reproducible. The fixtures use `--now 1780435200`.
 
 Shared binding values (from the fixtures):
@@ -83,7 +83,7 @@ Registration certificate: payload decoded; signature, issuer and revocation stat
       claim age_equal_or_over.18
 ```
 
-The full decoder set is `decode {jwt|sd-jwt|regcert|request|offer|status-list|mdoc}`. When in doubt, use `inspect` first, then reach for the specific decoder once you know the type. None of these verify a signature; they decode payloads only. Verification is walkthrough 4.
+The full decoder set is `decode {jwt|sd-jwt|regcert|request|offer|status-list|mdoc}`. When in doubt, use `inspect` first, then reach for the specific decoder once you know the type. None of these verify a signature; they decode payloads only. Verification is walkthrough 4. `inspect` and `decode request` also read a request given as a plain JSON request object (for example the `payload` member of `decode request --json`); the output then starts with `OpenID4VP authorization request object (plain JSON, not a signed JAR)` and has no `typ`, `alg` and `x5c present` lines.
 
 A note on offer fixtures: `fixtures/offers/eudiplo-offer.json` wraps an `openid4vp://` request URI, so `decode offer` renders it as an OpenID4VP request URI (scheme, client_id, request_uri, request_uri_method). The same holds for `fixtures/offers/eudiplo-offer-uri.txt`.
 
@@ -91,7 +91,7 @@ A note on offer fixtures: `fixtures/offers/eudiplo-offer.json` wraps an `openid4
 
 You are auditing a relying party. You have its registration certificate and you want to know whether what it asks for is proportionate to a stated purpose, with the legal basis attached to every finding.
 
-First, read the curated baselines and the legal basis the engine cites. These baselines are taste judgments, not Rulebook derivations, and the tool says so:
+First, read the curated baselines and the legal basis the engine cites. These baselines are curated assessments, not law and not legal advice, and the tool says so. Each states the credential types it models:
 
 ```
 augenmass baselines
@@ -102,23 +102,27 @@ Curated purpose baselines:
 
   age_gate_18  (Age gate (over 18))
     minimal: age_equal_or_over.18
+    credential types: dc+sd-jwt and vc+sd-jwt with vct urn:eudi:pid:de:1 or urn:eudi:pid:1; mso_mdoc with doctype eu.europa.ec.eudi.pid.1
   event_checkin  (Event check-in)
     minimal: given_name, family_name, age_equal_or_over.18
+    credential types: dc+sd-jwt and vc+sd-jwt with vct urn:eudi:pid:de:1 or urn:eudi:pid:1; mso_mdoc with doctype eu.europa.ec.eudi.pid.1
   car_rental  (Car rental (over 21, named))
     minimal: given_name, family_name, age_equal_or_over.21
+    credential types: dc+sd-jwt and vc+sd-jwt with vct urn:eudi:pid:de:1 or urn:eudi:pid:1; mso_mdoc with doctype eu.europa.ec.eudi.pid.1
   bank_kyc  (Bank onboarding (KYC))
     minimal: given_name, family_name, birthdate, place_of_birth.locality, place_of_birth.region, place_of_birth.country, nationalities, address.resident_street, address.house_number, address.resident_city, address.resident_postal_code, address.region, address.resident_country, address.formatted
     mdoc elements: eu.europa.ec.eudi.pid.1/place_of_birth
+    credential types: dc+sd-jwt and vc+sd-jwt with vct urn:eudi:pid:de:1 or urn:eudi:pid:1; mso_mdoc with doctype eu.europa.ec.eudi.pid.1
 
 Legal basis cited on every over-ask finding:
   Regulation (EU) No 910/2014, Article 5b(3)
     Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c).
   GDPR (EU) 2016/679, Art. 5(1)(c)
-    Personal data shall be adequate, relevant and limited to what is necessary (data minimisation).
+    Personal data shall be: [...] (c) adequate, relevant and limited to what is necessary in relation to the purposes for which they are processed (‘data minimisation’);
   EUDI ARF, registration certificate, RPRC_21
     After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes.
 
-Note: the baselines are curated taste judgments, not Rulebook derivations.
+Note: the baselines are curated assessments, not law and not legal advice.
 ```
 
 Next, decode the certificate so you can see what it actually requests (this is the `decode regcert` output from walkthrough 1): given_name, family_name, age_equal_or_over.18, with the stated purpose "age-over-18 verification for an event check-in."
@@ -132,7 +136,7 @@ augenmass audit --request minimal --purpose event_checkin --cert fixtures/regcer
 ```
 OK: Minimal: all 3 requested claims are within purpose and registration.
 Registration certificate: payload decoded; signature, issuer and revocation status not verified.
-Purpose: Demonstration: age-over-18 verification for an event check-in.   Baseline: Event check-in
+Registration purpose: Demonstration: age-over-18 verification for an event check-in.   Baseline: Event check-in
 
 Requested claims:
   [ok]  given_name                   Within the purpose-minimal baseline.
@@ -149,7 +153,7 @@ augenmass audit --request minimal --purpose age_gate_18 --cert fixtures/regcert/
 ```
 OVER-ASK: Over-ask vs purpose: 2 of 3 requested claims exceed the stated purpose.
 Registration certificate: payload decoded; signature, issuer and revocation status not verified.
-Purpose: Demonstration: age-over-18 verification for an event check-in.   Baseline: Age gate (over 18)
+Registration purpose: Demonstration: age-over-18 verification for an event check-in.   Baseline: Age gate (over 18)
 
 Requested claims:
   [over]  given_name                   Registered, but beyond what the stated purpose needs.
@@ -165,14 +169,14 @@ Legal basis:
   Regulation (EU) No 910/2014, Article 5b(3)
     Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c).
   GDPR (EU) 2016/679, Art. 5(1)(c)
-    Personal data shall be adequate, relevant and limited to what is necessary (data minimisation).
+    Personal data shall be: [...] (c) adequate, relevant and limited to what is necessary in relation to the purposes for which they are processed (‘data minimisation’);
   EUDI ARF, registration certificate, RPRC_21
     After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes.
 ```
 
 The `--request` argument also accepts a path to a DCQL JSON file, plus two built-ins: `minimal` (the default) and `overask`. Use `overask` for the worst-case shape, which over-asks against `age_gate_18`, `event_checkin`, and `car_rental`; under `bank_kyc` all six of its claims are within the baseline and the audit exits 0.
 
-Exit codes for `audit`: `1` on over-ask, `0` otherwise. Each row is `[ok]` (within baseline) or `[over]` (beyond the stated purpose). An unknown `--purpose` (a typo such as `age_gate_1`) prints a note on stderr, skips the purpose axis, marks every row `[n/a]`, and still exits `0`, so check the id against `augenmass baselines` before trusting exit `0`. The wording shifts with `--cert`: with a certificate, an over claim reads "Registered, but beyond what the stated purpose needs"; without one, it reads "Beyond what the stated purpose needs; registration not evaluated." For a CI gate, add `--json`.
+Exit codes for `audit`: `1` on over-ask, `3` when no judged claim over-asks but a requested claim could not be judged (NOT EVALUATED), and `0` only when every requested claim was judged and is within the baseline. Never report exit `3` as "no over-ask". Each row is `[ok]` (within baseline), `[over]` (beyond the stated purpose), or `[n/a]` (not judged, for example a credential format or type the baseline does not model). A DCQL member name that resembles a defined one (`claim` for `claims`) also gives NOT EVALUATED, with the member under `Authoring warnings:`. An unknown `--purpose` (a typo such as `age_gate_1`) is a usage error: `audit` prints `error: unknown purpose 'age_gate_1'` with the valid ids on stderr and nothing on stdout, compares nothing, and exits `2`. The line under the headline, `Registration purpose:`, shows the purpose text of the registration (`no registration given` without `--cert`), not the `--purpose` id. The wording shifts with `--cert`: with a certificate, an over claim reads "Registered, but beyond what the stated purpose needs"; without one, it reads "Beyond what the stated purpose needs; registration not evaluated." For a CI gate, add `--json` and read `outcome` (`ok`, `over_ask`, `not_evaluated`).
 
 ## 3. Developer: build a proportionate registration, and watch the guard refuse an over-broad one
 
@@ -273,7 +277,7 @@ Registration certificate: payload decoded; signature, issuer and revocation stat
 
 The registration id is generated per write, so yours will differ. `list` defaults its `--rp` to `2af138a8-59ea-4a84-aea3-666cafdb1369`; pass `--rp <id>` for another.
 
-Now the contrast: the over-broad refusal. `generate regbody --over-broad` adds name, birthdate, address, and nationalities to the same "Age verification" purpose. The guard catches it and refuses the write (exit `1`), citing the legal basis. `--yes` confirms intent to write but does not override an over-ask; only `--force` does that:
+Now the contrast: the over-broad refusal. `generate regbody --over-broad` adds name, birthdate, address, and nationalities to the same "Age verification" purpose. The guard catches it and refuses the write (exit `1`), citing the legal basis. `--yes` confirms intent to write but does not override an over-ask; only `--yes --force` does that (`--force` alone is a usage error, exit `2`):
 
 ```
 augenmass generate regbody --over-broad | augenmass register - --target clone --yes
@@ -281,7 +285,7 @@ augenmass generate regbody --over-broad | augenmass register - --target clone --
 
 ```
 OVER-ASK: Over-ask vs purpose: 6 of 6 requested claims exceed the stated purpose.
-Purpose: Age verification   Baseline: Age gate (over 18)
+Registration purpose: Age verification   Baseline: Age gate (over 18)
 
 Requested claims:
   [over]  given_name                   Registered, but beyond what the stated purpose needs.
@@ -322,7 +326,7 @@ Format findings:
     Fix: Change "path": "age_equal_or_over" to "path": ["age_equal_or_over", "18"].
 ```
 
-This exits `1`. A blocking format error stops `register` outright; only the over-ask warning is bypassable, and only with `--force`.
+This exits `1`. A blocking format error stops `register` outright. `register` also refuses an over-ask (exit `1`) and a body that could not be evaluated (exit `3`), in a dry-run too; only these two are bypassable, and only with `--yes --force`.
 
 For a real off-stage rehearsal, swap `--target clone` for `--target sandbox`, which talks to the actual registrar over OAuth. That path needs environment configuration (`AUGENMASS_API_BASE`, `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`) and a working `client_id` of `swagger`. Without `AUGENMASS_API_BASE` it uses the built-in `https://sandbox.eudi-wallet.org/api` and prints a `note:` line on stderr that, per the registrar's landing page read on 13 November 2026, testing there is possible until 19 November 2026 and it admits no new users. Use `--target cached-sandbox` only for read-only cached sandbox reads; confirmed writes to cached-sandbox are refused before any network call. For real writes, use only the relying party the user explicitly names; never invent a demo relying party id or mint extra relying parties.
 
@@ -479,7 +483,7 @@ Signed-request findings:
     Fix: Use "client_id": "x509_hash:<base64url(SHA-256(leaf-cert-DER))>". Compute it with `augenmass x509-hash`.
 ```
 
-`doctor` exits `1` when it finds anything. The fixes:
+`doctor` exits `1` for a blocking finding, as here. A warning alone (`DCQL-MEMBER-NEAR-MISS`, for a `dcql_query` member name that resembles a defined one) exits `0`. The fixes:
 
 1. Wrap the certificate in an array, even for a single cert: `"x5c": ["MIIB..."]`.
 2. Set the client_id to `x509_hash:<base64url(SHA-256(leaf-cert-DER))>`. The sandbox wallet only supports the `x509_hash` client_id scheme, not `x509_san_dns`.
@@ -622,17 +626,17 @@ those explicit trace steps were configured and observed.
 | Identify any artifact | `inspect <input>` | (read-only) |
 | Decode a known type | `decode {jwt\|sd-jwt\|regcert\|request\|offer\|status-list\|mdoc} <input>` | (read-only) |
 | List or show baselines | `baselines [<id>]` | (read-only) |
-| Gate a registration body | `check <body>` | over-ask or blocking format error |
-| Lint a request for over-ask | `audit --request <minimal\|overask\|FILE> --purpose <id> [--cert FILE]` | over-ask |
+| Gate a registration body | `check <body> [--baseline FILE [--purpose <entry id>]]` | over-ask or blocking format error (`1`); not evaluated (`3`) |
+| Lint a request for over-ask | `audit --request <minimal\|overask\|FILE> --purpose <id> [--cert FILE] [--baseline FILE]` | over-ask (`1`); not evaluated (`3`); unknown purpose id (`2`) |
 | Verify a presentation | `verify presentation <p> --nonce <n> --aud <a> [--now ...]` | not verified |
 | Check issuer trust | `verify trust <p> --anchor <pem>` | untrusted |
 | Check revocation | `verify status <p> --token <t> --key <k>` | revoked / error |
 | Read a status-list index | `verify status-list --token <t> --key <k> --index <i>` | revoked / error |
 | Compute or check x509_hash | `x509-hash <input> [--client-id ...]` | client_id mismatch |
 | Produce a body or query | `generate {regbody\|dcql} ...` | (producer) |
-| Diagnose a JAR | `doctor <request>` | findings |
-| Debug a live wallet interaction | `serve [--port --host --public-url --key --leaf --purpose --trust-anchor --status-signer --live-status --quiet --unsafe-debug-artifacts]` | (server; runs until Ctrl-C) |
-| Write a registration | `register <body> --target <clone\|cached-sandbox\|sandbox> [--yes --force]` | over-ask without `--force`, blocking format error, or confirmed cached-sandbox write |
+| Diagnose a JAR | `doctor <request>` | blocking findings |
+| Debug a live wallet interaction | `serve [--port --host --public-url --key --leaf --purpose --trust-anchor --status-signer --live-status --quiet --unsafe-debug-artifacts --relay --relay-token --relay-ttl --relay-optional --age-only]` | (server; runs until Ctrl-C) |
+| Write a registration | `register <body> --target <clone\|cached-sandbox\|sandbox> [--yes --force]` | over-ask without `--force` (`1`), a body that was not evaluated without `--force` (`3`), `--force` without `--yes` (`2`), blocking format error, or confirmed cached-sandbox write |
 | Read registrations back | `list --target <clone\|cached-sandbox\|sandbox> [--rp <id>]` | (read-only) |
 | Run the local clone store | `clone serve [--db <path> --port <n>]` | (server) |
 | Run the cached-sandbox mirror | `cache serve [--db <path> --host <host> --port <n> --upstream <url> --ttl-secs <n> --timeout-secs <n> --max-entries <n> --admin-token <token> --allowed-rp <id>]` | (server) |

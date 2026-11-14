@@ -10,7 +10,8 @@ the `augenmass` binary when available, and explains the result.
 
 Answer shape: say whether the requested claims match the stated purpose, list
 the extra claims, cite the legal basis when there is a finding, then give the
-minimal replacement.
+minimal replacement. If the result is NOT EVALUATED (exit code 3), say which
+claims the tool could not judge and why; do not call that "no over-ask".
 
 "Generate a proportionate age-check body."
 
