@@ -492,6 +492,10 @@ const REGISTRATION_FIXTURES: &[&str] = &[
     "fixtures/claim-paths/registration-structured.json",
     "examples/age-broad-registration.jwt",
     "examples/age-broad-registration.payload.json",
+    "examples/merged-path-registration.jwt",
+    "examples/merged-path-registration.payload.json",
+    "fixtures/hub-shape/registration-hub-shape.jwt",
+    "fixtures/hub-shape/registration-hub-shape.payload.json",
 ];
 
 /// Files in the scanned directories that are not registrations, with the reason.
@@ -527,6 +531,10 @@ const NOT_REGISTRATIONS: &[(&str, &str)] = &[
     (
         "examples/baselines-example.json",
         "a baseline file, not a registration",
+    ),
+    (
+        "examples/merged-path-request.json",
+        "a DCQL request, not a registration",
     ),
     ("fixtures/claim-paths/path-vectors.json", "the vector set"),
     (
@@ -588,7 +596,12 @@ fn request_from_registration(payload: &Value) -> (Value, usize) {
 
 #[test]
 fn registration_fixtures_list_is_complete() {
-    for dir in ["fixtures/regcert", "examples", "fixtures/claim-paths"] {
+    for dir in [
+        "fixtures/regcert",
+        "examples",
+        "fixtures/claim-paths",
+        "fixtures/hub-shape",
+    ] {
         for entry in fs::read_dir(dir).expect("dir") {
             let path = entry.expect("entry").path();
             let rel = path.to_string_lossy().replace('\\', "/");
@@ -616,6 +629,34 @@ fn request_of_exactly_the_registered_claims_is_never_flagged() {
             report.counts.beyond_registration, 0,
             "{path}: {:?}",
             report.requested
+        );
+    }
+}
+
+/// A compact certificate and the readable payload file that documents it.
+const READABLE_PAYLOAD_PAIRS: &[(&str, &str)] = &[
+    (
+        "examples/age-broad-registration.jwt",
+        "examples/age-broad-registration.payload.json",
+    ),
+    (
+        "examples/merged-path-registration.jwt",
+        "examples/merged-path-registration.payload.json",
+    ),
+    (
+        "fixtures/hub-shape/registration-hub-shape.jwt",
+        "fixtures/hub-shape/registration-hub-shape.payload.json",
+    ),
+];
+
+#[test]
+fn readable_payload_files_match_their_certificates() {
+    for (jwt, payload) in READABLE_PAYLOAD_PAIRS {
+        let text = fs::read_to_string(jwt).unwrap_or_else(|e| panic!("read {jwt}: {e}"));
+        assert_eq!(
+            jwt_payload(&text),
+            read_json(payload),
+            "{jwt} and {payload}"
         );
     }
 }

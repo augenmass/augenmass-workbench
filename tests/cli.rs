@@ -1532,6 +1532,337 @@ fn doctor_flags_bad_request() {
         .stdout(contains("DOCTOR-X5C-STRING"));
 }
 
+/// A signed request object as a compact JWT file (three base64url parts;
+/// `doctor` verifies no signature) with the given `client_id` and
+/// `dcql_query`. Returns its path.
+fn signed_request_object(name: &str, client_id: &str, query: &serde_json::Value) -> String {
+    let b64 = |v: &str| BASE64_URL_SAFE_NO_PAD.encode(v.as_bytes());
+    let header = json!({ "typ": "oauth-authz-req+jwt", "alg": "ES256", "x5c": ["MIIB"] });
+    let payload = json!({
+        "client_id": client_id,
+        "response_type": "vp_token",
+        "response_mode": "direct_post.jwt",
+        "nonce": NONCE,
+        "dcql_query": query,
+    });
+    let dir = test_temp_dir("augenmass-cli-request");
+    fs::create_dir_all(&dir).expect("create request dir");
+    let path = dir.join(name);
+    fs::write(
+        &path,
+        format!(
+            "{}.{}.{}",
+            b64(&header.to_string()),
+            b64(&payload.to_string()),
+            b64("not-a-signature")
+        ),
+    )
+    .expect("write request object");
+    path.display().to_string()
+}
+
+/// The PID age query with its claims under `member` (`claims`, or a name
+/// that resembles it).
+fn age_query_with_claims_under(member: &str) -> serde_json::Value {
+    let mut credential = json!({
+        "id": "pid",
+        "format": "dc+sd-jwt",
+        "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+    });
+    credential[member] = json!([{ "path": ["age_equal_or_over", "18"] }]);
+    json!({ "credentials": [credential] })
+}
+
+const DOCTOR_OK: &str = "OK: no signed-request gotchas found.\nSet Content-Type: application/json on every POST; the client does this for you.\n";
+
+/// A signed request object whose `dcql_query` says `claim` for `claims`
+/// gets no OK headline from `doctor`: the member is a warning finding, with
+/// the message that `decode request` prints, and the exit code stays 0.
+#[test]
+fn doctor_reports_a_near_miss_member_of_the_query_as_a_warning() {
+    let request = signed_request_object(
+        "near-miss.jwt",
+        "x509_hash:abc",
+        &age_query_with_claims_under("claim"),
+    );
+    let (code, stdout, stderr) = run_cli(&["doctor", &request]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(stderr, "");
+    assert_eq!(
+        stdout,
+        format!(
+            "Signed-request findings:\n  DCQL-MEMBER-NEAR-MISS [warning]: {}\n{NEAR_MISS_FIX_LINE}\nNo blocking finding (warnings only).\n",
+            claim_for_claims_line()
+        )
+    );
+    assert!(!stdout.contains("OK:"), "{stdout}");
+
+    let value = json_of(&["doctor", &request, "--json"], 0);
+    assert_eq!(value["ok"], true);
+    assert_eq!(value["findings"].as_array().expect("findings").len(), 1);
+    assert_eq!(value["findings"][0]["id"], "DCQL-MEMBER-NEAR-MISS");
+    assert_eq!(value["findings"][0]["severity"], "warning");
+    assert_eq!(value["findings"][0]["message"], claim_for_claims_line());
+    // The same array as `decode request --json` and `audit --json` carry.
+    let decoded = json_of(&["decode", "request", &request, "--json"], 0);
+    assert_eq!(value["warnings"], decoded["warnings"]);
+    assert_eq!(value["warnings"][0]["member"], "claim");
+    assert_eq!(value["warnings"][0]["resembles"], "claims");
+
+    // The same request as a plain JSON request object (the payload).
+    let payload = decoded["payload"].to_string();
+    let (code, plain, _) = run_cli(&["doctor", &payload]);
+    assert_eq!(code, 0);
+    assert_eq!(plain, stdout);
+}
+
+/// A member named `dcql_query` in the header of a signed request object does
+/// not stand in for the query of the request: the warning of the payload's
+/// query is reported as `decode request` reports it, in both input forms.
+#[test]
+fn doctor_reads_the_query_of_the_payload_not_a_header_member() {
+    let b64 = |v: &str| BASE64_URL_SAFE_NO_PAD.encode(v.as_bytes());
+    let header = json!({ "alg": "ES256", "dcql_query": {} });
+    let payload = json!({
+        "client_id": "x509_hash:abc",
+        "dcql_query": age_query_with_claims_under("claim"),
+    });
+    let dir = test_temp_dir("augenmass-cli-request");
+    fs::create_dir_all(&dir).expect("create request dir");
+    let jwt = dir.join("header-query.jwt");
+    fs::write(
+        &jwt,
+        format!(
+            "{}.{}.{}",
+            b64(&header.to_string()),
+            b64(&payload.to_string()),
+            b64("not-a-signature")
+        ),
+    )
+    .expect("write request object");
+    let jwt = jwt.display().to_string();
+    let pair = json!({ "header": header, "payload": payload }).to_string();
+
+    let decoded = json_of(&["decode", "request", &jwt, "--json"], 0);
+    assert_eq!(decoded["warnings"].as_array().expect("warnings").len(), 1);
+    for input in [jwt.as_str(), pair.as_str()] {
+        let (code, stdout, stderr) = run_cli(&["doctor", input]);
+        assert_eq!(code, 0, "{input}: {stdout}{stderr}");
+        assert_eq!(
+            stdout,
+            format!(
+                "Signed-request findings:\n  DCQL-MEMBER-NEAR-MISS [warning]: {}\n{NEAR_MISS_FIX_LINE}\nNo blocking finding (warnings only).\n",
+                claim_for_claims_line()
+            ),
+            "{input}"
+        );
+        let value = json_of(&["doctor", input, "--json"], 0);
+        assert_eq!(value["ok"], true, "{input}");
+        assert_eq!(value["warnings"], decoded["warnings"], "{input}");
+    }
+}
+
+/// Runs `doctor` on `input` and checks that it exits 0 with exactly the
+/// near-miss warnings `messages` (in this order), or with the OK lines when
+/// `messages` is empty. Returns the `--json` value.
+fn doctor_warns_exactly(input: &str, messages: &[String]) -> serde_json::Value {
+    let (code, stdout, stderr) = run_cli(&["doctor", input]);
+    assert_eq!(code, 0, "{input}: {stdout}{stderr}");
+    assert_eq!(stderr, "", "{input}");
+    if messages.is_empty() {
+        assert_eq!(stdout, DOCTOR_OK, "{input}");
+    } else {
+        let mut expected = String::from("Signed-request findings:\n");
+        for message in messages {
+            expected.push_str(&format!(
+                "  DCQL-MEMBER-NEAR-MISS [warning]: {message}\n{NEAR_MISS_FIX_LINE}"
+            ));
+        }
+        expected.push_str("\nNo blocking finding (warnings only).\n");
+        assert_eq!(stdout, expected, "{input}");
+    }
+    let value = json_of(&["doctor", input, "--json"], 0);
+    assert_eq!(value["ok"], true, "{input}");
+    let warnings: Vec<&str> = value["warnings"]
+        .as_array()
+        .expect("warnings")
+        .iter()
+        .map(|w| w["message"].as_str().expect("message"))
+        .collect();
+    assert_eq!(warnings, messages, "{input}");
+    value
+}
+
+/// A plain request whose top level has the query: a member `payload` that
+/// is an empty object does not hide it.
+#[test]
+fn doctor_reads_the_top_level_query_next_to_an_empty_payload() {
+    let input = json!({
+        "client_id": "x509_hash:abc",
+        "dcql_query": age_query_with_claims_under("claim"),
+        "payload": {},
+    })
+    .to_string();
+    let value = doctor_warns_exactly(&input, &[claim_for_claims_line()]);
+    assert_eq!(value["warnings"][0]["place"], "credentials[0]");
+}
+
+/// A request with a query at the top level and one in its payload: the
+/// warning of the top-level query is reported, and its place names that
+/// query; the clean query of the payload adds nothing.
+#[test]
+fn doctor_reads_the_top_level_query_next_to_a_payload_query() {
+    let input = json!({
+        "client_id": "x509_hash:abc",
+        "dcql_query": age_query_with_claims_under("claim"),
+        "payload": { "dcql_query": age_query_with_claims_under("claims") },
+    })
+    .to_string();
+    let value = doctor_warns_exactly(
+        &input,
+        &[near_miss_line(
+            "dcql_query.credentials[0]",
+            "claim",
+            "Credential Query",
+            "claims",
+        )],
+    );
+    assert_eq!(value["warnings"][0]["place"], "dcql_query.credentials[0]");
+}
+
+/// A pair whose payload holds the query and whose top level has none: the
+/// payload's warning is reported as `decode request` reports it.
+#[test]
+fn doctor_reads_the_payload_query_when_the_top_level_has_none() {
+    let input = json!({
+        "header": { "alg": "ES256" },
+        "payload": {
+            "client_id": "x509_hash:abc",
+            "dcql_query": age_query_with_claims_under("claim"),
+        },
+    })
+    .to_string();
+    doctor_warns_exactly(&input, &[claim_for_claims_line()]);
+}
+
+/// A `dcql_query` in the header only is not the request's query: the OK
+/// lines stay.
+#[test]
+fn doctor_does_not_read_a_query_in_the_header_only() {
+    let input = json!({
+        "header": { "alg": "ES256", "dcql_query": age_query_with_claims_under("claim") },
+        "payload": { "client_id": "x509_hash:abc" },
+    })
+    .to_string();
+    doctor_warns_exactly(&input, &[]);
+}
+
+/// A `dcql_query` nested deeper than a direct member of the request or of
+/// its payload (here inside `client_metadata`) is not read.
+#[test]
+fn doctor_does_not_read_a_query_nested_deeper() {
+    let nested = json!({ "dcql_query": age_query_with_claims_under("claim") });
+    let plain = json!({ "client_id": "x509_hash:abc", "client_metadata": nested }).to_string();
+    let pair = json!({
+        "header": { "alg": "ES256" },
+        "payload": { "client_id": "x509_hash:abc", "client_metadata": nested },
+    })
+    .to_string();
+    for input in [plain, pair] {
+        doctor_warns_exactly(&input, &[]);
+    }
+}
+
+/// The same member in the query of the top level and in the query of the
+/// payload is reported once per query, and each line names its query.
+#[test]
+fn doctor_reports_the_same_member_once_per_query() {
+    let input = json!({
+        "client_id": "x509_hash:abc",
+        "dcql_query": age_query_with_claims_under("claim"),
+        "payload": { "dcql_query": age_query_with_claims_under("claim") },
+    })
+    .to_string();
+    let value = doctor_warns_exactly(
+        &input,
+        &[
+            near_miss_line(
+                "dcql_query.credentials[0]",
+                "claim",
+                "Credential Query",
+                "claims",
+            ),
+            near_miss_line(
+                "payload.dcql_query.credentials[0]",
+                "claim",
+                "Credential Query",
+                "claims",
+            ),
+        ],
+    );
+    assert_eq!(value["findings"].as_array().expect("findings").len(), 2);
+}
+
+/// A signed request object whose `dcql_query` has no such member keeps the
+/// OK lines, and `--json` carries an empty `warnings` list.
+#[test]
+fn doctor_without_a_near_miss_member_keeps_its_ok() {
+    let request = signed_request_object(
+        "clean.jwt",
+        "x509_hash:abc",
+        &age_query_with_claims_under("claims"),
+    );
+    for input in [request.as_str(), "fixtures/requests/eudiplo-request.jwt"] {
+        let (code, stdout, stderr) = run_cli(&["doctor", input]);
+        assert_eq!(code, 0, "{input}: {stdout}{stderr}");
+        assert_eq!(stdout, DOCTOR_OK, "{input}");
+        let value = json_of(&["doctor", input, "--json"], 0);
+        assert_eq!(value["ok"], true, "{input}");
+        assert_eq!(value["findings"], json!([]), "{input}");
+        assert_eq!(value["warnings"], json!([]), "{input}");
+    }
+}
+
+/// The findings `doctor` had before are unchanged: the same lines, blocking,
+/// exit code 1. Next to a warning they come first and keep the exit code.
+#[test]
+fn doctor_blocking_findings_are_unchanged_next_to_a_warning() {
+    let x5c = "  DOCTOR-X5C-STRING [blocking]: x5c must be a list of strings, even for a single certificate.\n    Fix: Wrap the certificate in an array: \"x5c\": [\"MIIB...\"].\n";
+    let client_id = "  DOCTOR-CLIENT-ID-X509HASH [blocking]: client_id must be in the x509_hash form.\n    Fix: Use \"client_id\": \"x509_hash:<base64url(SHA-256(leaf-cert-DER))>\". Compute it with `augenmass x509-hash`.\n";
+    let (code, stdout, _) = run_cli(&["doctor", "examples/bad-request.json"]);
+    assert_eq!(code, 1);
+    assert_eq!(
+        stdout,
+        format!("Signed-request findings:\n{x5c}{client_id}")
+    );
+    let value = json_of(&["doctor", "examples/bad-request.json", "--json"], 1);
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["warnings"], json!([]));
+    let findings = value["findings"].as_array().expect("findings");
+    assert_eq!(findings.len(), 2);
+    assert!(findings.iter().all(|f| f["severity"] == "blocking"));
+
+    let request = signed_request_object(
+        "near-miss-and-client-id.jwt",
+        "https://verifier.example.org",
+        &age_query_with_claims_under("claim"),
+    );
+    let (code, stdout, _) = run_cli(&["doctor", &request]);
+    assert_eq!(code, 1, "{stdout}");
+    assert_eq!(
+        stdout,
+        format!(
+            "Signed-request findings:\n{client_id}  DCQL-MEMBER-NEAR-MISS [warning]: {}\n{NEAR_MISS_FIX_LINE}",
+            claim_for_claims_line()
+        )
+    );
+    let value = json_of(&["doctor", &request, "--json"], 1);
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["findings"][0]["id"], "DOCTOR-CLIENT-ID-X509HASH");
+    assert_eq!(value["findings"][1]["id"], "DCQL-MEMBER-NEAR-MISS");
+    assert_eq!(value["warnings"].as_array().expect("warnings").len(), 1);
+}
+
 // --- mdoc (ISO 18013-5) ----------------------------------------------------
 
 #[test]
@@ -2429,6 +2760,103 @@ fn demo_pair_is_inside_registration_beyond_purpose() {
         assert_eq!(row["status"], "BeyondPurpose", "{row}");
     }
     assert_eq!(report["registration_certificate"]["decoded"], true);
+}
+
+/// A synthetic registration certificate whose field names follow the public
+/// source snapshot of the EUDI Hub; every value is invented.
+const HUB_SHAPE_CERT: &str = "fixtures/hub-shape/registration-hub-shape.jwt";
+const MERGED_PATH_CERT: &str = "examples/merged-path-registration.jwt";
+
+#[test]
+fn hub_shape_registration_decodes() {
+    let text = stdout_of(&["decode", "regcert", HUB_SHAPE_CERT], 0);
+    let lines: Vec<&str> = text.lines().collect();
+    assert!(lines.contains(&REGCERT_NOTICE), "{text}");
+    assert!(
+        lines.contains(&"      claim age_equal_or_over.18"),
+        "{text}"
+    );
+    assert!(lines.contains(&"      claim address.postal_code"), "{text}");
+
+    let out = stdout_of(&["decode", "regcert", HUB_SHAPE_CERT, "--json"], 0);
+    let decoded: serde_json::Value = serde_json::from_str(&out).expect("decode json");
+    let scope = &decoded["scope"];
+    assert_eq!(
+        scope["purpose"][0]["content"],
+        "Example Bottle Shop: confirm the buyer is over 18"
+    );
+    assert_eq!(
+        scope["privacy_policy"],
+        "https://bottles.example.org/privacy"
+    );
+    assert_eq!(scope["support_uri"], "support@bottles.example.org");
+    assert_eq!(
+        scope["credentials"].as_array().expect("credentials").len(),
+        1
+    );
+    let credential = &scope["credentials"][0];
+    assert_eq!(credential["format"], "dc+sd-jwt");
+    assert_eq!(credential["vct_values"], json!(["urn:eudi:pid:de:1"]));
+    assert_eq!(
+        credential["claims"],
+        json!([["age_equal_or_over", "18"], ["address", "postal_code"]])
+    );
+    assert_eq!(decoded["registration_certificate"], not_verified_json());
+}
+
+#[test]
+fn hub_shape_registration_audits_inside_and_beyond() {
+    let inside = audit_json(
+        "examples/age-minimal-request-sdjwt.json",
+        "age_gate_18",
+        Some(HUB_SHAPE_CERT),
+        true,
+    );
+    assert_eq!(inside["counts"]["requested"], 1, "{inside}");
+    assert_eq!(inside["counts"]["beyond_registration"], 0, "{inside}");
+    assert_eq!(inside["counts"]["beyond_purpose"], 0, "{inside}");
+    assert_eq!(inside["registration_certificate"], not_verified_json());
+
+    let request = r#"{"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["urn:eudi:pid:de:1"]},"claims":[{"path":["age_equal_or_over","18"]},{"path":["given_name"]}]}]}"#;
+    let beyond = audit_json(request, "age_gate_18", Some(HUB_SHAPE_CERT), false);
+    assert_eq!(beyond["counts"]["requested"], 2, "{beyond}");
+    assert_eq!(beyond["counts"]["beyond_registration"], 1, "{beyond}");
+    assert_eq!(beyond["counts"]["beyond_purpose"], 0, "{beyond}");
+    let rows = beyond["requested"].as_array().expect("requested");
+    assert_eq!(rows[0]["status"], "MinimalForPurpose", "{}", rows[0]);
+    assert_eq!(rows[1]["status"], "BeyondRegistration", "{}", rows[1]);
+    assert_eq!(
+        rows[1]["rationale"], "Not in the relying party's registered scope.",
+        "{}",
+        rows[1]
+    );
+}
+
+#[test]
+fn merged_path_example_is_beyond_registration() {
+    let report = audit_json(
+        "examples/merged-path-request.json",
+        "event_checkin",
+        Some(MERGED_PATH_CERT),
+        false,
+    );
+    assert_eq!(report["counts"]["requested"], 2, "{report}");
+    assert_eq!(report["counts"]["beyond_registration"], 2, "{report}");
+    assert_eq!(report["counts"]["beyond_purpose"], 0, "{report}");
+    for row in report["requested"].as_array().expect("requested") {
+        assert_eq!(row["status"], "BeyondRegistration", "{row}");
+        assert_eq!(
+            row["rationale"], "Not in the relying party's registered scope.",
+            "{row}"
+        );
+    }
+
+    let out = stdout_of(&["decode", "regcert", MERGED_PATH_CERT, "--json"], 0);
+    let decoded: serde_json::Value = serde_json::from_str(&out).expect("decode json");
+    assert_eq!(
+        decoded["scope"]["credentials"][0]["claims"],
+        json!([["given_name", "family_name"]])
+    );
 }
 
 #[test]

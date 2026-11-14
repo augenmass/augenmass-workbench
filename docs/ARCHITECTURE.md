@@ -229,7 +229,7 @@ work as gates in a pipeline without parsing output:
 - `verify presentation`, `verify request`, `verify trust`, `verify status`, `verify status-list`:
   exit 1 if not verified, untrusted, revoked, or on error; exit 0 on success.
 - `x509-hash --client-id`: exit 1 on mismatch.
-- `doctor`: exit 1 if it has findings.
+- `doctor`: exit 1 if it has blocking findings; a warning alone exits 0.
 - `register`: refuses with exit 1 on over-ask without `--force`, refuses with
   exit 3 a body that was not evaluated without `--force`, and bails on
   blocking format errors. `--force` without `--yes` is a usage error (exit 2).

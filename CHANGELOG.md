@@ -152,6 +152,24 @@ plugin). The version number stays 0.4.1 until the next release.
   relevant and limited to what is necessary in relation to the purposes for
   which they are processed (‘data minimisation’);`. Before, it was a
   paraphrase. The locator `Art. 5(1)(c)` is unchanged.
+- `docs/COMMANDS.md`: `check` states its scope. The format checks apply to any
+  registration body in the shape of the German sandbox registrar; without
+  `--baseline`, the over-ask verdict is measured against the built-in
+  `age_gate_18` baseline only, and other built-in purposes go through
+  `audit --purpose` on the request. `README.md` links the
+  new section of `docs/SANDBOX.md`. Documentation only, no change in behavior.
+- `doctor`: a request whose `dcql_query` has a member that resembles a defined
+  one (for example `claim` for `claims`, the rule of the entry on member names
+  above) no longer gets the line `OK: no signed-request gotchas found.`
+  `doctor` lists the member as the finding `DCQL-MEMBER-NEAR-MISS` with the
+  severity `warning`, with the message and fix of `validate dcql`, and closes
+  with `No blocking finding (warnings only).` The exit code does not change:
+  it is 1 for a blocking finding (`DOCTOR-X5C-STRING`,
+  `DOCTOR-CLIENT-ID-X509HASH`, both unchanged) and 0 otherwise, because a
+  wallet ignores a member it does not know and the member may belong to an
+  extension. `doctor --json` has the new member `warnings` (the array of
+  `audit --json`, empty when there is no such member); `ok` is true when there
+  is no blocking finding.
 - Plugin bundle: the four target binaries under `plugins/augenmass-workbench/bin`
   and `bin/manifest.json` are rebuilt from the `v0.4.1` release archives with
   `just bundle`, so the plugin carries the 0.4.0 and 0.4.1 changes. Both plugin
@@ -250,6 +268,40 @@ plugin). The version number stays 0.4.1 until the next release.
   (`credential_types` in `--json`).
 - The `serve` trace event `OVER_ASK_ANALYZED` carries `outcome` and uses the
   warning level for a result that was not evaluated.
+
+Documentation and test data only, no change in behavior:
+
+- `docs/SANDBOX.md`: section "After 19 November 2026". It gives what the EUDI
+  Hub's page on sandbox migration says, by quote with the read date; what keeps
+  working in the Workbench (the static artifact commands, the `clone` target,
+  `audit --request ... --cert ...` on a registration certificate given as a
+  compact JWT or as a JSON entry with `id` and `jwt`); what does not or may not
+  (the `sandbox` target and the `cached-sandbox` reads; `serve` cannot carry
+  another registration certificate than the bundled one); which Workbench
+  commands to run, in which order, on a new registration certificate; and what
+  was not tested: nothing was run on a certificate issued by the EUDI Hub.
+- `docs/COMMANDS.md`: recipe "The wallet reports over-asking: reproduce it
+  offline" under `audit`, with the synthetic example pair
+  `examples/merged-path-registration.jwt` (readable payload
+  `examples/merged-path-registration.payload.json`) and
+  `examples/merged-path-request.json`: two requested claims, both beyond the
+  registration, exit 1. The recipe says how to pass a signed request object
+  (through `decode request --json`), which forms `--cert` reads, and how to
+  tell a registration verdict from a purpose verdict. It states its limits: a
+  registered parent path covers a requested child path in the Workbench, an OK
+  does not mean that request and certificate are identical, and the recipe was
+  not run against any wallet.
+- `fixtures/hub-shape/registration-hub-shape.jwt` with its readable payload
+  `fixtures/hub-shape/registration-hub-shape.payload.json`: a synthetic,
+  unsigned registration certificate whose field names follow the EUDI Hub's
+  public source snapshot "Public release 2026-09-09". Every value is invented.
+  CLI tests cover `decode regcert` and `audit --cert` on it, and a test checks
+  that every readable payload file matches its certificate.
+
+The section and the recipe describe the behavior on main: the shown outputs
+are from this build, and where the 0.4.1 binaries differ (the label
+`Purpose:`, the note for an unknown purpose id with exit 0, no exit code 3)
+the text names the 0.4.1 form.
 
 ### Fixed
 
