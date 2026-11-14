@@ -1,11 +1,13 @@
 //! `register` and `list`: the guard-railed registrar write path. Writes are
 //! dry-run by default, demand an explicit `--yes`, and refuse to proceed past an
-//! over-ask warning unless `--force` is given.
+//! over-ask warning, or past a body that could not be evaluated, unless
+//! `--force` is given. `--force` is accepted only together with `--yes` (the
+//! argument parser enforces it), so a dry run never passes a refused body.
 
 use anyhow::{Context, Result};
 use serde_json::Value;
 
-use crate::checkbody::check_body_str;
+use crate::checkbody::{check_body_str, CheckResult};
 use crate::config::Config;
 use crate::http_target::{self, Target};
 use crate::render::{render_check, REGCERT_NOTICE};
@@ -16,19 +18,51 @@ pub struct RegisterArgs {
     pub force: bool,
 }
 
+/// The line printed before a forced write (`--yes --force`) of a body the
+/// gate would refuse. It states the exit code, because the report above it
+/// carries the headline OVER-ASK or NOT EVALUATED, and a successful forced
+/// write is the one case in which that headline ends with exit code 0.
+fn forced_write_warning(result: CheckResult) -> Option<&'static str> {
+    match result {
+        CheckResult::OverAsk => Some(
+            "Warning: writing an over-asking registration because --force was given. A forced write that succeeds exits 0.",
+        ),
+        CheckResult::NotEvaluated => Some(
+            "Warning: writing a registration that could not be evaluated because --force was given. A forced write that succeeds exits 0.",
+        ),
+        CheckResult::Ok | CheckResult::FormatError => None,
+    }
+}
+
 pub async fn register(label: &str, content: &str, args: RegisterArgs) -> Result<()> {
+    // `--force` without `--yes` is a usage error in the argument parser. A
+    // caller that builds the arguments itself gets the same refusal here, so
+    // a dry run cannot pass a body that over-asks or was not evaluated.
+    if args.force && !args.yes {
+        anyhow::bail!("--force requires --yes");
+    }
     let (body, outcome) = check_body_str(content)?;
     print!("{}", render_check(label, &outcome));
 
-    if outcome.has_blocking_format_error() {
+    let result = outcome.outcome();
+    if result == CheckResult::FormatError {
         anyhow::bail!("Refusing to write: fix the blocking format errors above.");
     }
 
-    if outcome.has_over_ask() && !args.force {
+    if result == CheckResult::OverAsk && !args.force {
         println!(
             "Refusing to write: this request over-asks (see above). Re-run with --yes --force to write it anyway."
         );
-        std::process::exit(1);
+        std::process::exit(result.exit_code());
+    }
+
+    // A body nobody could judge is refused like an over-ask, also in a dry
+    // run: the write gate opens only for a body that was judged and passed.
+    if result == CheckResult::NotEvaluated && !args.force {
+        println!(
+            "Refusing to write: this request could not be evaluated (see above). Re-run with --yes --force to write it anyway."
+        );
+        std::process::exit(result.exit_code());
     }
 
     if !args.yes {
@@ -45,8 +79,9 @@ pub async fn register(label: &str, content: &str, args: RegisterArgs) -> Result<
         );
     }
 
-    if outcome.has_over_ask() && args.force {
-        println!("Warning: writing an over-asking registration because --force was given.");
+    if let Some(warning) = forced_write_warning(result) {
+        // Reached only with --force: both results were refused above without it.
+        println!("{warning}");
     } else {
         let rp_id = body
             .get("rpId")
@@ -116,6 +151,38 @@ fn render_registration(item: &Value) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn forced_write_warning_states_the_exit_code() {
+        assert_eq!(
+            forced_write_warning(CheckResult::OverAsk),
+            Some("Warning: writing an over-asking registration because --force was given. A forced write that succeeds exits 0.")
+        );
+        assert_eq!(
+            forced_write_warning(CheckResult::NotEvaluated),
+            Some("Warning: writing a registration that could not be evaluated because --force was given. A forced write that succeeds exits 0.")
+        );
+        assert_eq!(forced_write_warning(CheckResult::Ok), None);
+        assert_eq!(forced_write_warning(CheckResult::FormatError), None);
+    }
+
+    /// `--force` without `--yes` never reaches the check or the dry run.
+    #[tokio::test]
+    async fn force_without_yes_is_refused_before_anything_is_checked() {
+        let body = std::fs::read_to_string("examples/min.json").expect("example");
+        let error = register(
+            "examples/min.json",
+            &body,
+            RegisterArgs {
+                target: Target::Clone,
+                yes: false,
+                force: true,
+            },
+        )
+        .await
+        .expect_err("refused");
+        assert_eq!(error.to_string(), "--force requires --yes");
+    }
 
     #[test]
     fn registration_list_states_that_certificates_are_not_verified() {

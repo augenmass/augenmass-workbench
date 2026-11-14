@@ -11,8 +11,8 @@
 //! 2. requested vs a purpose-minimal baseline (does the request ask for more than
 //!    its stated purpose needs), the curated, opinionated axis.
 //!
-//! Axis 2 uses a small curated baseline. That baseline is a taste judgment, not
-//! a derivation from the Rulebook, and is labelled as such so the tool stays
+//! Axis 2 uses a small curated baseline. That baseline is a curated assessment,
+//! not law and not legal advice, and is labelled as such so the tool stays
 //! honest with standards-minded reviewers.
 
 use std::collections::HashMap;
@@ -24,18 +24,61 @@ use openid4vp::core::dcql_query::{
 
 use crate::pid::{pid_claim_model, PidClaim};
 use crate::regcert::{self, PathSeg, RegisteredScope};
+use crate::typed_baseline::{
+    self, BaselineRef, EntryStatus, LegalSource, OneOfGroup, RowId, RowList, Subject,
+    TypedBaseline, TypedCredential,
+};
 
 /// How a single requested claim scores against purpose and registration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 pub enum ClaimStatus {
     /// Within the purpose-minimal baseline.
     MinimalForPurpose,
+    /// A claim a loaded baseline entry accepts instead of a minimal claim:
+    /// not an over-ask. Only a baseline file has such rows.
+    AcceptableAlternative,
     /// Beyond what the stated purpose needs: over-ask vs purpose.
     BeyondPurpose,
     /// Not in the registered scope at all: over-ask vs registration.
     BeyondRegistration,
-    /// Purpose could not be evaluated because no baseline was supplied.
+    /// Could not be judged; the rationale says why: no baseline was supplied,
+    /// the baseline does not model the credential's format or type, or the
+    /// registration comparison cannot read the credential's type.
     NotEvaluated,
+}
+
+/// The request-level result. Serialized in snake_case.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Outcome {
+    /// Everything that was asked to be checked was checked, and no judged
+    /// claim asks for too much.
+    Ok,
+    /// At least one judged claim asks for too much.
+    OverAsk,
+    /// No judged claim asks for too much, and a supplied baseline or a
+    /// supplied registration could not judge at least one requested claim.
+    NotEvaluated,
+}
+
+impl Outcome {
+    /// Process exit code: 0, 1, 3.
+    pub fn exit_code(self) -> i32 {
+        match self {
+            Self::Ok => 0,
+            Self::OverAsk => 1,
+            Self::NotEvaluated => 3,
+        }
+    }
+
+    /// The serialized name: `ok`, `over_ask`, `not_evaluated`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::OverAsk => "over_ask",
+            Self::NotEvaluated => "not_evaluated",
+        }
+    }
 }
 
 /// The verdict for one requested claim.
@@ -59,6 +102,63 @@ pub struct ClaimRow {
     pub correlatable: bool,
 }
 
+/// One credential type a baseline models: a credential format with the
+/// SD-JWT VC types (`vct_values`) or the mdoc doctype (`doctype_value`), named
+/// like the members of the DCQL `meta` object.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ModelledType {
+    pub format: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub vct_values: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub doctype_value: Option<String>,
+}
+
+impl ModelledType {
+    /// Whether this entry is for `format` and names `credential_type` (the
+    /// doctype, or one of the vct values). Types compare as exact strings.
+    pub fn has_type(&self, format: &str, credential_type: &str) -> bool {
+        self.format == format
+            && (self.doctype_value.as_deref() == Some(credential_type)
+                || self.vct_values.iter().any(|v| v == credential_type))
+    }
+}
+
+/// The credential types of a baseline as phrases, one per distinct type set:
+/// "dc+sd-jwt and vc+sd-jwt with vct A or B", "mso_mdoc with doctype D".
+/// Formats that share a type set are named together, in list order.
+pub fn describe_credential_types(types: &[ModelledType]) -> Vec<String> {
+    let mut groups: Vec<(Vec<&str>, &ModelledType)> = Vec::new();
+    for t in types {
+        match groups
+            .iter_mut()
+            .find(|(_, g)| g.vct_values == t.vct_values && g.doctype_value == t.doctype_value)
+        {
+            Some((formats, _)) => formats.push(&t.format),
+            None => groups.push((vec![&t.format], t)),
+        }
+    }
+    groups
+        .into_iter()
+        .map(|(formats, t)| {
+            let kind = match &t.doctype_value {
+                Some(doctype) => format!("doctype {doctype}"),
+                None => format!("vct {}", t.vct_values.join(" or ")),
+            };
+            format!("{} with {kind}", formats.join(" and "))
+        })
+        .collect()
+}
+
+/// "a", "a, and b", "a, b, and c".
+fn join_and(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.clone(),
+        [head @ .., last] => format!("{}, and {last}", head.join(", ")),
+    }
+}
+
 /// A curated, named purpose with the minimal claim set it justifies.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct PurposeBaseline {
@@ -74,8 +174,142 @@ pub struct PurposeBaseline {
     /// matches; segments are compared separately, never as a dotted string.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub mdoc_elements: Vec<[String; 2]>,
-    /// Honest note that this baseline is a curated judgment.
+    /// The credential types whose claims this baseline models. A requested
+    /// credential of another format or type is not judged against it.
+    pub credential_types: Vec<ModelledType>,
+    /// Honest note that this baseline is a curated assessment.
     pub note: String,
+}
+
+/// How a baseline relates to the types one requested credential accepts.
+enum TypeModel {
+    /// The baseline models no credential type of this format.
+    FormatNotModelled,
+    /// The request names no credential type.
+    Untyped,
+    /// Every accepted type is modelled.
+    Every,
+    /// No accepted type is modelled.
+    NoType,
+    /// Some accepted types are modelled, the others are not.
+    Mixed {
+        modelled: Vec<String>,
+        other: Vec<String>,
+    },
+}
+
+impl PurposeBaseline {
+    /// Whether this baseline models a credential of `format` and type
+    /// `credential_type`.
+    pub fn models_type(&self, format: &str, credential_type: &str) -> bool {
+        self.credential_types
+            .iter()
+            .any(|t| t.has_type(format, credential_type))
+    }
+
+    fn type_model(&self, cred: &RequestedCredential) -> TypeModel {
+        if !self
+            .credential_types
+            .iter()
+            .any(|t| t.format == cred.format)
+        {
+            return TypeModel::FormatNotModelled;
+        }
+        if cred.types.is_empty() {
+            return TypeModel::Untyped;
+        }
+        let (modelled, other): (Vec<String>, Vec<String>) = cred
+            .types
+            .iter()
+            .cloned()
+            .partition(|t| self.models_type(&cred.format, t));
+        if other.is_empty() {
+            TypeModel::Every
+        } else if modelled.is_empty() {
+            TypeModel::NoType
+        } else {
+            TypeModel::Mixed { modelled, other }
+        }
+    }
+
+    /// Why this baseline cannot judge a requested credential as a whole, or
+    /// `None` when it models every type the credential accepts.
+    fn cannot_judge(&self, cred: &RequestedCredential) -> Option<String> {
+        match self.type_model(cred) {
+            TypeModel::Every => None,
+            TypeModel::FormatNotModelled => Some(unmodelled_format(&cred.format)),
+            TypeModel::Untyped => Some(UNTYPED_CREDENTIAL.to_string()),
+            TypeModel::NoType => Some(self.unmodelled_type(&cred.types)),
+            TypeModel::Mixed { other, .. } => Some(format!(
+                "Not evaluated: the request also accepts {}, which the baseline {} does not model.",
+                other.join(", "),
+                self.id
+            )),
+        }
+    }
+
+    fn unmodelled_type(&self, types: &[String]) -> String {
+        format!(
+            "Not evaluated: the baseline {} does not model the credential type {}. It models {}.",
+            self.id,
+            types.join(", "),
+            join_and(&describe_credential_types(&self.credential_types))
+        )
+    }
+}
+
+/// What the report says about the baseline a request was judged against.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(tag = "source")]
+pub enum BaselineInfo {
+    /// One of the curated baselines of [`baseline`].
+    #[serde(rename = "built-in")]
+    BuiltIn {
+        id: String,
+        label: String,
+        credential_types: Vec<ModelledType>,
+    },
+    /// One entry of a loaded baseline file ([`TypedBaseline`]).
+    #[serde(rename = "file")]
+    File(Box<FileBaselineInfo>),
+}
+
+impl BaselineInfo {
+    /// The facts of a loaded baseline file, or `None` for a built-in
+    /// baseline.
+    pub fn file(&self) -> Option<&FileBaselineInfo> {
+        match self {
+            Self::File(info) => Some(info),
+            Self::BuiltIn { .. } => None,
+        }
+    }
+}
+
+/// What a report says about the entry of a baseline file a request was
+/// judged against. Serialized next to `"source": "file"`.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FileBaselineInfo {
+    /// The file name without any directory.
+    pub file: String,
+    pub schema: String,
+    pub entry_id: String,
+    pub label: String,
+    pub version: String,
+    pub status: EntryStatus,
+    pub reviewer: Option<String>,
+    /// True only when the entry states the status `reviewed`.
+    pub legal_review: bool,
+    /// "draft baseline, no legal review", or the reviewer the file names.
+    pub notice: String,
+    pub applies_when: Option<String>,
+    /// A baseline file is its author's assessment, not law and not legal
+    /// advice.
+    pub assessment_notice: String,
+    pub credential_types: Vec<ModelledType>,
+    /// The entry's credential blocks as loaded, with typed paths.
+    pub claims: Vec<TypedCredential>,
+    pub one_of: Vec<OneOfGroup>,
+    pub legal_sources: Vec<LegalSource>,
 }
 
 /// A reference to the legal or normative basis for minimization.
@@ -96,7 +330,9 @@ pub const LEGAL_BASIS: &[LegalRef] = &[
     LegalRef {
         source: "GDPR (EU) 2016/679",
         locator: "Art. 5(1)(c)",
-        text: "Personal data shall be adequate, relevant and limited to what is necessary (data minimisation).",
+        // Verbatim from Article 5(1), opening words and point (c), EUR-Lex text
+        // of Regulation (EU) 2016/679. "[...]" marks the omitted points (a) and (b).
+        text: "Personal data shall be: [...] (c) adequate, relevant and limited to what is necessary in relation to the purposes for which they are processed (‘data minimisation’);",
     },
     LegalRef {
         source: "EUDI ARF, registration certificate",
@@ -111,9 +347,17 @@ pub const LEGAL_BASIS: &[LegalRef] = &[
 pub struct Counts {
     pub requested: usize,
     pub minimal: usize,
+    /// Requested claims that a loaded baseline entry accepts as an
+    /// alternative. Always 0 under a built-in baseline.
+    pub acceptable_alternative: usize,
     pub beyond_purpose: usize,
     pub beyond_registration: usize,
     pub not_evaluated: usize,
+    /// Requested claims (or credentials without claims) that a supplied
+    /// baseline or a supplied registration could not judge. A row counted
+    /// here is also counted in `not_evaluated`, which in addition counts the
+    /// rows of a run where no baseline was supplied at all.
+    pub could_not_judge: usize,
     pub correlatable_requested: usize,
     pub registration_evaluated: bool,
     pub purpose_evaluated: bool,
@@ -124,6 +368,11 @@ pub struct Counts {
 pub struct OverAskReport {
     pub vct: String,
     pub purpose: Option<String>,
+    /// The request-level result: over-ask, else not evaluated, else ok.
+    pub outcome: Outcome,
+    /// The baseline the request was judged against, `None` when none was
+    /// supplied.
+    pub baseline: Option<BaselineInfo>,
     pub baseline_label: Option<String>,
     pub baseline_note: Option<String>,
     pub requested: Vec<ClaimVerdict>,
@@ -149,11 +398,20 @@ impl OverAskReport {
         self.counts.beyond_purpose > 0 || self.counts.beyond_registration > 0
     }
 
-    /// CSS class for the verdict pill.
+    /// The request-level result ([`Outcome`]).
+    pub fn outcome(&self) -> Outcome {
+        self.outcome
+    }
+
+    /// CSS class for the verdict pill: neutral when something was not
+    /// evaluated.
     pub fn verdict_class(&self) -> &'static str {
         if self.has_over_ask() {
             "over"
-        } else if !self.counts.registration_evaluated || !self.counts.purpose_evaluated {
+        } else if self.outcome == Outcome::NotEvaluated
+            || !self.counts.registration_evaluated
+            || !self.counts.purpose_evaluated
+        {
             ""
         } else {
             "ok"
@@ -163,16 +421,17 @@ impl OverAskReport {
 
 /// A curated baseline for a named purpose, or `None` if unknown.
 ///
-/// These are taste judgments about the minimal claim set each purpose needs.
-/// They are intentionally small and conservative, and are presented as opinion.
+/// These are curated assessments of the minimal claim set each purpose needs,
+/// not law and not legal advice. They are intentionally small and conservative.
 pub fn baseline(id: &str) -> Option<PurposeBaseline> {
     let note =
-        "Curated minimal baseline (a taste judgment, not a Rulebook derivation).".to_string();
+        "Curated minimal baseline (an assessment, not law and not legal advice).".to_string();
     let b = |label: &str, keys: &[&str]| PurposeBaseline {
         id: id.to_string(),
         label: label.to_string(),
         minimal_keys: keys.iter().map(|s| s.to_string()).collect(),
         mdoc_elements: Vec::new(),
+        credential_types: pid_credential_types(),
         note: note.clone(),
     };
     match id {
@@ -212,10 +471,31 @@ pub fn baseline(id: &str) -> Option<PurposeBaseline> {
     }
 }
 
+/// The credential types every built-in baseline models: the PID as SD-JWT VC
+/// (both format identifiers, German and EU type) and as mdoc. The minimal
+/// keys are PID claim-model keys, judged through [`canonical_claim_key`], so
+/// a credential of another type is not judged against them.
+fn pid_credential_types() -> Vec<ModelledType> {
+    let mut types: Vec<ModelledType> = SD_JWT_VC_FORMATS
+        .iter()
+        .map(|format| ModelledType {
+            format: format.to_string(),
+            vct_values: vec![crate::PID_VCT.to_string(), EU_PID_VCT.to_string()],
+            doctype_value: None,
+        })
+        .collect();
+    types.push(ModelledType {
+        format: regcert::FORMAT_MSO_MDOC.to_string(),
+        vct_values: Vec::new(),
+        doctype_value: Some(PID_MDOC_NAMESPACE.to_string()),
+    });
+    types
+}
+
 /// The note on the `bank_kyc` baseline. It names the German statute the claim
-/// set follows and keeps the curated-judgment qualification.
+/// set follows and keeps the curated-assessment qualification.
 const BANK_KYC_NOTE: &str =
-    "Curated minimal baseline (a taste judgment, not a Rulebook derivation). \
+    "Curated minimal baseline (an assessment, not law and not legal advice). \
 It follows the German identification set for a natural person in GwG § 11 Abs. 4 Nr. 1: \
 name, place of birth, date of birth, nationality, and address. \
 A request within this baseline is not over-asking; that alone does not establish \
@@ -346,16 +626,18 @@ pub fn canonical_claim_key(format: &ClaimFormatDesignation, path: &[String]) -> 
 
 /// The SD-JWT VC format identifiers: `dc+sd-jwt` (OpenID4VP 1.0 appendix
 /// B.3) and the earlier `vc+sd-jwt`, which `check` accepts as well.
-const SD_JWT_VC_FORMATS: &[&str] = &["dc+sd-jwt", "vc+sd-jwt"];
+pub const SD_JWT_VC_FORMATS: &[&str] = &["dc+sd-jwt", "vc+sd-jwt"];
 
 fn is_sd_jwt_vc_format(format: &ClaimFormatDesignation) -> bool {
     SD_JWT_VC_FORMATS.contains(&format.to_string().as_str())
 }
 
-/// True when the purpose baselines model the claim paths of this format: the
-/// SD-JWT VC formats and `mso_mdoc`.
-fn purpose_models_format(format: &str) -> bool {
-    SD_JWT_VC_FORMATS.contains(&format) || format == "mso_mdoc"
+/// True when the registration comparison reads the credential type of this
+/// format: `meta.vct_values` for the SD-JWT VC formats and
+/// `meta.doctype_value` for `mso_mdoc`. The type member of any other format
+/// (`type_values` of `jwt_vc_json` and `ldp_vc`, for example) is not read.
+fn registration_reads_type(format: &str) -> bool {
+    SD_JWT_VC_FORMATS.contains(&format) || format == regcert::FORMAT_MSO_MDOC
 }
 
 /// SD-JWT array claims whose element selectors (`null` for every element, an
@@ -411,6 +693,9 @@ struct RequestedClaim {
     segs: Option<Vec<PathSeg>>,
     /// Index of the requested credential in [`requested_credentials`].
     cred: usize,
+    /// Position of the claim in the credential's `claims`; `None` for a
+    /// credential without `claims`.
+    claim_index: Option<usize>,
     /// The claim-model key (label, correlation, model rows, `minimal_keys`);
     /// `None` for an `mso_mdoc` path without one (judged by `mdoc_elements`).
     model_key: Option<String>,
@@ -510,12 +795,14 @@ fn requested_claims(query: &DcqlQuery) -> Vec<RequestedClaim> {
         if !selected[index] {
             continue;
         }
+        let declared = cred.claims().map(|c| &c[..]).unwrap_or_default();
         let claims = selected_claims(cred).unwrap_or_default();
         if claims.is_empty() {
             out.push(RequestedClaim {
                 key: format!("{} (credential, no claims)", cred.id()),
                 segs: None,
                 cred: index,
+                claim_index: None,
                 model_key: None,
                 mdoc_element: None,
                 wildcard_parent: None,
@@ -543,6 +830,7 @@ fn requested_claims(query: &DcqlQuery) -> Vec<RequestedClaim> {
                 key: path.join("."),
                 segs: Some(segs.iter().map(path_seg).collect()),
                 cred: index,
+                claim_index: declared.iter().position(|c| std::ptr::eq(c, claim)),
                 model_key: purpose_path(cred.format(), segs)
                     .and_then(|path| canonical_claim_key(cred.format(), &path)),
                 mdoc_element,
@@ -610,9 +898,117 @@ const UNREGISTERED_CREDENTIAL: &str =
     "No registered credential of this format and type in the relying party's registered scope.";
 
 /// Rationale for a claim of a credential format the purpose baselines do not
-/// model: the purpose verdict fails closed instead of borrowing the SD-JWT VC
+/// model: the claim is not evaluated instead of borrowing the SD-JWT VC
 /// spelling.
-const UNMODELLED_FORMAT: &str = "Purpose not judged for this credential format: the purpose baselines model only SD-JWT VC (dc+sd-jwt, vc+sd-jwt) and mso_mdoc claim paths, so the claim counts as beyond the purpose.";
+fn unmodelled_format(format: &str) -> String {
+    format!("Not evaluated: the purpose baselines model only SD-JWT VC (dc+sd-jwt, vc+sd-jwt) and mso_mdoc claim paths, not the format {format}.")
+}
+
+/// Rationale for a credential query that names no credential type.
+const UNTYPED_CREDENTIAL: &str = "Not evaluated: the request names no credential type (meta.vct_values or meta.doctype_value), so the baseline cannot tell which credential is asked for.";
+
+/// How the registration comparison scores one requested claim or credential.
+enum Registration {
+    /// No registered scope was supplied.
+    NotSupplied,
+    Within,
+    Beyond(String),
+    /// A scope was supplied and cannot judge this claim.
+    Unjudged(String),
+}
+
+/// How the purpose baseline scores one requested claim. The text is the
+/// rationale printed for the claim.
+enum Purpose {
+    /// No baseline was supplied.
+    NotSupplied,
+    Minimal(String),
+    /// A claim a loaded baseline entry accepts instead of a minimal one.
+    Alternative(String),
+    /// Beyond the baseline. `None` for a built-in baseline, whose text
+    /// depends on the registration result.
+    Beyond(Option<String>),
+    /// A baseline was supplied and cannot judge this claim.
+    Unjudged(String),
+}
+
+/// The registration comparison for one requested claim (`segs`), or for a
+/// credential requested without claims (`None`).
+///
+/// For the SD-JWT VC formats and `mso_mdoc` the requested credential is
+/// matched by format and type, then by typed path segments
+/// ([`RegisteredScope::covers`]); a request that accepts several types is
+/// within the registration only when it is for every type, since the wallet
+/// may return any of them (OpenID4VP 1.0 appendix B.3.5).
+///
+/// For any other format the credential type is not read, so the comparison
+/// asks the one question that needs no type: does any registered credential
+/// of that format hold a path that covers the requested one? If none does,
+/// the claim is beyond the registration whatever its type. If one does, the
+/// type is the one thing that cannot be matched, and the claim is not judged.
+fn judge_registration(
+    registered: &RegisteredScope,
+    cred: &RequestedCredential,
+    segs: Option<&[PathSeg]>,
+) -> Registration {
+    let format = &cred.format;
+    if !registration_reads_type(format) {
+        let same_format = || {
+            registered
+                .credentials
+                .iter()
+                .filter(|c| &c.format == format)
+        };
+        if same_format().next().is_none() {
+            return Registration::Beyond(UNREGISTERED_CREDENTIAL.to_string());
+        }
+        let unread = format!(
+            "but the type of a {format} credential is not read (only meta.vct_values and meta.doctype_value are), so the requested credential cannot be matched with it."
+        );
+        return match segs {
+            None => Registration::Unjudged(format!(
+                "Not evaluated against the registration: the registered scope holds a {format} credential, {unread}"
+            )),
+            Some(segs)
+                if same_format()
+                    .any(|c| c.claims.iter().any(|p| regcert::path_covers(p, segs, false))) =>
+            {
+                Registration::Unjudged(format!(
+                    "Not evaluated against the registration: a registered {format} credential covers this path, {unread}"
+                ))
+            }
+            Some(_) => Registration::Beyond(format!(
+                "Not in the registered scope: no registered {format} credential covers this path, whatever its type."
+            )),
+        };
+    }
+
+    let type_registered = !cred.types.is_empty()
+        && cred
+            .types
+            .iter()
+            .all(|t| registered.authorizes_vct(format, t));
+    if !type_registered {
+        return Registration::Beyond(UNREGISTERED_CREDENTIAL.to_string());
+    }
+    // A credential without `claims` requests no selectively disclosable
+    // claim (OpenID4VP 1.0 section 6.4.1): it is within the registration
+    // when its format and type are registered.
+    let Some(segs) = segs else {
+        return Registration::Within;
+    };
+    if cred
+        .types
+        .iter()
+        .all(|t| registered.covers(format, t, segs))
+    {
+        Registration::Within
+    } else if !regcert::valid_claim_path(format, segs) {
+        Registration::Beyond(INVALID_MDOC_PATH.to_string())
+    } else {
+        Registration::Beyond("Not in the relying party's registered scope.".to_string())
+    }
+}
 
 /// Rationale for an `mso_mdoc` path that is not exactly two strings: a wallet
 /// aborts on it, and no registered path covers it.
@@ -627,125 +1023,521 @@ pub fn analyze(
     baseline: Option<&PurposeBaseline>,
     disclosed_keys: &[String],
 ) -> OverAskReport {
+    analyze_against(
+        vct,
+        query,
+        registered,
+        baseline.map(BaselineRef::BuiltIn),
+        Subject::Request,
+        disclosed_keys,
+    )
+}
+
+/// The purpose result of a built-in baseline for one requested claim: first
+/// whether the baseline models the requested credential's format and type,
+/// then the model key; an mdoc path without one is judged only against the
+/// baseline's mdoc elements, segment by segment.
+fn judge_built_in(
+    b: &PurposeBaseline,
+    cred: &RequestedCredential,
+    claim: &RequestedClaim,
+) -> Purpose {
+    let in_minimal = match &claim.model_key {
+        Some(m) => b.minimal_keys.iter().any(|k| k == m),
+        None => claim
+            .mdoc_element
+            .as_ref()
+            .is_some_and(|p| b.mdoc_elements.contains(p)),
+    };
+    match b.type_model(cred) {
+        TypeModel::FormatNotModelled => Purpose::Unjudged(unmodelled_format(&cred.format)),
+        TypeModel::Untyped => Purpose::Unjudged(UNTYPED_CREDENTIAL.to_string()),
+        TypeModel::NoType => Purpose::Unjudged(b.unmodelled_type(&cred.types)),
+        TypeModel::Every if in_minimal => {
+            Purpose::Minimal("Within the purpose-minimal baseline.".to_string())
+        }
+        // A request that accepts several types may be answered with any of
+        // them: beyond the baseline under a modelled type is an over-ask;
+        // within it, the other types remain unjudged.
+        TypeModel::Mixed { modelled, other } if in_minimal => Purpose::Unjudged(format!(
+            "Not evaluated: within the baseline for {}; the request also accepts {}, which the baseline does not model.",
+            modelled.join(", "),
+            other.join(", ")
+        )),
+        TypeModel::Every | TypeModel::Mixed { .. } => Purpose::Beyond(None),
+    }
+}
+
+/// Why a loaded baseline entry cannot judge a requested credential as a
+/// whole, or `None` when a block models every type the credential accepts.
+fn typed_cannot_judge(b: &TypedBaseline, cred: &RequestedCredential) -> Option<String> {
+    if !b.models_format(&cred.format) {
+        return Some(format!(
+            "Not evaluated: entry {} does not model the format {}.",
+            b.id, cred.format
+        ));
+    }
+    if cred.types.is_empty() {
+        return Some(UNTYPED_CREDENTIAL.to_string());
+    }
+    let other: Vec<&str> = cred
+        .types
+        .iter()
+        .filter(|t| b.block_for(&cred.format, t).is_none())
+        .map(String::as_str)
+        .collect();
+    if other.is_empty() {
+        None
+    } else if other.len() == cred.types.len() {
+        Some(format!(
+            "Not evaluated: entry {} does not model the credential type {} in format {}. It models {}.",
+            b.id,
+            cred.types.join(", "),
+            cred.format,
+            join_and(&describe_credential_types(&b.credential_types()))
+        ))
+    } else {
+        Some(format!(
+            "Not evaluated: the request also accepts {}, which entry {} does not model.",
+            other.join(", "),
+            b.id
+        ))
+    }
+}
+
+/// The result of a loaded baseline entry for one requested path, and every
+/// row the path matched (for the one-of rule).
+///
+/// The credential's block is found by format and type, both as exact
+/// strings. A credential that accepts several types is judged once per
+/// accepted type against that type's block, and the path gets the worst of
+/// the results, in the order beyond the baseline, not evaluated (a type that
+/// no block models counts as not evaluated), acceptable alternative, minimal:
+/// the wallet may answer with any accepted type.
+fn judge_typed(
+    b: &TypedBaseline,
+    cred: &RequestedCredential,
+    segs: &[PathSeg],
+) -> (Purpose, Vec<RowId>) {
+    let blocks: Vec<(&String, Option<usize>)> = cred
+        .types
+        .iter()
+        .map(|t| (t, b.block_for(&cred.format, t)))
+        .collect();
+    if blocks.iter().all(|(_, block)| block.is_none()) {
+        // No block of this format, no type named, or no accepted type in any
+        // block: the same texts as for a credential without claims.
+        let why = typed_cannot_judge(b, cred).unwrap_or_else(|| UNTYPED_CREDENTIAL.to_string());
+        return (Purpose::Unjudged(why), Vec::new());
+    }
+
+    let rank = |p: &Purpose| match p {
+        Purpose::Beyond(_) => 3,
+        Purpose::Unjudged(_) => 2,
+        Purpose::Alternative(_) => 1,
+        _ => 0,
+    };
+    let mut units: Vec<RowId> = Vec::new();
+    let mut worst: Option<Purpose> = None;
+    let (mut modelled, mut other): (Vec<&str>, Vec<&str>) = (Vec::new(), Vec::new());
+    for (credential_type, block) in blocks {
+        let Some(block) = block else {
+            other.push(credential_type);
+            continue;
+        };
+        modelled.push(credential_type);
+        let credential = &b.credentials[block];
+        let result = match credential.match_row(segs) {
+            Some((list, row)) => {
+                let id = RowId { block, list, row };
+                if !units.contains(&id) {
+                    units.push(id);
+                }
+                match list {
+                    RowList::Minimal => {
+                        Purpose::Minimal("Minimal under this baseline entry.".to_string())
+                    }
+                    RowList::Alternatives => Purpose::Alternative(format!(
+                        "Acceptable alternative, not an over-ask. Reason stated by the baseline: {}",
+                        credential.alternatives[row].reason
+                    )),
+                    RowList::Undecided => Purpose::Unjudged(format!(
+                        "Not evaluated: the baseline leaves this claim open. Reason stated by the baseline: {}",
+                        credential.undecided[row].reason
+                    )),
+                }
+            }
+            None => Purpose::Beyond(Some(format!(
+                "Beyond the baseline: not a minimal claim and not an acceptable alternative of entry {} for {}, {}.",
+                b.id, cred.format, credential_type
+            ))),
+        };
+        if worst.as_ref().is_none_or(|w| rank(&result) > rank(w)) {
+            worst = Some(result);
+        }
+    }
+    let mut purpose = worst.unwrap_or(Purpose::NotSupplied);
+    if !other.is_empty() && rank(&purpose) < 2 {
+        purpose = Purpose::Unjudged(format!(
+            "Not evaluated: within entry {} for {}; the request also accepts {}, which the entry does not model.",
+            b.id,
+            modelled.join(", "),
+            other.join(", ")
+        ));
+    }
+    (purpose, units)
+}
+
+/// A requested claim after the two comparisons, before the one-of rule.
+struct Judged {
+    key: String,
+    label: String,
+    correlatable: bool,
+    registration: Registration,
+    purpose: Purpose,
+    /// Index of the credential query in the request.
+    cred: usize,
+    /// Position of the claim in the credential's `claims`.
+    claim_index: Option<usize>,
+    /// The rows of a loaded baseline entry this claim matched.
+    units: Vec<RowId>,
+}
+
+/// One row of the report while it is built: a finished verdict (a credential
+/// without claims), or a claim the one-of rule may still change.
+enum Row {
+    Done(ClaimVerdict),
+    Claim(Judged),
+}
+
+/// The one-of rule of a loaded baseline entry: a request may ask for one row
+/// of a group.
+///
+/// The rule counts matched rows, not requested claims. The unit is a matched
+/// row per requested credential query: two requested paths of one credential
+/// that the same row covers are one unit, and the same row matched in two
+/// credential queries is two. A group is broken when two different units of
+/// it can be returned together ([`typed_baseline::returned_together`]). Two
+/// units of one credential query that lie in different blocks belong to two
+/// of the credential types the query accepts; one returned credential has
+/// one type, so they count as returned together only when the query asks for
+/// several credentials (`multiple`). Two units of one credential query in
+/// one block are apart only when `claim_sets` keeps them apart and the query
+/// does not set `multiple`: with `multiple`, one response can hold several
+/// credentials of the query, each answering another `claim_sets` option.
+///
+/// The rationale gives the number of requested units of the group and how
+/// many of them one response can hold together with another unit of the
+/// group. It does not say that one response holds all of them at once: with
+/// `claim_sets` `[[a, b], [b, c]]` the three units break the group, and no
+/// response holds all three.
+///
+/// For a request, every claim of a unit that breaks a group is beyond the
+/// baseline. A registration body lists everything a party may ask across
+/// requests, so there two units of a group are not evaluated. A claim that is
+/// already beyond the baseline keeps that result.
+fn apply_one_of(
+    b: &TypedBaseline,
+    subject: Subject,
+    together: &typed_baseline::Cooccurrence,
+    rows: &mut [Row],
+) {
+    struct Unit {
+        cred: usize,
+        row: RowId,
+        claims: Vec<usize>,
+        rows: Vec<usize>,
+    }
+
+    for group in &b.one_of {
+        let mut units: Vec<Unit> = Vec::new();
+        for (index, row) in rows.iter().enumerate() {
+            let Row::Claim(claim) = row else { continue };
+            for id in &claim.units {
+                if b.group_of(id) != Some(group.id.as_str()) {
+                    continue;
+                }
+                match units
+                    .iter_mut()
+                    .find(|u| u.cred == claim.cred && u.row == *id)
+                {
+                    Some(unit) => {
+                        unit.claims.extend(claim.claim_index);
+                        unit.rows.push(index);
+                    }
+                    None => units.push(Unit {
+                        cred: claim.cred,
+                        row: *id,
+                        claims: claim.claim_index.into_iter().collect(),
+                        rows: vec![index],
+                    }),
+                }
+            }
+        }
+
+        let mut breaks = vec![false; units.len()];
+        let (mut unresolved_claim_sets, mut unresolved_credential_sets) = (false, false);
+        let mut several_credentials = false;
+        for i in 0..units.len() {
+            for j in i + 1..units.len() {
+                let (a, c) = (&units[i], &units[j]);
+                let held_together = if a.cred != c.cred {
+                    let held = together.credentials_together(a.cred, c.cred);
+                    unresolved_credential_sets |= held && together.credential_sets_unresolved();
+                    held
+                } else if a.row.block != c.row.block {
+                    together.multiple(a.cred)
+                } else {
+                    let in_one_credential = a.claims.iter().any(|x| {
+                        c.claims
+                            .iter()
+                            .any(|y| together.claims_together(a.cred, *x, *y))
+                    });
+                    unresolved_claim_sets |=
+                        in_one_credential && together.claim_sets_unresolved(a.cred);
+                    // claim_sets keeps the two apart within one returned
+                    // credential only. With `multiple`, the response can hold
+                    // several credentials of this query, one per option.
+                    let across_credentials = !in_one_credential && together.multiple(a.cred);
+                    several_credentials |= across_credentials;
+                    in_one_credential || across_credentials
+                };
+                if held_together {
+                    breaks[i] = true;
+                    breaks[j] = true;
+                }
+            }
+        }
+        let count = breaks.iter().filter(|hit| **hit).count();
+        if count == 0 {
+            continue;
+        }
+
+        let text = match subject {
+            Subject::Request => {
+                let mut text = format!(
+                    "Beyond the baseline: entry {} allows one claim of the group \"{}\" per request ({}); this request asks for {} of them, and {count} of these can each be returned in one response together with another claim of the group.",
+                    b.id,
+                    group.id,
+                    group.reason,
+                    units.len()
+                );
+                if several_credentials {
+                    text.push_str(" The credential query sets multiple, so one response can hold several credentials, each answering another claim_sets option.");
+                }
+                if unresolved_claim_sets {
+                    text.push_str(" claim_sets names an id the request does not carry, so its claims count as requested together.");
+                }
+                if unresolved_credential_sets {
+                    text.push_str(" credential_sets names an id the request does not carry, so its credentials count as requested together.");
+                }
+                text
+            }
+            Subject::RegistrationBody => format!(
+                "Not evaluated: entry {} allows one claim of the group \"{}\" per request. A registration may list more than one where the intended use needs each; this tool cannot check that.",
+                b.id, group.id
+            ),
+        };
+        for (unit, hit) in units.iter().zip(&breaks) {
+            if !hit {
+                continue;
+            }
+            for index in &unit.rows {
+                let Row::Claim(claim) = &mut rows[*index] else {
+                    continue;
+                };
+                if matches!(claim.purpose, Purpose::Beyond(_)) {
+                    continue;
+                }
+                claim.purpose = match subject {
+                    Subject::Request => Purpose::Beyond(Some(text.clone())),
+                    Subject::RegistrationBody => Purpose::Unjudged(text.clone()),
+                };
+            }
+        }
+    }
+}
+
+/// Analyze a request against an optional registered scope and an optional
+/// baseline, which is a built-in purpose baseline or one entry of a loaded
+/// baseline file ([`BaselineRef`]). `subject` says whether the query is a
+/// presentation request or stands for a registration body; it matters only
+/// for the one-of rule of a loaded baseline entry.
+pub fn analyze_against(
+    vct: &str,
+    query: &DcqlQuery,
+    registered: Option<&RegisteredScope>,
+    baseline: Option<BaselineRef<'_>>,
+    subject: Subject,
+    disclosed_keys: &[String],
+) -> OverAskReport {
     let model = pid_claim_model();
     let lookup: HashMap<String, &PidClaim> = model.iter().map(|c| (c.key(), c)).collect();
 
     let creds = requested_credentials(query);
     let claims = requested_claims(query);
 
-    let mut verdicts = Vec::new();
+    let mut rows: Vec<Row> = Vec::new();
     let mut counts = Counts {
         registration_evaluated: registered.is_some(),
         purpose_evaluated: baseline.is_some(),
         ..Default::default()
     };
 
-    // One verdict per requested path, aliases included. Registration matches
-    // the requested credential by format and type, then compares typed path
-    // segments (`RegisteredScope::covers`); a request that accepts several
-    // types is within the registration only when it is for every type, since
-    // the wallet may return any of them (OpenID4VP 1.0 appendix B.3.5).
-    // Purpose and the model lookup use the model key, and an mdoc path
-    // without one is judged only against the baseline's mdoc elements,
-    // segment by segment.
-    for RequestedClaim {
-        key,
-        segs,
-        cred,
-        model_key,
-        mdoc_element,
-        ..
-    } in &claims
-    {
-        let cred = &creds[*cred];
-        let type_registered = registered.map(|r| {
-            !cred.types.is_empty() && cred.types.iter().all(|t| r.authorizes_vct(&cred.format, t))
-        });
+    // One verdict per requested path, aliases included. Per claim the order
+    // is: beyond the registration, beyond the purpose, not evaluated (either
+    // comparison could not judge), acceptable alternative, within the
+    // baseline. Registration is judged by `judge_registration`, purpose by
+    // `judge_built_in` or `judge_typed`.
+    for claim in &claims {
+        let cred = &creds[claim.cred];
+        let registration = match registered {
+            Some(r) => judge_registration(r, cred, claim.segs.as_deref()),
+            None => Registration::NotSupplied,
+        };
 
         // A credential without `claims` requests no selectively disclosable
-        // claim (OpenID4VP 1.0 section 6.4.1): there is nothing to judge for
-        // purpose, and it is within the registration when its format and type
-        // are registered. Only an unregistered credential gets a row.
-        let Some(segs) = segs else {
-            if type_registered == Some(false) {
-                counts.beyond_registration += 1;
-                verdicts.push(ClaimVerdict {
-                    key: key.clone(),
-                    label: "Credential without claims".to_string(),
-                    status: ClaimStatus::BeyondRegistration,
-                    correlatable: false,
-                    rationale: UNREGISTERED_CREDENTIAL.to_string(),
-                });
+        // claim (OpenID4VP 1.0 section 6.4.1): there is no claim to judge for
+        // purpose. It gets a row when its type is not registered, and when a
+        // supplied registration or baseline cannot judge the credential.
+        let Some(segs) = claim.segs.as_deref() else {
+            let unmodelled = match baseline {
+                Some(BaselineRef::BuiltIn(b)) => b.cannot_judge(cred),
+                Some(BaselineRef::Typed(b)) => typed_cannot_judge(b, cred),
+                None => None,
+            };
+            let (status, rationale) = match (registration, unmodelled) {
+                (Registration::Beyond(why), _) => (ClaimStatus::BeyondRegistration, why),
+                (Registration::Unjudged(a), Some(b)) => {
+                    (ClaimStatus::NotEvaluated, format!("{a} {b}"))
+                }
+                (Registration::Unjudged(why), None) | (_, Some(why)) => {
+                    (ClaimStatus::NotEvaluated, why)
+                }
+                _ => continue,
+            };
+            match status {
+                ClaimStatus::BeyondRegistration => counts.beyond_registration += 1,
+                _ => {
+                    counts.not_evaluated += 1;
+                    counts.could_not_judge += 1;
+                }
             }
+            rows.push(Row::Done(ClaimVerdict {
+                key: claim.key.clone(),
+                label: "Credential without claims".to_string(),
+                status,
+                correlatable: false,
+                rationale,
+            }));
             continue;
         };
 
-        let meta = match model_key {
+        let meta = match &claim.model_key {
             Some(m) => lookup
                 .get(m.as_str())
                 .map(|c| (c.label.clone(), c.correlatable)),
-            None => mdoc_element
+            None => claim
+                .mdoc_element
                 .as_ref()
                 .and_then(mdoc_element_meta)
                 .map(|(l, c)| (l.to_string(), c)),
         };
-        let (label, correlatable) = meta.unwrap_or_else(|| (key.clone(), false));
+        let (label, correlatable) = meta.unwrap_or_else(|| (claim.key.clone(), false));
         if correlatable {
             counts.correlatable_requested += 1;
         }
 
-        let in_registered = registered.map(|r| {
-            type_registered == Some(true)
-                && cred.types.iter().all(|t| r.covers(&cred.format, t, segs))
-        });
-        let in_minimal = baseline.map(|b| match model_key {
-            Some(m) => b.minimal_keys.iter().any(|k| k == m),
-            None => mdoc_element
-                .as_ref()
-                .is_some_and(|p| b.mdoc_elements.contains(p)),
-        });
+        let (purpose, units) = match baseline {
+            None => (Purpose::NotSupplied, Vec::new()),
+            Some(BaselineRef::BuiltIn(b)) => (judge_built_in(b, cred, claim), Vec::new()),
+            Some(BaselineRef::Typed(b)) => judge_typed(b, cred, segs),
+        };
+        rows.push(Row::Claim(Judged {
+            key: claim.key.clone(),
+            label,
+            correlatable,
+            registration,
+            purpose,
+            cred: claim.cred,
+            claim_index: claim.claim_index,
+            units,
+        }));
+    }
 
-        let (status, rationale) = match (in_registered, in_minimal) {
-            (Some(false), _) => (
-                ClaimStatus::BeyondRegistration,
-                if type_registered == Some(false) {
-                    UNREGISTERED_CREDENTIAL
-                } else if !regcert::valid_claim_path(&cred.format, segs) {
-                    INVALID_MDOC_PATH
-                } else {
-                    "Not in the relying party's registered scope."
-                }
-                .to_string(),
-            ),
-            (_, Some(false)) => {
-                let rationale = match in_registered {
-                    _ if !purpose_models_format(&cred.format) => UNMODELLED_FORMAT,
-                    Some(true) => "Registered, but beyond what the stated purpose needs.",
-                    None => "Beyond what the stated purpose needs; registration not evaluated.",
-                    Some(false) => unreachable!("beyond-registration matched first"),
-                };
-                (ClaimStatus::BeyondPurpose, rationale.to_string())
+    if let Some(BaselineRef::Typed(b)) = baseline {
+        apply_one_of(
+            b,
+            subject,
+            &typed_baseline::returned_together(query),
+            &mut rows,
+        );
+    }
+
+    let mut verdicts = Vec::new();
+    for row in rows {
+        let claim = match row {
+            Row::Done(verdict) => {
+                verdicts.push(verdict);
+                continue;
             }
-            (_, Some(true)) => (
-                ClaimStatus::MinimalForPurpose,
-                "Within the purpose-minimal baseline.".to_string(),
-            ),
-            (_, None) => (
+            Row::Claim(claim) => claim,
+        };
+        let mut unjudged = false;
+        let (status, rationale) = match (claim.registration, claim.purpose) {
+            (Registration::Beyond(why), _) => (ClaimStatus::BeyondRegistration, why),
+            (registration, Purpose::Beyond(text)) => {
+                let rationale = match (text, registration) {
+                    (Some(text), Registration::Unjudged(_)) => {
+                        format!("{text} The registration comparison could not judge this claim.")
+                    }
+                    (Some(text), _) => text,
+                    (None, Registration::Within) => {
+                        "Registered, but beyond what the stated purpose needs.".to_string()
+                    }
+                    (None, Registration::NotSupplied) => {
+                        "Beyond what the stated purpose needs; registration not evaluated."
+                            .to_string()
+                    }
+                    (None, Registration::Unjudged(_)) => {
+                        "Beyond what the stated purpose needs; the registration comparison could not judge this claim.".to_string()
+                    }
+                    (None, Registration::Beyond(_)) => {
+                        unreachable!("beyond-registration matched first")
+                    }
+                };
+                (ClaimStatus::BeyondPurpose, rationale)
+            }
+            (Registration::Unjudged(a), Purpose::Unjudged(b)) => {
+                unjudged = true;
+                (ClaimStatus::NotEvaluated, format!("{a} {b}"))
+            }
+            (Registration::Unjudged(why), _) | (_, Purpose::Unjudged(why)) => {
+                unjudged = true;
+                (ClaimStatus::NotEvaluated, why)
+            }
+            (_, Purpose::NotSupplied) => (
                 ClaimStatus::NotEvaluated,
                 "Purpose not evaluated: no baseline supplied.".to_string(),
             ),
+            (_, Purpose::Minimal(text)) => (ClaimStatus::MinimalForPurpose, text),
+            (_, Purpose::Alternative(text)) => (ClaimStatus::AcceptableAlternative, text),
         };
         match status {
             ClaimStatus::MinimalForPurpose => counts.minimal += 1,
+            ClaimStatus::AcceptableAlternative => counts.acceptable_alternative += 1,
             ClaimStatus::BeyondPurpose => counts.beyond_purpose += 1,
             ClaimStatus::BeyondRegistration => counts.beyond_registration += 1,
             ClaimStatus::NotEvaluated => counts.not_evaluated += 1,
         }
+        if unjudged {
+            counts.could_not_judge += 1;
+        }
         verdicts.push(ClaimVerdict {
-            key: key.clone(),
-            label,
+            key: claim.key,
+            label: claim.label,
             status,
-            correlatable,
+            correlatable: claim.correlatable,
             rationale,
         });
     }
@@ -783,16 +1575,55 @@ pub fn analyze(
 
     counts.requested = verdicts.len();
     let verdict_line = verdict_line(&counts);
+    let outcome = if counts.beyond_purpose > 0 || counts.beyond_registration > 0 {
+        Outcome::OverAsk
+    } else if counts.could_not_judge > 0 {
+        Outcome::NotEvaluated
+    } else {
+        Outcome::Ok
+    };
+
+    // A loaded baseline entry has typed paths and no claim-model keys, so it
+    // has no suggestion in the built-in spelling tables; its own minimal rows
+    // are in `baseline.claims`.
+    let (info, baseline_label, baseline_note, suggested_minimal, suggested_minimal_request) =
+        match baseline {
+            None => (None, None, None, None, None),
+            Some(BaselineRef::BuiltIn(b)) => (
+                Some(BaselineInfo::BuiltIn {
+                    id: b.id.clone(),
+                    label: b.label.clone(),
+                    credential_types: b.credential_types.clone(),
+                }),
+                Some(b.label.clone()),
+                Some(b.note.clone()),
+                Some(b.minimal_keys.clone()),
+                Some(suggested_request(b, query)),
+            ),
+            Some(BaselineRef::Typed(b)) => (
+                Some(b.info()),
+                Some(b.display_label().to_string()),
+                Some(format!(
+                    "{}. {}",
+                    b.notice(),
+                    typed_baseline::ASSESSMENT_NOTICE
+                )),
+                None,
+                None,
+            ),
+        };
 
     OverAskReport {
         vct: vct.to_string(),
         purpose: registered.and_then(|r| r.purpose_text().map(String::from)),
-        baseline_label: baseline.map(|b| b.label.clone()),
-        baseline_note: baseline.map(|b| b.note.clone()),
+        outcome,
+        baseline: info,
+        baseline_label,
+        baseline_note,
         requested: verdicts,
         over_disclosed,
-        suggested_minimal: baseline.map(|b| b.minimal_keys.clone()),
-        suggested_minimal_request: baseline.map(|b| suggested_request(b, query)),
+        suggested_minimal,
+        suggested_minimal_request,
         claim_rows,
         counts,
         legal_basis: LEGAL_BASIS.to_vec(),
@@ -810,6 +1641,11 @@ fn verdict_line(c: &Counts) -> String {
         format!(
             "Over-ask vs purpose: {} of {} requested claims exceed the stated purpose.",
             c.beyond_purpose, c.requested
+        )
+    } else if c.could_not_judge > 0 {
+        format!(
+            "{} of {} requested claims could not be judged.",
+            c.could_not_judge, c.requested
         )
     } else if c.requested == 0 {
         "No claims requested.".to_string()
@@ -875,20 +1711,27 @@ pub struct SuggestedCredential {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum SpellingTable {
-    /// German PID, SD-JWT VC (`dc+sd-jwt`, vct `urn:eudi:pid:de:1`).
+    /// German PID, SD-JWT VC (either identifier of [`SD_JWT_VC_FORMATS`], vct
+    /// `urn:eudi:pid:de:1`).
     GermanSdJwt,
-    /// EU PID, SD-JWT VC (`dc+sd-jwt`, vct `urn:eudi:pid:1`).
+    /// EU PID, SD-JWT VC (either identifier of [`SD_JWT_VC_FORMATS`], vct
+    /// `urn:eudi:pid:1`).
     EuSdJwt,
     /// PID mdoc (doctype `eu.europa.ec.eudi.pid.1`, shared by the EU PID and
     /// the German PID).
     PidMdoc,
 }
 
+/// The spelling table of a requested credential. The formats and types are
+/// those of [`pid_credential_types`]: a credential a built-in baseline judges
+/// as a PID also gets its suggestion in PID spelling, under both SD-JWT VC
+/// format identifiers.
 fn spelling_table(format: &str, types: &[String]) -> Option<SpellingTable> {
     let all = |t: &str| !types.is_empty() && types.iter().all(|x| x == t);
-    if format == crate::pid::PID_FORMAT && all(crate::PID_VCT) {
+    let sd_jwt = SD_JWT_VC_FORMATS.contains(&format);
+    if sd_jwt && all(crate::PID_VCT) {
         Some(SpellingTable::GermanSdJwt)
-    } else if format == crate::pid::PID_FORMAT && all(EU_PID_VCT) {
+    } else if sd_jwt && all(EU_PID_VCT) {
         Some(SpellingTable::EuSdJwt)
     } else if format == regcert::FORMAT_MSO_MDOC && all(PID_MDOC_NAMESPACE) {
         Some(SpellingTable::PidMdoc)
@@ -2204,7 +3047,7 @@ mod tests {
     fn bank_kyc_note_cites_gwg_and_keeps_qualification() {
         let b = baseline("bank_kyc").expect("bank_kyc");
         assert!(b.note.contains("GwG § 11 Abs. 4 Nr. 1"));
-        assert!(b.note.contains("taste judgment"));
+        assert!(b.note.contains("not law and not legal advice"));
         assert!(b.note.contains("AML compliance"));
         assert_eq!(LEGAL_BASIS.len(), 3);
     }
@@ -2347,11 +3190,12 @@ mod tests {
             assert_eq!(v.key, "card (credential, no claims)");
             assert_eq!(report.counts.beyond_purpose, 0);
             assert!(report.has_over_ask());
-
-            // Without a registration there is nothing to judge.
-            let report = analyze(PID_VCT, &q("urn:example:other:1"), None, b.as_ref(), &[]);
-            assert!(report.requested.is_empty());
         }
+        // Without a registration and without a baseline there is nothing to
+        // judge.
+        let report = analyze(PID_VCT, &q("urn:example:other:1"), None, None, &[]);
+        assert!(report.requested.is_empty());
+        assert_eq!(report.outcome, Outcome::Ok);
     }
 
     #[test]
@@ -2737,9 +3581,9 @@ mod tests {
     }
 
     #[test]
-    fn mdoc_age_over_purpose_verdict_does_not_consult_doctype() {
-        // Purpose verdicts take format and path only, as for every other key
-        // in 0.4.0; the credential type is checked by registration coverage.
+    fn mdoc_age_over_purpose_verdict_needs_the_pid_doctype() {
+        // The built-in baselines model the PID doctype only: the same path in
+        // a credential of another doctype, or of none, is not evaluated.
         let path = [serde_json::json!([PID_DE_MDOC_NAMESPACE, "age_over_18"])];
         let pid = mdoc_query_with_meta(
             serde_json::json!({ "doctype_value": PID_MDOC_NAMESPACE }),
@@ -2750,9 +3594,14 @@ mod tests {
             &path,
         );
         let untyped = mdoc_query_with_meta(serde_json::Value::Null, &path);
-        for query in [&pid, &mdl, &untyped] {
+        let report = analyze(PID_VCT, &pid, None, baseline("age_gate_18").as_ref(), &[]);
+        assert_eq!(report.requested[0].status, ClaimStatus::MinimalForPurpose);
+        assert_eq!(report.outcome, Outcome::Ok);
+        for query in [&mdl, &untyped] {
             let report = analyze(PID_VCT, query, None, baseline("age_gate_18").as_ref(), &[]);
-            assert_eq!(report.requested[0].status, ClaimStatus::MinimalForPurpose);
+            assert_eq!(report.requested[0].status, ClaimStatus::NotEvaluated);
+            assert_eq!(report.outcome, Outcome::NotEvaluated);
+            assert!(!report.has_over_ask());
         }
         let registered = scope_json(serde_json::json!([{
             "format": "mso_mdoc", "meta": { "doctype_value": PID_MDOC_NAMESPACE },
@@ -2918,6 +3767,34 @@ mod tests {
         assert_eq!(s.not_suggested, ["Age over 18"]);
     }
 
+    /// The earlier SD-JWT VC identifier `vc+sd-jwt` is a modelled PID format
+    /// ([`pid_credential_types`]), so its suggestion is spelled like the
+    /// `dc+sd-jwt` one and is not reported as an unknown type.
+    #[test]
+    fn suggestion_for_the_earlier_sd_jwt_vc_identifier_is_spelled_like_dc_sd_jwt() {
+        for vct in [PID_VCT, EU_PID_VCT] {
+            let meta = serde_json::json!({ "vct_values": [vct] });
+            let request =
+                |format: &str| typed_query(format, meta.clone(), serde_json::json!(["birthdate"]));
+            for purpose in ["age_gate_18", "bank_kyc"] {
+                let dc = &suggestion(purpose, &request("dc+sd-jwt"))[0];
+                let vc = &suggestion(purpose, &request("vc+sd-jwt"))[0];
+                assert_eq!(vc.format, "vc+sd-jwt");
+                assert!(vc.known_type, "{vct} {purpose}");
+                assert_eq!(vc.paths, dc.paths, "{vct} {purpose}");
+                assert_eq!(vc.not_suggested, dc.not_suggested, "{vct} {purpose}");
+            }
+        }
+        let query = typed_query(
+            "vc+sd-jwt",
+            serde_json::json!({ "vct_values": [PID_VCT] }),
+            serde_json::json!(["birthdate"]),
+        );
+        let s = &suggestion("age_gate_18", &query)[0];
+        assert_eq!(paths_of(s), vec![p(&["age_equal_or_over", "18"])]);
+        assert!(s.not_suggested.is_empty());
+    }
+
     #[test]
     fn unknown_type_suggestion_names_labels_only() {
         for (format, meta) in [
@@ -2929,7 +3806,10 @@ mod tests {
                 "jwt_vc_json",
                 serde_json::json!({ "vct_values": [PID_VCT] }),
             ),
-            ("vc+sd-jwt", serde_json::json!({ "vct_values": [PID_VCT] })),
+            (
+                "vc+sd-jwt",
+                serde_json::json!({ "vct_values": ["urn:example:membership:1"] }),
+            ),
             (
                 "dc+sd-jwt",
                 serde_json::json!({ "vct_values": [PID_VCT, EU_PID_VCT] }),
@@ -3091,10 +3971,21 @@ mod tests {
                 );
                 let report = analyze(PID_VCT, &query, None, baseline(purpose).as_ref(), &[]);
                 for v in &report.requested {
-                    assert_eq!(v.status, ClaimStatus::BeyondPurpose, "{format} {purpose}");
-                    assert_eq!(v.rationale, UNMODELLED_FORMAT, "{format} {purpose}");
+                    assert_eq!(v.status, ClaimStatus::NotEvaluated, "{format} {purpose}");
+                    assert_eq!(
+                        v.rationale,
+                        format!("Not evaluated: the purpose baselines model only SD-JWT VC (dc+sd-jwt, vc+sd-jwt) and mso_mdoc claim paths, not the format {format}."),
+                        "{format} {purpose}"
+                    );
                 }
-                assert!(report.has_over_ask(), "{format} {purpose}");
+                assert!(!report.has_over_ask(), "{format} {purpose}");
+                assert_eq!(report.outcome, Outcome::NotEvaluated, "{format} {purpose}");
+                assert_eq!(report.counts.beyond_purpose, 0, "{format} {purpose}");
+                assert_eq!(report.counts.could_not_judge, 2, "{format} {purpose}");
+                assert_eq!(
+                    report.verdict_line,
+                    "2 of 2 requested claims could not be judged."
+                );
                 assert!(!report.claim_rows.iter().any(|r| r.requested), "{format}");
             }
         }
@@ -3110,5 +4001,552 @@ mod tests {
                 "{format}"
             );
         }
+    }
+
+    // --- not evaluated: credential types, formats, the outcome -------------
+
+    /// The mobile driving licence doctype and namespace of the OpenID4VP 1.0
+    /// DCQL example (`org.iso.18013.5.1.mDL`, `org.iso.18013.5.1`).
+    const MDL_DOCTYPE: &str = "org.iso.18013.5.1.mDL";
+    const MDL_NAMESPACE: &str = "org.iso.18013.5.1";
+    /// An invented SD-JWT VC type that is not a PID.
+    const MEMBERSHIP_VCT: &str = "urn:example:membership:1";
+
+    fn sd_jwt_query(vcts: &[&str], paths: &[serde_json::Value]) -> DcqlQuery {
+        query_json(serde_json::json!({ "credentials": [{
+            "id": "cred", "format": "dc+sd-jwt", "meta": { "vct_values": vcts },
+            "claims": paths.iter().map(|p| serde_json::json!({ "path": p })).collect::<Vec<_>>(),
+        }]}))
+    }
+
+    /// A `jwt_vc_json` credential query in the shape of the OpenID4VP 1.0
+    /// examples (`type_values`, paths under `credentialSubject`).
+    fn jwt_vc_query(paths: &[serde_json::Value]) -> DcqlQuery {
+        query_json(serde_json::json!({ "credentials": [{
+            "id": "vc", "format": "jwt_vc_json",
+            "meta": { "type_values": [["IdentityCredential"]] },
+            "claims": paths.iter().map(|p| serde_json::json!({ "path": p })).collect::<Vec<_>>(),
+        }]}))
+    }
+
+    fn jwt_vc_scope(paths: &[serde_json::Value]) -> RegisteredScope {
+        scope_json(serde_json::json!([{
+            "format": "jwt_vc_json",
+            "meta": { "type_values": [["IdentityCredential"]] },
+            "claim": paths.iter().map(|p| serde_json::json!({ "path": p })).collect::<Vec<_>>(),
+        }]))
+    }
+
+    #[test]
+    fn built_in_baselines_model_the_pid_types_from_the_constants() {
+        let expected = vec![
+            ModelledType {
+                format: "dc+sd-jwt".to_string(),
+                vct_values: vec![PID_VCT.to_string(), EU_PID_VCT.to_string()],
+                doctype_value: None,
+            },
+            ModelledType {
+                format: "vc+sd-jwt".to_string(),
+                vct_values: vec![PID_VCT.to_string(), EU_PID_VCT.to_string()],
+                doctype_value: None,
+            },
+            ModelledType {
+                format: crate::regcert::FORMAT_MSO_MDOC.to_string(),
+                vct_values: Vec::new(),
+                doctype_value: Some(PID_MDOC_NAMESPACE.to_string()),
+            },
+        ];
+        for purpose in PURPOSES {
+            let b = baseline(purpose).expect("baseline");
+            assert_eq!(b.credential_types, expected, "{purpose}");
+            assert!(b.models_type("dc+sd-jwt", "urn:eudi:pid:de:1"));
+            assert!(b.models_type("vc+sd-jwt", "urn:eudi:pid:1"));
+            assert!(b.models_type("mso_mdoc", "eu.europa.ec.eudi.pid.1"));
+            // A type is modelled only in its own format.
+            assert!(!b.models_type("mso_mdoc", "urn:eudi:pid:de:1"));
+            assert!(!b.models_type("dc+sd-jwt", "eu.europa.ec.eudi.pid.1"));
+            assert!(!b.models_type("mso_mdoc", MDL_DOCTYPE));
+        }
+        assert_eq!(
+            describe_credential_types(&expected),
+            [
+                "dc+sd-jwt and vc+sd-jwt with vct urn:eudi:pid:de:1 or urn:eudi:pid:1",
+                "mso_mdoc with doctype eu.europa.ec.eudi.pid.1",
+            ]
+        );
+        let json = serde_json::to_value(baseline("age_gate_18").expect("baseline")).expect("json");
+        assert_eq!(
+            json["credential_types"],
+            serde_json::json!([
+                { "format": "dc+sd-jwt", "vct_values": ["urn:eudi:pid:de:1", "urn:eudi:pid:1"] },
+                { "format": "vc+sd-jwt", "vct_values": ["urn:eudi:pid:de:1", "urn:eudi:pid:1"] },
+                { "format": "mso_mdoc", "doctype_value": "eu.europa.ec.eudi.pid.1" },
+            ])
+        );
+    }
+
+    #[test]
+    fn other_credential_types_are_not_evaluated_under_every_built_in_baseline() {
+        // An mDL asking for names in its own namespace and for the age
+        // element of the German PID namespace, and a membership credential
+        // asking for PID claim names: no PID claim name is borrowed.
+        let mdl = mdoc_query_with_meta(
+            serde_json::json!({ "doctype_value": MDL_DOCTYPE }),
+            &[
+                serde_json::json!([MDL_NAMESPACE, "given_name"]),
+                serde_json::json!([MDL_NAMESPACE, "family_name"]),
+                serde_json::json!([PID_DE_MDOC_NAMESPACE, "age_over_18"]),
+            ],
+        );
+        let membership = sd_jwt_query(
+            &[MEMBERSHIP_VCT],
+            &[
+                serde_json::json!(["given_name"]),
+                serde_json::json!(["family_name"]),
+                serde_json::json!(["age_equal_or_over", "18"]),
+            ],
+        );
+        for purpose in PURPOSES {
+            for (query, credential_type) in [(&mdl, MDL_DOCTYPE), (&membership, MEMBERSHIP_VCT)] {
+                let report = analyze(PID_VCT, query, None, baseline(purpose).as_ref(), &[]);
+                assert_eq!(report.outcome, Outcome::NotEvaluated, "{purpose}");
+                assert!(!report.has_over_ask(), "{purpose}");
+                assert_eq!(report.counts.requested, 3);
+                assert_eq!(report.counts.not_evaluated, 3);
+                assert_eq!(report.counts.could_not_judge, 3);
+                assert_eq!(report.counts.minimal, 0);
+                assert_eq!(report.counts.beyond_purpose, 0);
+                assert_eq!(
+                    report.verdict_line,
+                    "3 of 3 requested claims could not be judged."
+                );
+                for v in &report.requested {
+                    assert_eq!(v.status, ClaimStatus::NotEvaluated, "{purpose} {}", v.key);
+                    assert_eq!(
+                        v.rationale,
+                        format!("Not evaluated: the baseline {purpose} does not model the credential type {credential_type}. It models dc+sd-jwt and vc+sd-jwt with vct urn:eudi:pid:de:1 or urn:eudi:pid:1, and mso_mdoc with doctype eu.europa.ec.eudi.pid.1."),
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn untyped_credential_is_not_evaluated() {
+        const UNTYPED: &str = "Not evaluated: the request names no credential type (meta.vct_values or meta.doctype_value), so the baseline cannot tell which credential is asked for.";
+        let mdoc = mdoc_query_with_meta(
+            serde_json::Value::Null,
+            &[serde_json::json!([PID_DE_MDOC_NAMESPACE, "age_over_18"])],
+        );
+        let sd_jwt = query_json(serde_json::json!({ "credentials": [{
+            "id": "pid", "format": "dc+sd-jwt",
+            "claims": [{ "path": ["age_equal_or_over", "18"] }],
+        }]}));
+        let empty_vct = query_json(serde_json::json!({ "credentials": [{
+            "id": "pid", "format": "dc+sd-jwt", "meta": { "vct_values": [] },
+            "claims": [{ "path": ["age_equal_or_over", "18"] }, { "path": ["birthdate"] }],
+        }]}));
+        for query in [&mdoc, &sd_jwt, &empty_vct] {
+            let report = analyze(PID_VCT, query, None, baseline("age_gate_18").as_ref(), &[]);
+            assert_eq!(report.outcome, Outcome::NotEvaluated);
+            for v in &report.requested {
+                assert_eq!(v.status, ClaimStatus::NotEvaluated);
+                assert_eq!(v.rationale, UNTYPED);
+            }
+        }
+    }
+
+    #[test]
+    fn several_accepted_types_are_judged_per_type() {
+        let b = baseline("age_gate_18");
+        // Within the baseline for the PID, while the other accepted type is
+        // not modelled: not evaluated.
+        let within = sd_jwt_query(
+            &[PID_VCT, MEMBERSHIP_VCT],
+            &[serde_json::json!(["age_equal_or_over", "18"])],
+        );
+        let report = analyze(PID_VCT, &within, None, b.as_ref(), &[]);
+        assert_eq!(report.outcome, Outcome::NotEvaluated);
+        assert_eq!(report.requested[0].status, ClaimStatus::NotEvaluated);
+        assert_eq!(
+            report.requested[0].rationale,
+            "Not evaluated: within the baseline for urn:eudi:pid:de:1; the request also accepts urn:example:membership:1, which the baseline does not model."
+        );
+
+        // Beyond the baseline under the PID type: an over-ask, as for a
+        // request that accepts the PID alone.
+        let beyond = sd_jwt_query(
+            &[PID_VCT, MEMBERSHIP_VCT],
+            &[
+                serde_json::json!(["age_equal_or_over", "18"]),
+                serde_json::json!(["birthdate"]),
+            ],
+        );
+        let report = analyze(PID_VCT, &beyond, None, b.as_ref(), &[]);
+        assert_eq!(report.outcome, Outcome::OverAsk);
+        assert_eq!(
+            status_of(&report, "age_equal_or_over.18"),
+            ClaimStatus::NotEvaluated
+        );
+        assert_eq!(status_of(&report, "birthdate"), ClaimStatus::BeyondPurpose);
+        assert_eq!(report.counts.beyond_purpose, 1);
+        assert_eq!(report.counts.could_not_judge, 1);
+        assert_eq!(
+            report.verdict_line,
+            "Over-ask vs purpose: 1 of 2 requested claims exceed the stated purpose."
+        );
+    }
+
+    #[test]
+    fn pid_types_keep_their_purpose_verdict() {
+        // Each PID vct alone, both together, and the earlier format
+        // identifier: the verdicts of 0.4.1.
+        let age = serde_json::json!(["age_equal_or_over", "18"]);
+        let birthdate = serde_json::json!(["birthdate"]);
+        for format in ["dc+sd-jwt", "vc+sd-jwt"] {
+            for vcts in [vec![PID_VCT], vec![EU_PID_VCT], vec![PID_VCT, EU_PID_VCT]] {
+                let query = query_json(serde_json::json!({ "credentials": [{
+                    "id": "pid", "format": format, "meta": { "vct_values": vcts },
+                    "claims": [{ "path": age }, { "path": birthdate }],
+                }]}));
+                let report = analyze(PID_VCT, &query, None, baseline("age_gate_18").as_ref(), &[]);
+                assert_eq!(
+                    status_of(&report, "age_equal_or_over.18"),
+                    ClaimStatus::MinimalForPurpose,
+                    "{format} {vcts:?}"
+                );
+                assert_eq!(
+                    status_of(&report, "birthdate"),
+                    ClaimStatus::BeyondPurpose,
+                    "{format} {vcts:?}"
+                );
+                assert_eq!(report.counts.could_not_judge, 0);
+                assert_eq!(report.outcome, Outcome::OverAsk);
+
+                let report = analyze(PID_VCT, &query, None, baseline("bank_kyc").as_ref(), &[]);
+                assert_eq!(
+                    status_of(&report, "birthdate"),
+                    ClaimStatus::MinimalForPurpose
+                );
+            }
+        }
+        // The PID mdoc, in both namespaces.
+        for namespace in [PID_MDOC_NAMESPACE, PID_DE_MDOC_NAMESPACE] {
+            let query = mdoc_query_with_meta(
+                serde_json::json!({ "doctype_value": PID_MDOC_NAMESPACE }),
+                &[serde_json::json!([namespace, "age_over_18"])],
+            );
+            let report = analyze(PID_VCT, &query, None, baseline("age_gate_18").as_ref(), &[]);
+            assert_eq!(report.requested[0].status, ClaimStatus::MinimalForPurpose);
+            assert_eq!(report.outcome, Outcome::Ok);
+            assert_eq!(
+                report.verdict_line,
+                "Within the purpose-minimal baseline; registration not evaluated."
+            );
+        }
+    }
+
+    #[test]
+    fn credential_without_claims_of_an_unmodelled_type_is_not_evaluated() {
+        let b = baseline("age_gate_18");
+        let no_claims = |format: &str, meta: serde_json::Value| {
+            query_json(serde_json::json!({ "credentials": [{
+                "id": "card", "format": format, "meta": meta,
+            }]}))
+        };
+        // A PID credential without claims: nothing to judge, as before.
+        let pid = no_claims("dc+sd-jwt", serde_json::json!({ "vct_values": [PID_VCT] }));
+        let report = analyze(PID_VCT, &pid, None, b.as_ref(), &[]);
+        assert!(report.requested.is_empty());
+        assert_eq!(report.outcome, Outcome::Ok);
+        assert_eq!(report.verdict_line, "No claims requested.");
+
+        // Another type, an unmodelled format, no type, and a PID next to
+        // another type: one row for the credential, not evaluated.
+        let cases = [
+            (
+                no_claims("dc+sd-jwt", serde_json::json!({ "vct_values": [MEMBERSHIP_VCT] })),
+                "Not evaluated: the baseline age_gate_18 does not model the credential type urn:example:membership:1. It models dc+sd-jwt and vc+sd-jwt with vct urn:eudi:pid:de:1 or urn:eudi:pid:1, and mso_mdoc with doctype eu.europa.ec.eudi.pid.1.",
+            ),
+            (
+                no_claims("jwt_vc_json", serde_json::json!({ "type_values": [["IdentityCredential"]] })),
+                "Not evaluated: the purpose baselines model only SD-JWT VC (dc+sd-jwt, vc+sd-jwt) and mso_mdoc claim paths, not the format jwt_vc_json.",
+            ),
+            (
+                no_claims("mso_mdoc", serde_json::json!({})),
+                "Not evaluated: the request names no credential type (meta.vct_values or meta.doctype_value), so the baseline cannot tell which credential is asked for.",
+            ),
+            (
+                no_claims("dc+sd-jwt", serde_json::json!({ "vct_values": [PID_VCT, MEMBERSHIP_VCT] })),
+                "Not evaluated: the request also accepts urn:example:membership:1, which the baseline age_gate_18 does not model.",
+            ),
+        ];
+        for (query, rationale) in &cases {
+            let report = analyze(PID_VCT, query, None, b.as_ref(), &[]);
+            assert_eq!(report.requested.len(), 1, "{rationale}");
+            let v = &report.requested[0];
+            assert_eq!(v.key, "card (credential, no claims)");
+            assert_eq!(v.label, "Credential without claims");
+            assert_eq!(v.status, ClaimStatus::NotEvaluated);
+            assert_eq!(v.rationale, *rationale);
+            assert_eq!(report.outcome, Outcome::NotEvaluated);
+            assert_eq!(report.counts.could_not_judge, 1);
+            assert_eq!(
+                report.verdict_line,
+                "1 of 1 requested claims could not be judged."
+            );
+
+            // Without a baseline nothing was asked to be checked.
+            let report = analyze(PID_VCT, query, None, None, &[]);
+            assert!(report.requested.is_empty(), "{rationale}");
+            assert_eq!(report.outcome, Outcome::Ok);
+        }
+    }
+
+    #[test]
+    fn unread_type_with_a_covering_registered_path_is_not_evaluated() {
+        // The registration holds a jwt_vc_json credential whose path covers
+        // the requested one. Only the type cannot be matched.
+        let registered = jwt_vc_scope(&[serde_json::json!(["credentialSubject", "family_name"])]);
+        let query = jwt_vc_query(&[serde_json::json!(["credentialSubject", "family_name"])]);
+        const REGISTRATION: &str = "Not evaluated against the registration: a registered jwt_vc_json credential covers this path, but the type of a jwt_vc_json credential is not read (only meta.vct_values and meta.doctype_value are), so the requested credential cannot be matched with it.";
+
+        let report = analyze(PID_VCT, &query, Some(&registered), None, &[]);
+        assert_eq!(report.requested[0].status, ClaimStatus::NotEvaluated);
+        assert_eq!(report.requested[0].rationale, REGISTRATION);
+        assert_eq!(report.outcome, Outcome::NotEvaluated);
+        assert_eq!(report.counts.beyond_registration, 0);
+        assert_eq!(report.counts.could_not_judge, 1);
+
+        // With a baseline both comparisons say why they could not judge.
+        let report = analyze(
+            PID_VCT,
+            &query,
+            Some(&registered),
+            baseline("age_gate_18").as_ref(),
+            &[],
+        );
+        assert_eq!(report.requested[0].status, ClaimStatus::NotEvaluated);
+        assert_eq!(
+            report.requested[0].rationale,
+            format!("{REGISTRATION} Not evaluated: the purpose baselines model only SD-JWT VC (dc+sd-jwt, vc+sd-jwt) and mso_mdoc claim paths, not the format jwt_vc_json.")
+        );
+        assert_eq!(report.counts.could_not_judge, 1);
+        assert_eq!(report.outcome, Outcome::NotEvaluated);
+
+        // A registered parent covers a requested child, as in every JSON
+        // format; a credential without claims is not evaluated either.
+        let child = jwt_vc_query(&[serde_json::json!(["credentialSubject", "family_name", 0])]);
+        let report = analyze(PID_VCT, &child, Some(&registered), None, &[]);
+        assert_eq!(report.requested[0].status, ClaimStatus::NotEvaluated);
+        let whole = query_json(serde_json::json!({ "credentials": [{
+            "id": "vc", "format": "jwt_vc_json",
+            "meta": { "type_values": [["IdentityCredential"]] },
+        }]}));
+        let report = analyze(PID_VCT, &whole, Some(&registered), None, &[]);
+        assert_eq!(report.requested.len(), 1);
+        assert_eq!(report.requested[0].status, ClaimStatus::NotEvaluated);
+        assert_eq!(report.requested[0].key, "vc (credential, no claims)");
+        assert_eq!(
+            report.requested[0].rationale,
+            "Not evaluated against the registration: the registered scope holds a jwt_vc_json credential, but the type of a jwt_vc_json credential is not read (only meta.vct_values and meta.doctype_value are), so the requested credential cannot be matched with it."
+        );
+    }
+
+    #[test]
+    fn unread_type_without_a_covering_registered_path_is_beyond_registration() {
+        // No registered jwt_vc_json credential covers the requested path, so
+        // no type could make it covered: a proven over-ask.
+        let registered = jwt_vc_scope(&[serde_json::json!(["credentialSubject", "family_name"])]);
+        let query = jwt_vc_query(&[serde_json::json!(["credentialSubject", "birthdate"])]);
+        for b in [None, baseline("age_gate_18")] {
+            let report = analyze(PID_VCT, &query, Some(&registered), b.as_ref(), &[]);
+            assert_eq!(report.requested[0].status, ClaimStatus::BeyondRegistration);
+            assert_eq!(
+                report.requested[0].rationale,
+                "Not in the registered scope: no registered jwt_vc_json credential covers this path, whatever its type."
+            );
+            assert_eq!(report.outcome, Outcome::OverAsk);
+            assert_eq!(report.counts.beyond_registration, 1);
+            assert_eq!(report.counts.could_not_judge, 0);
+        }
+        // A registered child does not cover its requested parent.
+        let parent = jwt_vc_query(&[serde_json::json!(["credentialSubject"])]);
+        let report = analyze(PID_VCT, &parent, Some(&registered), None, &[]);
+        assert_eq!(report.requested[0].status, ClaimStatus::BeyondRegistration);
+    }
+
+    #[test]
+    fn unread_type_without_a_registered_credential_of_the_format_is_beyond_registration() {
+        // The scope registers the PID only: nothing of the format, so the
+        // jwt_vc_json credential is not registered, with or without claims.
+        let registered = scope("dc+sd-jwt", &[&["family_name"]]);
+        let query = jwt_vc_query(&[serde_json::json!(["credentialSubject", "family_name"])]);
+        let whole = query_json(serde_json::json!({ "credentials": [{
+            "id": "vc", "format": "jwt_vc_json",
+            "meta": { "type_values": [["IdentityCredential"]] },
+        }]}));
+        for q in [&query, &whole] {
+            for b in [None, baseline("age_gate_18")] {
+                let report = analyze(PID_VCT, q, Some(&registered), b.as_ref(), &[]);
+                assert_eq!(report.requested.len(), 1);
+                assert_eq!(report.requested[0].status, ClaimStatus::BeyondRegistration);
+                assert_eq!(report.requested[0].rationale, UNREGISTERED_CREDENTIAL);
+                assert_eq!(report.outcome, Outcome::OverAsk);
+            }
+        }
+    }
+
+    #[test]
+    fn outcome_precedence_is_over_ask_then_not_evaluated_then_ok() {
+        let b = baseline("age_gate_18");
+        let pid_age = serde_json::json!({
+            "id": "pid", "format": "dc+sd-jwt", "meta": { "vct_values": [PID_VCT] },
+            "claims": [{ "path": ["age_equal_or_over", "18"] }],
+        });
+        let pid_over = serde_json::json!({
+            "id": "pid", "format": "dc+sd-jwt", "meta": { "vct_values": [PID_VCT] },
+            "claims": [{ "path": ["age_equal_or_over", "18"] }, { "path": ["birthdate"] }],
+        });
+        let unjudged = serde_json::json!({
+            "id": "vc", "format": "jwt_vc_json",
+            "meta": { "type_values": [["IdentityCredential"]] },
+            "claims": [{ "path": ["credentialSubject", "family_name"] }],
+        });
+        let q =
+            |creds: &[&serde_json::Value]| query_json(serde_json::json!({ "credentials": creds }));
+
+        // A judged claim asks for too much: over-ask, with or without a
+        // claim that could not be judged.
+        let report = analyze(PID_VCT, &q(&[&pid_over]), None, b.as_ref(), &[]);
+        assert_eq!(report.outcome, Outcome::OverAsk);
+        assert_eq!(report.outcome().exit_code(), 1);
+        let report = analyze(PID_VCT, &q(&[&pid_over, &unjudged]), None, b.as_ref(), &[]);
+        assert_eq!(report.outcome, Outcome::OverAsk);
+        assert!(report.has_over_ask());
+        assert_eq!(report.counts.beyond_purpose, 1);
+        assert_eq!(report.counts.could_not_judge, 1);
+        assert_eq!(
+            report.verdict_line,
+            "Over-ask vs purpose: 1 of 3 requested claims exceed the stated purpose."
+        );
+
+        // No judged claim asks for too much, one could not be judged.
+        let report = analyze(PID_VCT, &q(&[&pid_age, &unjudged]), None, b.as_ref(), &[]);
+        assert_eq!(report.outcome, Outcome::NotEvaluated);
+        assert_eq!(report.outcome().exit_code(), 3);
+        assert!(!report.has_over_ask());
+        assert_eq!(report.counts.minimal, 1);
+        assert_eq!(report.counts.could_not_judge, 1);
+        assert_eq!(
+            report.verdict_line,
+            "1 of 2 requested claims could not be judged."
+        );
+
+        // Everything judged, nothing beyond.
+        let report = analyze(PID_VCT, &q(&[&pid_age]), None, b.as_ref(), &[]);
+        assert_eq!(report.outcome, Outcome::Ok);
+        assert_eq!(report.outcome().exit_code(), 0);
+        assert_eq!(report.counts.could_not_judge, 0);
+
+        // Neither a baseline nor a registration: nothing was asked to be
+        // checked. The rows are not evaluated, the outcome stays ok.
+        let report = analyze(PID_VCT, &q(&[&pid_age, &unjudged]), None, None, &[]);
+        assert_eq!(report.outcome, Outcome::Ok);
+        assert_eq!(report.counts.not_evaluated, 2);
+        assert_eq!(report.counts.could_not_judge, 0);
+        assert_eq!(
+            report.verdict_line,
+            "Neither registration nor purpose evaluated."
+        );
+        assert!(report.baseline.is_none());
+
+        // A registration alone, the PID within it: ok, purpose not evaluated
+        // because none was asked for.
+        let registered = scope("dc+sd-jwt", &[&["age_equal_or_over", "18"]]);
+        let report = analyze(PID_VCT, &q(&[&pid_age]), Some(&registered), None, &[]);
+        assert_eq!(report.outcome, Outcome::Ok);
+        assert_eq!(report.counts.not_evaluated, 1);
+        assert_eq!(report.counts.could_not_judge, 0);
+
+        // Beyond the registration wins over a purpose that cannot judge.
+        let report = analyze(
+            PID_VCT,
+            &q(&[&unjudged]),
+            Some(&registered),
+            b.as_ref(),
+            &[],
+        );
+        assert_eq!(report.outcome, Outcome::OverAsk);
+        assert_eq!(report.requested[0].status, ClaimStatus::BeyondRegistration);
+        assert_eq!(report.counts.could_not_judge, 0);
+    }
+
+    #[test]
+    fn outcome_and_baseline_are_in_the_serialized_report() {
+        assert_eq!(serde_json::json!(Outcome::Ok), "ok");
+        assert_eq!(serde_json::json!(Outcome::OverAsk), "over_ask");
+        assert_eq!(serde_json::json!(Outcome::NotEvaluated), "not_evaluated");
+        for outcome in [Outcome::Ok, Outcome::OverAsk, Outcome::NotEvaluated] {
+            assert_eq!(serde_json::json!(outcome), outcome.as_str());
+        }
+
+        let query = jwt_vc_query(&[serde_json::json!(["credentialSubject", "family_name"])]);
+        let report = analyze(PID_VCT, &query, None, baseline("age_gate_18").as_ref(), &[]);
+        let json = serde_json::to_value(&report).expect("json");
+        assert_eq!(json["outcome"], "not_evaluated");
+        assert_eq!(json["counts"]["could_not_judge"], 1);
+        assert_eq!(json["counts"]["not_evaluated"], 1);
+        assert_eq!(json["counts"]["beyond_purpose"], 0);
+        assert_eq!(json["requested"][0]["status"], "NotEvaluated");
+        assert_eq!(json["baseline"]["source"], "built-in");
+        assert_eq!(json["baseline"]["id"], "age_gate_18");
+        assert_eq!(json["baseline"]["label"], "Age gate (over 18)");
+        assert_eq!(
+            json["baseline"]["credential_types"][2],
+            serde_json::json!({ "format": "mso_mdoc", "doctype_value": "eu.europa.ec.eudi.pid.1" })
+        );
+        // The fields of 0.4.1 keep their names.
+        assert_eq!(json["baseline_label"], "Age gate (over 18)");
+        assert!(json["verdict_line"].is_string());
+
+        let report = analyze(PID_VCT, &query, None, None, &[]);
+        let json = serde_json::to_value(&report).expect("json");
+        assert_eq!(json["outcome"], "ok");
+        assert!(json["baseline"].is_null());
+    }
+
+    #[test]
+    fn verdict_class_is_neutral_when_not_evaluated() {
+        let b = baseline("age_gate_18");
+        let registered = scope("dc+sd-jwt", &[&["age_equal_or_over", "18"]]);
+        let minimal = pid::pid_query(&[&["age_equal_or_over", "18"]]);
+        let over = pid::pid_query(&[&["birthdate"]]);
+        let membership = sd_jwt_query(
+            &[MEMBERSHIP_VCT],
+            &[serde_json::json!(["age_equal_or_over", "18"])],
+        );
+        let membership_scope = scope_json(serde_json::json!([{
+            "format": "dc+sd-jwt", "meta": { "vct_values": [MEMBERSHIP_VCT] },
+            "claim": [{ "path": ["age_equal_or_over", "18"] }],
+        }]));
+
+        let report = analyze(PID_VCT, &minimal, Some(&registered), b.as_ref(), &[]);
+        assert_eq!(report.verdict_class(), "ok");
+        let report = analyze(PID_VCT, &over, Some(&registered), b.as_ref(), &[]);
+        assert_eq!(report.verdict_class(), "over");
+        // Registered and of a type the baseline does not model: neutral.
+        let report = analyze(
+            PID_VCT,
+            &membership,
+            Some(&membership_scope),
+            b.as_ref(),
+            &[],
+        );
+        assert_eq!(report.outcome, Outcome::NotEvaluated);
+        assert_eq!(report.verdict_class(), "");
+        // One axis not supplied: neutral, as before.
+        let report = analyze(PID_VCT, &minimal, None, b.as_ref(), &[]);
+        assert_eq!(report.verdict_class(), "");
     }
 }

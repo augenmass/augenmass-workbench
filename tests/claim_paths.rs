@@ -520,6 +520,10 @@ const NOT_REGISTRATIONS: &[(&str, &str)] = &[
         "examples/age-minimal-request-mdoc.json",
         "a DCQL request, not a registration",
     ),
+    (
+        "examples/baselines-example.json",
+        "a baseline file, not a registration",
+    ),
     ("fixtures/claim-paths/path-vectors.json", "the vector set"),
     (
         "fixtures/claim-paths/request-identical.json",

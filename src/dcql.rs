@@ -71,13 +71,17 @@ pub fn parse_claim_path(spec: &str) -> Vec<String> {
 /// `meta` (`vct_values` or `doctype_value`), and its claim paths exactly as
 /// written (`claims[].path`, the registrar DTO, or the ETSI singular
 /// `claim[].path`), null and integer segments included. `Ok(None)` when the
-/// body has no credentials. An entry without a format, without a non-empty
-/// claims array, or with a path that is not a claims path pointer (OpenID4VP
-/// 1.0 section 7: a non-empty array of strings, nulls and non-negative
-/// integers) is an error, never silently skipped.
+/// body has no `credentials` member or an empty `credentials` array. A
+/// `credentials` value that is not an array is an error, so a body nobody
+/// could read never counts as a body without credentials. An entry without a
+/// format, without a non-empty claims array, or with a path that is not a
+/// claims path pointer (OpenID4VP 1.0 section 7: a non-empty array of strings,
+/// nulls and non-negative integers) is an error, never silently skipped.
 pub fn dcql_from_registration_body(body: &Value) -> Result<Option<DcqlQuery>> {
-    let Some(credentials) = body.get("credentials").and_then(Value::as_array) else {
-        return Ok(None);
+    let credentials = match body.get("credentials") {
+        None => return Ok(None),
+        Some(Value::Array(credentials)) => credentials,
+        Some(_) => return Err(anyhow!("credentials is not an array")),
     };
     if credentials.is_empty() {
         return Ok(None);
@@ -217,5 +221,26 @@ mod tests {
         assert!(dcql_from_registration_body(&json!({}))
             .expect("ok")
             .is_none());
+    }
+
+    #[test]
+    fn registration_body_without_credentials_is_none_and_a_non_array_is_an_error() {
+        // No member, or an empty array: the body requests no credentials.
+        for body in [json!({}), json!({ "credentials": [] })] {
+            assert!(dcql_from_registration_body(&body).expect("ok").is_none());
+        }
+        // Anything else that is not an array was not read: an error, never
+        // "no credentials".
+        let object = json!({ "format": "dc+sd-jwt", "meta": { "vct_values": ["v"] },
+            "claims": [{ "path": ["birthdate"] }] });
+        for credentials in [object, json!("x"), json!(1), json!(true), Value::Null] {
+            let body = json!({ "credentials": credentials });
+            let err = dcql_from_registration_body(&body).expect_err("not an array");
+            assert_eq!(
+                format!("{err}"),
+                "credentials is not an array",
+                "{credentials}"
+            );
+        }
     }
 }

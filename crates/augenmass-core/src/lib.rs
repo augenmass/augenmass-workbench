@@ -13,6 +13,8 @@
 //!   decrypt, SD-JWT issuer + KB-JWT verification, disclosed-claim extraction).
 //! - [`regcert`], [`inspector`]: the over-ask layer (decode the registered
 //!   scope, compare requested vs minimum vs registered).
+//! - [`typed_baseline`]: the model of a baseline loaded from a file (typed
+//!   claim paths per credential type), judged by the same inspector.
 //!
 //! Nothing here does I/O or HTTP; fetching and serving live in the binaries.
 
@@ -25,6 +27,7 @@ pub mod pid;
 pub mod regcert;
 pub mod status;
 pub mod trust;
+pub mod typed_baseline;
 pub mod verify;
 
 /// The German PID credential type identifier (SD-JWT VC `vct`).
@@ -32,7 +35,7 @@ pub const PID_VCT: &str = "urn:eudi:pid:de:1";
 
 pub use disclosure::{DisclosedClaim, RevealedView};
 pub use error::{RejectKind, RejectReason, VerifyResult};
-pub use inspector::{analyze, ClaimStatus, OverAskReport};
+pub use inspector::{analyze, analyze_against, ClaimStatus, Outcome, OverAskReport};
 pub use jar::{verify_jar, JarOptions, VerifiedJar};
 pub use regcert::{
     decode_registration_jwt, path_covers, scope_from_payload, PathSeg, RegisteredCredential,
@@ -43,6 +46,7 @@ pub use status::{
     StatusListRef,
 };
 pub use trust::{issuer_trusted, issuer_trusted_at, leaf_der_trusted_at, TrustAnchors};
+pub use typed_baseline::{BaselineRef, Subject, TypedBaseline};
 pub use verify::{
     verify_pid_presentation, verify_pid_presentation_at, verify_pid_presentation_full,
     verify_pid_presentation_with_age, RequestBinding, StatusInput, TrustOptions, VerifiedPid,

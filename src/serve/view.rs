@@ -20,7 +20,7 @@ fn esc(s: &str) -> String {
 
 fn status_class(s: ClaimStatus) -> &'static str {
     match s {
-        ClaimStatus::MinimalForPurpose => "ok",
+        ClaimStatus::MinimalForPurpose | ClaimStatus::AcceptableAlternative => "ok",
         ClaimStatus::BeyondPurpose => "warn",
         ClaimStatus::BeyondRegistration => "over",
         ClaimStatus::NotEvaluated => "",
@@ -30,6 +30,7 @@ fn status_class(s: ClaimStatus) -> &'static str {
 fn status_word(s: ClaimStatus) -> &'static str {
     match s {
         ClaimStatus::MinimalForPurpose => "minimal",
+        ClaimStatus::AcceptableAlternative => "acceptable alternative",
         ClaimStatus::BeyondPurpose => "beyond purpose",
         ClaimStatus::BeyondRegistration => "beyond registration",
         ClaimStatus::NotEvaluated => "not evaluated",
@@ -109,7 +110,7 @@ pub fn landing_page(state: &AppState, session_id: &Uuid, auth_url: &str) -> Stri
          <p><a class=\"btn ghost\" href=\"{inspect}\">{inspect_label}</a> \
          <a class=\"btn ghost\" href=\"{inspect}?demo=overask\">Inspect an over-asking variant</a></p>\
          <p class=\"blurb\">Signed request object (for ERICA): <code>{req}</code></p></section></main>\
-         <footer><p class=\"note\">Sandbox shortcuts are labelled. The minimal baseline is a curated judgment, not a Rulebook derivation.</p></footer>",
+         <footer><p class=\"note\">Sandbox shortcuts are labelled. The minimal baseline is a curated assessment, not law and not legal advice.</p></footer>",
         mode = mode,
         request_blurb = request_blurb,
         qr = qr,
@@ -213,7 +214,7 @@ pub fn inspect_page(report: &OverAskReport, ephemeral: bool) -> String {
          <table><thead><tr><th>Requested claim</th><th></th><th>Status</th><th>Why</th></tr></thead>\
          <tbody>{rows}</tbody></table>{suggestion}{over}{grid}</section></main>\
          <footer><h4>Basis</h4><ul class=\"legal\">{legal}</ul>\
-         <p class=\"note\">Minimal baselines are curated judgments, not Rulebook derivations.</p></footer>",
+         <p class=\"note\">Minimal baselines are curated assessments, not law and not legal advice.</p></footer>",
         vct = esc(&report.vct),
         dev = dev,
         purpose = purpose,

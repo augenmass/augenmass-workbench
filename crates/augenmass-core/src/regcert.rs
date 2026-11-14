@@ -139,6 +139,40 @@ pub fn path_covers(registered: &[PathSeg], requested: &[PathSeg], mdoc: bool) ->
             .all(|(r, q)| r == q || (*r == PathSeg::All && matches!(q, PathSeg::Index(_))))
 }
 
+/// A path that both `a` and `b` cover ([`path_covers`]), or `None` when no
+/// path is covered by both. Two rows of a baseline block with such a common
+/// path would both match one requested claim.
+///
+/// JSON-based formats: the two paths must agree at every position they both
+/// have. Two segments agree when they are equal, or when one is null and the
+/// other an integer (the integer is within the null). Where one path is
+/// longer, the rest of the longer one decides. Hence equal paths, a path and
+/// one it covers, and crossed wildcards such as `["a", null, 0]` and
+/// `["a", 0, null]` (both cover `["a", 0, 0]`) have a common path; a string
+/// against a null or an integer, and two different integers, have none.
+///
+/// `mso_mdoc`: only equal valid paths have a common path, the path itself.
+pub fn common_covered_path(a: &[PathSeg], b: &[PathSeg], mdoc: bool) -> Option<Vec<PathSeg>> {
+    if a.is_empty() || b.is_empty() {
+        return None;
+    }
+    if mdoc {
+        return (valid_claim_path(FORMAT_MSO_MDOC, a) && a == b).then(|| a.to_vec());
+    }
+    let (short, long) = if a.len() <= b.len() { (a, b) } else { (b, a) };
+    let mut common = Vec::with_capacity(long.len());
+    for (x, y) in short.iter().zip(long) {
+        match (x, y) {
+            _ if x == y => common.push(x.clone()),
+            (PathSeg::All, PathSeg::Index(_)) => common.push(y.clone()),
+            (PathSeg::Index(_), PathSeg::All) => common.push(x.clone()),
+            _ => return None,
+        }
+    }
+    common.extend(long[short.len()..].iter().cloned());
+    Some(common)
+}
+
 /// The credential types a DCQL credential query of `format` accepts, read from
 /// its `meta` (OpenID4VP 1.0 appendix B.2.3 `doctype_value` for `mso_mdoc`,
 /// appendix B.3.5 `vct_values` otherwise). Empty when the type is missing or
@@ -363,6 +397,88 @@ mod tests {
 
     fn covers(registered: Value, requested: Value) -> bool {
         path_covers(&path(registered), &path(requested), false)
+    }
+
+    #[test]
+    fn common_covered_path_finds_crossed_wildcards() {
+        let common = |a: Value, b: Value| common_covered_path(&path(a), &path(b), false);
+        // Neither path covers the other; both cover ["a", 0, 0].
+        assert_eq!(
+            common(json!(["a", null, 0]), json!(["a", 0, null])),
+            Some(path(json!(["a", 0, 0])))
+        );
+        assert_eq!(
+            common(json!(["a", null, "b", 0]), json!(["a", 0, "b", null])),
+            Some(path(json!(["a", 0, "b", 0])))
+        );
+        // Equal paths and a path with one it covers.
+        assert_eq!(common(json!(["a"]), json!(["a"])), Some(path(json!(["a"]))));
+        assert_eq!(
+            common(json!(["a", "b"]), json!(["a"])),
+            Some(path(json!(["a", "b"])))
+        );
+        assert_eq!(
+            common(json!(["a", null]), json!(["a", 3, "c"])),
+            Some(path(json!(["a", 3, "c"])))
+        );
+        // No common path: a string against an integer or a null, two
+        // integers, siblings.
+        assert_eq!(common(json!(["a", "0"]), json!(["a", 0])), None);
+        assert_eq!(common(json!(["a", "x"]), json!(["a", null])), None);
+        assert_eq!(common(json!(["a", 0, null]), json!(["a", 1, 0])), None);
+        assert_eq!(common(json!(["a", "b"]), json!(["a", "c"])), None);
+        assert_eq!(common_covered_path(&[], &path(json!(["a"])), false), None);
+
+        // mso_mdoc: only equal valid paths.
+        let (ns, other) = (path(json!(["ns", "el"])), path(json!(["ns", "other"])));
+        assert_eq!(common_covered_path(&ns, &ns, true), Some(ns.clone()));
+        assert_eq!(common_covered_path(&ns, &other, true), None);
+        let invalid = path(json!(["ns"]));
+        assert_eq!(common_covered_path(&invalid, &invalid, true), None);
+    }
+
+    /// Over every pair of paths of up to three segments from a small
+    /// alphabet: a common covered path is reported exactly when some path is
+    /// covered by both, and the reported path is covered by both.
+    #[test]
+    fn common_covered_path_agrees_with_path_covers() {
+        let alphabet = [
+            PathSeg::Key("a".into()),
+            PathSeg::Key("b".into()),
+            PathSeg::Index(0),
+            PathSeg::Index(1),
+            PathSeg::All,
+        ];
+        let mut paths: Vec<Vec<PathSeg>> = Vec::new();
+        let mut layer: Vec<Vec<PathSeg>> = vec![Vec::new()];
+        for _ in 0..3 {
+            layer = layer
+                .iter()
+                .flat_map(|p| {
+                    alphabet.iter().map(move |seg| {
+                        let mut next = p.clone();
+                        next.push(seg.clone());
+                        next
+                    })
+                })
+                .collect();
+            paths.extend(layer.iter().cloned());
+        }
+        for a in &paths {
+            for b in &paths {
+                let exists = paths
+                    .iter()
+                    .any(|q| path_covers(a, q, false) && path_covers(b, q, false));
+                let found = common_covered_path(a, b, false);
+                assert_eq!(found.is_some(), exists, "{a:?} {b:?}");
+                if let Some(q) = found {
+                    assert!(
+                        path_covers(a, &q, false) && path_covers(b, &q, false),
+                        "{a:?} {b:?} {q:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
