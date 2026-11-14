@@ -1,6 +1,6 @@
 # Augenmaß Workbench: Command Reference
 
-This is the complete reference for the `augenmass` CLI. Every command, subcommand, flag, exit code, and example here is verified against the built binary (`augenmass 0.4.1`) and the committed fixtures under `fixtures/`. Every example runs as written from the repository root.
+This is the complete reference for the `augenmass` CLI. Every command, subcommand, flag, exit code, and example here is verified against the built binary (`augenmass 0.4.1`) and the committed fixtures under `fixtures/`. Every example runs as written from the repository root. On the main branch this reference also describes changes that are not released yet (listed under `[Unreleased]` in `CHANGELOG.md`): the result NOT EVALUATED with exit code 3, the usage error for an unknown purpose id, the credential types of the built-in baselines, and `--baseline FILE`. A binary built from main still reports version 0.4.1; the released 0.4.1 binaries do not have these changes.
 
 Augenmaß Workbench is a developer and auditor toolkit for the EUDI Wallet ecosystem. It decodes and inspects every common artifact (SD-JWT VC, ISO 18013-5 mdoc, registration certificate, authorization request/JAR, credential offer, status list, DCQL), audits requests for over-asking against curated purpose baselines and a cited legal basis, verifies presentations cryptographically, writes registrations under guardrails, and live-debugs the wallet-to-verifier exchange. Static artifact commands run fully offline; live surfaces are explicit: registrar targets (`clone`, `cached-sandbox`, `sandbox`), the cache server, and the live wallet-interaction debugger (`serve`).
 
@@ -36,16 +36,29 @@ The core artifact parameter on the judgment commands accepts three input forms:
 - an **inline value**: the artifact passed directly as the argument (a compact JWT string, an `openid4vp://` URI, inline JSON, a PEM block)
 - **stdin** via `-`: `cat fixtures/presentations/erica-vp-VALID.sdjwt | augenmass inspect -`
 
-Where a command takes a key or anchor (`--key`, `--anchor`, `--token`, `--status-key`), that input is read the same way: a file path or an inline value. `audit --cert` is a certificate file path.
+Where a command takes a key or anchor (`--key`, `--anchor`, `--token`, `--status-key`), that input is read the same way: a file path or an inline value. `audit --cert` is a certificate file path, and `--baseline` (on `audit` and `check`) is a baseline file path.
 
 ## Exit codes
+
+Every exit code the binary uses:
+
+| Code | Meaning |
+|---|---|
+| 0 | Success. For `check`, `audit` and `register`: everything that was asked to be checked was checked, and no requested claim asks for too much. The one exception is a forced write: `register --yes --force` exits 0 when the write succeeded, although the body asks for too much or was not evaluated (see below). `--help` and `--version` also exit 0. |
+| 1 | The command's bad outcome (see the table below), or an error that stops the command: the reason is printed on stderr after `Error:`. An error found before the command prints its result leaves stdout empty (for example an input that cannot be read, or a baseline file that does not match its format). An error found after that follows what was already printed: `register` prints the check report on stdout and then stops on a blocking format error, a read-only target or a failed write. |
+| 2 | Usage error, printed by the argument parser on stderr with the usage line: an unknown command or flag, a missing argument, an unknown purpose id (`audit --purpose`, `serve --purpose`), a `--purpose` that names no entry of the `--baseline` file or is missing where the file needs one, `--baseline` together with a built-in purpose id, `check --purpose` without `--baseline`, or `register --force` without `--yes`. |
+| 3 | NOT EVALUATED (`check`, `audit`, `register` only): no judged claim asks for too much, but the purpose baseline or the registration comparison could not judge at least one requested claim. For example, a claim of a credential format or type that the baseline does not model. |
+
+When a request both asks for too much and has a claim that could not be judged, the result is OVER-ASK with exit code 1: an over-ask wins over not evaluated. The headline, the per-claim lines, the `outcome` member of `--json` and the exit code agree: `ok` is 0, `over_ask` is 1, `not_evaluated` is 3, and `format_error` (only `check`) is 1.
+
+The one exception is a forced write. `register --yes --force` writes a body under the headline OVER-ASK or NOT EVALUATED and exits 0 when the write succeeded; the exit code then reports the write, not the check. The output says so before the write: `Warning: writing an over-asking registration because --force was given. A forced write that succeeds exits 0.` (for a body that was not evaluated: `Warning: writing a registration that could not be evaluated because --force was given. A forced write that succeeds exits 0.`). A script that needs the result of the check runs `check` first and reads its exit code.
 
 Commands exit non-zero on the "bad" outcome so they slot into CI without extra parsing:
 
 | Command | Exit 1 (non-zero) when | Exit 0 when |
 |---|---|---|
-| `check` | over-ask or a blocking format error | clean |
-| `audit` | over-ask vs the purpose baseline | within baseline |
+| `check` | over-ask or a blocking format error (exit 3 when not evaluated) | clean: every requested claim was judged and none asks for too much |
+| `audit` | over-ask vs the purpose baseline (exit 3 when not evaluated) | every requested claim was judged and is within the baseline (and, with `--cert`, within the registration) |
 | `verify presentation` | not verified (signature, KB-JWT, nonce/aud, vct, freshness, or any requested trust/status check fails) | verified |
 | `verify request` | not verified (signature, `x5c`, `client_id` binding, trust anchor, or request time window fails) | verified |
 | `verify trust` | issuer does not chain to an anchor, or the validity window fails | trusted |
@@ -56,7 +69,7 @@ Commands exit non-zero on the "bad" outcome so they slot into CI without extra p
 | `evidence verify` / `evidence replay` | bundle hashes, replay determinism, or signature verification fails | bundle is valid |
 | `evidence assert-live` | bundle invalid, terminal failure, or missing live-wallet event spine | bundle proves encrypted response receipt, decryption, and offline presentation verification |
 | `evidence prove-trust-status` | bundle invalid, issuer untrusted, status token invalid, or credential revoked/suspended | captured presentation verifies with explicit issuer trust and status inputs |
-| `register` | over-ask without `--force`, or a blocking format error | clean (dry-run or written) |
+| `register` | over-ask without `--force`, or a blocking format error (exit 3 for a body that was not evaluated, without `--force`; exit 2 for `--force` without `--yes`) | clean (dry-run or written), or a forced write (`--yes --force`) that succeeded |
 
 Commands that purely read and render (`inspect`, `decode`, `baselines`, `generate`, `list`) exit 0 on success. `evidence export` exits non-zero when the source manifest or artifacts are invalid.
 
@@ -377,7 +390,11 @@ Arguments:
 
 - `<BODY>`: a registration body as a file path, inline JSON, or `-` for stdin.
 
-Options: `--json`, `-h, --help`.
+Options:
+
+- `--baseline <FILE>`: judge the body against one entry of a baseline file (schema id `augenmass-baselines/0.1`) instead of the built-in `age_gate_18` baseline. A file path only. See `docs/BASELINES.md`.
+- `--purpose <ENTRY_ID>`: the entry id of the baseline file. Optional when the file has one entry that states no `applies_when`. Only with `--baseline`; without it, `check --purpose` is a usage error (exit 2).
+- `--json`, `-h, --help`.
 
 Format findings this command catches (grounded in the registrar DTO):
 
@@ -389,10 +406,11 @@ Format findings this command catches (grounded in the registrar DTO):
 - `CHECK-CLAIM-PATH` (blocking): every `credentials[]` entry needs a non-empty `claims[]`, and every path must be an OpenID4VP claims path pointer, a non-empty array of strings, `null`s and non-negative integers. A boolean, a negative or fractional number, or an empty array blocks. For `mso_mdoc` the path must be exactly two strings, `[namespace, element]` (section 7.2.1); `[namespace, null]` or a three-component path blocks even though the body is judged against itself.
 - `CHECK-CREDENTIAL-META` (blocking): every entry needs a `format` and its type in `meta`, `vct_values` (a non-empty array of strings) for `dc+sd-jwt` and `vc+sd-jwt`, `doctype_value` (a string) for `mso_mdoc`.
 - `CHECK-UNREADABLE-REQUEST` (blocking): the requested credentials could not be read as a DCQL query, so the over-ask guardrail could not run. A body the guardrail cannot read blocks; it never passes unexamined.
+- `CHECK-CREDENTIALS-SHAPE` (blocking): `credentials` is present but is not an array (for example one credential object without the surrounding array). A body without `credentials`, or with an empty array, requests no credential and passes with the line `OK: the body requests no credentials; no format errors. <path> is ready to register.`
 
-The over-ask part reads the body credential by credential, in its own format and type, with the paths exactly as written (`null` and integer segments included), and compares them with the body itself as the registration under the rules described for `audit` below. A body is therefore always within its own registration; what `check` flags is the purpose axis (against the `age_gate_18` baseline) and the format.
+The over-ask part reads the body credential by credential, in its own format and type, with the paths exactly as written (`null` and integer segments included), and compares them with the body itself as the registration under the rules described for `audit` below. A body in an SD-JWT VC format or `mso_mdoc` is therefore always within its own registration; for another format the registration comparison cannot read the credential type, so such a claim is not evaluated. What `check` flags is the purpose axis (against the `age_gate_18` baseline, or the entry of `--baseline`) and the format. A credential type that the baseline does not model is not evaluated (see `audit` below).
 
-Exit code: 1 on over-ask or a blocking format error; 0 if clean.
+Exit code: 1 on over-ask or a blocking format error; 3 when no judged claim asks for too much but at least one requested claim could not be judged (NOT EVALUATED); 0 if clean.
 
 Clean body:
 
@@ -424,7 +442,7 @@ Legal basis:
   Regulation (EU) No 910/2014, Article 5b(3)
     Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c).
   GDPR (EU) 2016/679, Art. 5(1)(c)
-    Personal data shall be adequate, relevant and limited to what is necessary (data minimisation).
+    Personal data shall be: [...] (c) adequate, relevant and limited to what is necessary in relation to the purposes for which they are processed (‘data minimisation’);
   EUDI ARF, registration certificate, RPRC_21
     After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes.
 ```
@@ -443,11 +461,46 @@ Format findings:
     Fix: Change "path": "age_equal_or_over" to "path": ["age_equal_or_over", "18"].
 ```
 
-JSON shape (for CI and agents): the object exposes `overAsk`, `blockingFormatError`, `block`, and a `report` with per-claim `status` and `rationale`:
+Not evaluated (exit 3). A body that asks for a credential type the baseline does not model, here the mDL document type `org.iso.18013.5.1.mDL` (the document type of the DCQL examples in OpenID4VP 1.0, Appendix D), is not judged against PID claim names:
+
+```
+augenmass check '{"rpId":"2af138a8-59ea-4a84-aea3-666cafdb1369","support_uri":"support@example.com","privacy_policy":"https://example.com/privacy","purpose":[{"lang":"en","content":"Driving licence check"}],"credentials":[{"format":"mso_mdoc","meta":{"doctype_value":"org.iso.18013.5.1.mDL"},"claims":[{"path":["org.iso.18013.5.1","family_name"]}]}]}'
+```
+
+```
+NOT EVALUATED: 1 of 1 requested claims could not be judged.
+Purpose: Driving licence check   Baseline: Age gate (over 18)
+
+Requested claims:
+  [n/a]  org.iso.18013.5.1.family_name Not evaluated: the baseline age_gate_18 does not model the credential type org.iso.18013.5.1.mDL. It models dc+sd-jwt and vc+sd-jwt with vct urn:eudi:pid:de:1 or urn:eudi:pid:1, and mso_mdoc with doctype eu.europa.ec.eudi.pid.1.
+
+Not evaluated: 1 claim(s). No judged claim asks for too much; exit code 3.
+
+Suggested minimal request (mso_mdoc, org.iso.18013.5.1.mDL):
+  No claim names are known for this credential type. The purpose baseline asks only for: Age over 18.
+```
+
+JSON shape (for CI and agents): the object exposes `outcome` (`ok`, `over_ask`, `not_evaluated` or `format_error`), `overAsk`, `blockingFormatError`, `block`, and a `report` with per-claim `status` and `rationale`. `block` is true whenever `outcome` is not `ok`, so a not evaluated body blocks. The `report` carries the same `outcome`, the member `baseline` (which baseline the body was judged against) and `counts.could_not_judge`. `report` is `null` for a blocking format error and for a body without credentials. With `--baseline`, the object also carries a top-level `baseline` member with the facts of the baseline file entry (see `docs/BASELINES.md`):
 
 ```
 augenmass check examples/min.json --json
 ```
+
+With a baseline file (see `docs/BASELINES.md`), the body is judged against the named entry, and the output names the file, the entry, its version and its status:
+
+```
+augenmass check examples/min.json --baseline examples/baselines-example.json --purpose example.wine-shop.age-check.wine
+```
+
+```
+OK: no over-ask, no format errors. examples/min.json is ready to register.
+Baseline file: baselines-example.json   entry: example.wine-shop.age-check.wine   version: 0.1   status: draft
+draft baseline, no legal review
+Applies when (stated by the baseline, not checked by this tool): the order holds wine and no spirits (invented rule: wine is sold from 18)
+A baseline file is its author's assessment, not law and not legal advice.
+```
+
+A registration body lists everything a party may ask for across its requests. When a body lists two claims of one `one_of` group of the entry, `check --baseline` reports them as not evaluated (exit 3), because one registration may serve several requests and the tool cannot check which ones.
 
 ## `audit`
 
@@ -460,12 +513,15 @@ Usage: augenmass audit [OPTIONS]
 Options:
 
 - `--request <REQUEST>`: `"minimal"`, `"overask"`, a DCQL JSON file, inline DCQL JSON, or `-` for stdin. Bare DCQL and wrappers under `dcql_query` are accepted. Default `minimal`. The two keywords are built-in synthetic requests; the minimal one asks for `given_name`, `family_name`, `age_equal_or_over.18`, and the overask one asks for a broad PID set.
-- `--purpose <PURPOSE>`: purpose baseline id (`age_gate_18`, `event_checkin`, `car_rental`, `bank_kyc`). Default `event_checkin`.
+- `--purpose <PURPOSE>`: purpose baseline id (`age_gate_18`, `event_checkin`, `car_rental`, `bank_kyc`). Default `event_checkin`. An unknown id is a usage error (exit 2) that names the id and lists the valid ids. With `--baseline`, the id of an entry of that file instead, optional when the file has one entry that states no `applies_when`.
+- `--baseline <FILE>`: judge against one entry of a baseline file (schema id `augenmass-baselines/0.1`) instead of a built-in purpose baseline. A file path only. See `docs/BASELINES.md`.
 - `--cert <CERT>`: path to a registration certificate (compact JWT, entity JSON, or a registrar list with exactly one entry) to cross-check the request against.
 - `--vct <VCT>`: override the expected `vct` (defaults to the German PID, `urn:eudi:pid:de:1`).
 - `--json`, `-h, --help`.
 
-Exit code: 1 on over-ask vs the chosen baseline; 0 otherwise.
+Exit code: 1 on over-ask vs the chosen baseline (or, with `--cert`, the registration); 3 when no judged claim asks for too much but at least one requested claim could not be judged (NOT EVALUATED); 0 when every requested claim was judged and none asks for too much.
+
+Credential types. Each built-in baseline states the credential types it models (`augenmass baselines` lists them): `dc+sd-jwt` and `vc+sd-jwt` with vct `urn:eudi:pid:de:1` or `urn:eudi:pid:1`, and `mso_mdoc` with doctype `eu.europa.ec.eudi.pid.1`. A requested claim is not evaluated when its credential has another format (for example `jwt_vc_json`), another type (for example the mDL doctype `org.iso.18013.5.1.mDL`), or names no type in `meta`. A credential that accepts several types is judged per type: a claim beyond the baseline under a modelled type is an over-ask; a claim within it is not evaluated when another accepted type is not modelled. A credential without `claims` of a format or type the baseline does not model gets one not evaluated row.
 
 Clean (the built-in minimal request is within the `event_checkin` baseline), exit 0:
 
@@ -505,6 +561,80 @@ Audit a real DCQL file against a baseline:
 augenmass audit --request fixtures/dcql/eudiplo-haip-pid-de.dcql.json --purpose age_gate_18
 ```
 
+Not evaluated (exit 3). A request for the mDL, a credential type the built-in baselines do not model, is not judged against the PID claim names `given_name` and `family_name`:
+
+```
+augenmass audit --request '{"credentials":[{"id":"mdl","format":"mso_mdoc","meta":{"doctype_value":"org.iso.18013.5.1.mDL"},"claims":[{"path":["org.iso.18013.5.1","given_name"]},{"path":["org.iso.18013.5.1","family_name"]}]}]}' --purpose event_checkin
+```
+
+```
+NOT EVALUATED: 2 of 2 requested claims could not be judged.
+Purpose: not stated   Baseline: Event check-in
+
+Requested claims:
+  [n/a]  org.iso.18013.5.1.given_name Not evaluated: the baseline event_checkin does not model the credential type org.iso.18013.5.1.mDL. It models dc+sd-jwt and vc+sd-jwt with vct urn:eudi:pid:de:1 or urn:eudi:pid:1, and mso_mdoc with doctype eu.europa.ec.eudi.pid.1.
+  [n/a]  org.iso.18013.5.1.family_name Not evaluated: the baseline event_checkin does not model the credential type org.iso.18013.5.1.mDL. It models dc+sd-jwt and vc+sd-jwt with vct urn:eudi:pid:de:1 or urn:eudi:pid:1, and mso_mdoc with doctype eu.europa.ec.eudi.pid.1.
+
+Not evaluated: 2 claim(s). No judged claim asks for too much; exit code 3.
+
+Suggested minimal request (mso_mdoc, org.iso.18013.5.1.mDL):
+  No claim names are known for this credential type. The purpose baseline asks only for: Given name, Family name, Age over 18.
+```
+
+A claim of a credential format the baselines do not model is not evaluated in the same way, with its own line:
+
+```
+augenmass audit --request '{"credentials":[{"id":"example_jwt_vc","format":"jwt_vc_json","meta":{"type_values":[["IDCredential"]]},"claims":[{"path":["credentialSubject","family_name"]}]}]}' --purpose age_gate_18
+```
+
+```
+NOT EVALUATED: 1 of 1 requested claims could not be judged.
+Purpose: not stated   Baseline: Age gate (over 18)
+
+Requested claims:
+  [n/a]  credentialSubject.family_name Not evaluated: the purpose baselines model only SD-JWT VC (dc+sd-jwt, vc+sd-jwt) and mso_mdoc claim paths, not the format jwt_vc_json.
+
+Not evaluated: 1 claim(s). No judged claim asks for too much; exit code 3.
+
+Suggested minimal request (jwt_vc_json, no type):
+  No claim names are known for this credential type. The purpose baseline asks only for: Age over 18.
+```
+
+An unknown purpose id is a usage error, exit 2, with nothing on stdout:
+
+```
+augenmass audit --request minimal --purpose no_such_purpose
+```
+
+```
+error: unknown purpose 'no_such_purpose'. Valid purpose ids: age_gate_18, event_checkin, car_rental, bank_kyc (see: augenmass baselines)
+
+Usage: augenmass audit [OPTIONS]
+
+For more information, try '--help'.
+```
+
+Against a baseline file. `--purpose` names the entry; the output names the file (by file name only), the entry id, its version and its status, and an entry that is not `reviewed` carries the label `draft baseline, no legal review`. The format and the results are described in `docs/BASELINES.md`:
+
+```
+augenmass audit --request examples/age-minimal-request-sdjwt.json --baseline examples/baselines-example.json --purpose example.wine-shop.age-check.wine
+```
+
+```
+OK: Within the purpose-minimal baseline; registration not evaluated.
+Purpose: not stated   Baseline: Example Wine Shop: age check for an order of wine
+Baseline file: baselines-example.json   entry: example.wine-shop.age-check.wine   version: 0.1   status: draft
+draft baseline, no legal review
+Applies when (stated by the baseline, not checked by this tool): the order holds wine and no spirits (invented rule: wine is sold from 18)
+
+Requested claims:
+  [ok]  age_equal_or_over.18         Minimal under this baseline entry.
+
+A baseline file is its author's assessment, not law and not legal advice.
+```
+
+JSON shape: `audit --json` carries `outcome` (`ok`, `over_ask` or `not_evaluated`), `baseline` (for a built-in baseline `{"source": "built-in", "id", "label", "credential_types"}`; for a baseline file the members listed in `docs/BASELINES.md`), and in `counts` the members `could_not_judge` (requested claims that a supplied baseline or registration could not judge) and `acceptable_alternative` (0 under a built-in baseline). A claim that is not evaluated has `status` `NotEvaluated`; an acceptable alternative of a baseline file has `AcceptableAlternative`. The other members keep their names and types.
+
 ### Registration comparison (`--cert`)
 
 A requested claim is within the registration when one registered claim path of a matching credential covers it. Both are OpenID4VP 1.0 claims path pointers (section 7), compared segment by segment and never as joined strings. Coverage is structural: no concrete credential is evaluated.
@@ -516,6 +646,7 @@ A requested claim is within the registration when one registered claim path of a
 - With `claim_sets`, every claim named in any combination is audited and a declared claim that no combination names is not (section 6.4.1). When a combination names an unknown id, every declared claim is audited.
 - With `credential_sets`, every credential named in an option of any set, required or not, is audited, and a credential that no option names is not (section 6.4.2). When an option names an unknown id, every credential is audited.
 - A registered path that is not a valid pointer (empty, or with a boolean or a negative or fractional number) authorizes nothing.
+- Other credential formats (anything but `dc+sd-jwt`, `vc+sd-jwt` and `mso_mdoc`, for example `jwt_vc_json`): the comparison does not read their type member. When a registered credential of the same format covers the requested path, the claim is not evaluated against the registration (`Not evaluated against the registration: ...`), because the requested credential cannot be matched with it by type. When no registered credential of that format covers the path, whatever its type, the claim is beyond the registration, an over-ask with exit 1; when the registration holds credentials of that format, the line reads, for example, `Not in the registered scope: no registered jwt_vc_json credential covers this path, whatever its type.`
 
 The rules are pinned by the reusable vector set `fixtures/claim-paths/path-vectors.json` (Apache-2.0). A request identical to its registration, `null` segment included, is within it, exit 0:
 
@@ -538,7 +669,7 @@ The second line appears on every audit with `--cert`, on the OK and the over-ask
 
 ## `baselines`
 
-List the curated purpose baselines and the legal basis, or show one baseline in detail. These baselines are curated taste judgments, not Rulebook derivations; they are the yardstick `check` and `audit` measure against.
+List the curated purpose baselines and the legal basis, or show one baseline in detail. These baselines are curated assessments, not law and not legal advice; they are the yardstick `check` and `audit` measure against. Each states the credential types it models. To judge against a baseline of your own, write a baseline file and pass it with `--baseline` (see `docs/BASELINES.md`).
 
 ```
 Usage: augenmass baselines [OPTIONS] [ID]
@@ -555,11 +686,11 @@ The four baselines:
 - `age_gate_18` ("Age gate (over 18)"): `age_equal_or_over.18`
 - `event_checkin` ("Event check-in"): `given_name`, `family_name`, `age_equal_or_over.18`
 - `car_rental` ("Car rental (over 21, named)"): `given_name`, `family_name`, `age_equal_or_over.21`
-- `bank_kyc` ("Bank onboarding (KYC)"): `given_name`, `family_name`, `birthdate`, `place_of_birth.locality`, `place_of_birth.region`, `place_of_birth.country`, `nationalities`, `address.resident_street`, `address.house_number`, `address.resident_city`, `address.resident_postal_code`, `address.region`, `address.resident_country`, `address.formatted`; mdoc element `[eu.europa.ec.eudi.pid.1, place_of_birth]` (JSON field `mdoc_elements`, a list of `[namespace, element]` paths matched segment by segment). The keys are claim-model keys: a request path counts only in the spelling of its own credential format (SD-JWT VC `address.locality`, `birth_place`, `nationalities` with an element selector; mdoc `[eu.europa.ec.eudi.pid.1, resident_city]`, `birth_date`, `nationality`). A whole SD-JWT `address` or `place_of_birth` object stays beyond the purpose. An integer path segment selects an array element, so `["age_equal_or_over", 18]` is beyond the purpose; only `nationalities` takes an element selector. A claim of any other credential format (`jwt_vc_json`, `ldp_vc`, or an unknown identifier) is beyond the purpose, since the baselines model only SD-JWT VC (`dc+sd-jwt`, `vc+sd-jwt`) and mdoc paths. An mdoc age element `age_over_NN` in the namespace `eu.europa.ec.eudi.pid.1` or `eu.europa.ec.eudi.pid.de.1` gets the verdict of the SD-JWT VC claim `age_equal_or_over.NN` (German PID Rulebook: `age_equal_or_over.NN` for SD-JWT VC, `age_over_NN` for mdoc).
+- `bank_kyc` ("Bank onboarding (KYC)"): `given_name`, `family_name`, `birthdate`, `place_of_birth.locality`, `place_of_birth.region`, `place_of_birth.country`, `nationalities`, `address.resident_street`, `address.house_number`, `address.resident_city`, `address.resident_postal_code`, `address.region`, `address.resident_country`, `address.formatted`; mdoc element `[eu.europa.ec.eudi.pid.1, place_of_birth]` (JSON field `mdoc_elements`, a list of `[namespace, element]` paths matched segment by segment). The keys are claim-model keys: a request path counts only in the spelling of its own credential format (SD-JWT VC `address.locality`, `birth_place`, `nationalities` with an element selector; mdoc `[eu.europa.ec.eudi.pid.1, resident_city]`, `birth_date`, `nationality`). A whole SD-JWT `address` or `place_of_birth` object stays beyond the purpose. An integer path segment selects an array element, so `["age_equal_or_over", 18]` is beyond the purpose; only `nationalities` takes an element selector. All four baselines model the same credential types: `dc+sd-jwt` and `vc+sd-jwt` with vct `urn:eudi:pid:de:1` or `urn:eudi:pid:1`, and `mso_mdoc` with doctype `eu.europa.ec.eudi.pid.1` (JSON field `credential_types`). A claim of any other credential format (`jwt_vc_json`, `ldp_vc`, or an unknown identifier), of another credential type, or of a credential that names no type is not evaluated (exit 3 when nothing else asks for too much), since the baselines are lists of PID claims. An mdoc age element `age_over_NN` in the namespace `eu.europa.ec.eudi.pid.1` or `eu.europa.ec.eudi.pid.de.1` gets the verdict of the SD-JWT VC claim `age_equal_or_over.NN` (German PID Rulebook: `age_equal_or_over.NN` for SD-JWT VC, `age_over_NN` for mdoc).
 
 Exit code: 0 on success.
 
-List all (also prints the legal basis cited on every over-ask finding). A baseline with mdoc elements lists them as `namespace/element`, the same paths as the JSON `mdoc_elements`:
+List all (also prints the legal basis cited on every over-ask finding, and closes with the line `Note: the baselines are curated assessments, not law and not legal advice.`). A baseline with mdoc elements lists them as `namespace/element`, the same paths as the JSON `mdoc_elements`; every baseline lists its credential types:
 
 ```
 augenmass baselines
@@ -569,6 +700,7 @@ augenmass baselines
   bank_kyc  (Bank onboarding (KYC))
     minimal: given_name, family_name, birthdate, place_of_birth.locality, place_of_birth.region, place_of_birth.country, nationalities, address.resident_street, address.house_number, address.resident_city, address.resident_postal_code, address.region, address.resident_country, address.formatted
     mdoc elements: eu.europa.ec.eudi.pid.1/place_of_birth
+    credential types: dc+sd-jwt and vc+sd-jwt with vct urn:eudi:pid:de:1 or urn:eudi:pid:1; mso_mdoc with doctype eu.europa.ec.eudi.pid.1
 ```
 
 Show one as JSON:
@@ -584,14 +716,34 @@ augenmass baselines age_gate_18 --json
   "minimal_keys": [
     "age_equal_or_over.18"
   ],
-  "note": "Curated minimal baseline (a taste judgment, not a Rulebook derivation)."
+  "credential_types": [
+    {
+      "format": "dc+sd-jwt",
+      "vct_values": [
+        "urn:eudi:pid:de:1",
+        "urn:eudi:pid:1"
+      ]
+    },
+    {
+      "format": "vc+sd-jwt",
+      "vct_values": [
+        "urn:eudi:pid:de:1",
+        "urn:eudi:pid:1"
+      ]
+    },
+    {
+      "format": "mso_mdoc",
+      "doctype_value": "eu.europa.ec.eudi.pid.1"
+    }
+  ],
+  "note": "Curated minimal baseline (an assessment, not law and not legal advice)."
 }
 ```
 
 ### Legal basis (cited verbatim on every over-ask finding)
 
 1. Regulation (EU) No 910/2014, Article 5b(3): "Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c)."
-2. GDPR (EU) 2016/679, Art. 5(1)(c): data minimisation ("adequate, relevant and limited to what is necessary").
+2. GDPR (EU) 2016/679, Art. 5(1)(c): data minimisation ("adequate, relevant and limited to what is necessary"). The binary prints Article 5(1) verbatim from its opening words and point (c), with the omitted points (a) and (b) marked `[...]`: "Personal data shall be: [...] (c) adequate, relevant and limited to what is necessary in relation to the purposes for which they are processed (‘data minimisation’);"
 3. EUDI ARF, registration certificate, RPRC_21 (ARF Annex 2, Topic 44): "After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes."
 
 ---
@@ -1169,7 +1321,7 @@ Options (all optional):
 - `--public-url <PUBLIC_URL>` (env `PUBLIC_URL`): the public base URL baked into the `request_uri` and `response_uri` the wallet uses. It must end in `/`. Default `http://127.0.0.1:8080/`.
 - `--key <KEY>` (env `RP_KEY_PATH`): an EC private key PEM (PKCS#8 or SEC1) for the registrar-issued leaf. Pass it together with `--leaf`.
 - `--leaf <LEAF>` (env `RP_LEAF_PATH`): the leaf certificate PEM matching `--key`. Pass it together with `--key`.
-- `--purpose <PURPOSE>` (env `PURPOSE`): the purpose baseline id for the over-ask inspector. Default `event_checkin`.
+- `--purpose <PURPOSE>` (env `PURPOSE`): the purpose baseline id for the over-ask inspector. Default `event_checkin`. An unknown id, also from the environment variable, is a usage error at startup (exit 2) that names the id and lists the valid ids; the server does not start.
 - `--trust-anchor <TRUST_ANCHOR>` (env `TRUST_ANCHOR_PATH`): a PID issuer trust anchor PEM. When set, the response path rejects issuers that do not chain to it; when unset, issuer trust is not enforced.
 - `--status-signer <STATUS_SIGNER>` (env `STATUS_SIGNER_PATH`): a PEM certificate or public key that verifies token-status-list signatures. If omitted, live status falls back to the trust-anchor key for single-signer fixtures; real PID providers usually need this explicitly. Trust caveat: this is operator-supplied trust material and is not cryptographically bound to `--trust-anchor`, so the verifier trusts whatever signer you pass and a signer that matches a forged status list will verify it. This is intentional and real-world-consistent (the Bundesdruckerei preprod PID provider signs its status list with a key deliberately separate from the issuer root); wiring the issuer-to-status-signer anchoring is a later step, so you vouch for the key you supply. See the code caveat in `crates/augenmass-core/src/status.rs:21-27`.
 - `--live-status` (env `LIVE_STATUS`): resolve the token-status-list over the network on the response path and reject a revoked or suspended PID. Default `false` (offline-friendly). Only takes effect when `--trust-anchor` is also set; use `--status-signer` when revocation is signed by a dedicated key.
@@ -1495,7 +1647,7 @@ augenmass evidence prove-trust-status evidence.json \
 
 # WRITE AND TARGETS
 
-The write surface is guard-railed. There are three target modes: `clone` (a local registrar-compatible store, the default), `cached-sandbox` (a read-only loopback mirror for public sandbox reads), and `sandbox` (the real registrar, rehearsal only). Writes are dry-run by default; `--yes` performs the write; `--force` writes past an over-ask warning and requires `--yes`. Confirmed writes are allowed only for `clone` and `sandbox`; `cached-sandbox` is read-only and refuses `--yes` before any network call. The demo fixtures use relying party id `2af138a8-59ea-4a84-aea3-666cafdb1369`; do not reuse that id for a user's production relying party. For real writes, write only under the relying party the user explicitly names, and never mint extra relying parties. Never log, echo, or commit tokens, certificates, or keys.
+The write surface is guard-railed. There are three target modes: `clone` (a local registrar-compatible store, the default), `cached-sandbox` (a read-only loopback mirror for public sandbox reads), and `sandbox` (the real registrar, rehearsal only). Writes are dry-run by default; `--yes` performs the write; `--force` writes past an over-ask warning, or past a body that could not be evaluated, and requires `--yes` (`--force` without `--yes` is a usage error). Confirmed writes are allowed only for `clone` and `sandbox`; `cached-sandbox` is read-only and refuses `--yes` before any network call. The demo fixtures use relying party id `2af138a8-59ea-4a84-aea3-666cafdb1369`; do not reuse that id for a user's production relying party. For real writes, write only under the relying party the user explicitly names, and never mint extra relying parties. Never log, echo, or commit tokens, certificates, or keys.
 
 The `clone` target is a local axum + SQLite store with no signing, no auth, and no x5c. It stores payload-only JWTs and is sound because every read path decodes payload-only. Its API base is `AUGENMASS_CLONE_API_BASE` (default `http://127.0.0.1:8080/api`). The `cached-sandbox` target reads from `AUGENMASS_CACHE_API_BASE` (default `http://127.0.0.1:8081/api`) and is served by `augenmass cache serve`. The `sandbox` target talks to the real registrar over Keycloak OAuth (resource-owner password grant), configured via `AUGENMASS_API_BASE` (default `https://sandbox.eudi-wallet.org/api`), `AUGENMASS_OIDC_TOKEN_URL`, `AUGENMASS_USERNAME`, `AUGENMASS_PASSWORD`, and the optional `AUGENMASS_OIDC_CLIENT_SECRET`.
 
@@ -1517,10 +1669,10 @@ Options:
 
 - `--target <TARGET>`: `clone`, `cached-sandbox`, or `sandbox`. Default `clone`.
 - `--yes`: confirm a write. Without this flag the command is a dry-run.
-- `--force`: write past an over-ask warning. Requires `--yes`.
+- `--force`: write past an over-ask warning, or past a body that could not be evaluated. Requires `--yes`: `--force` without `--yes` is a usage error with exit code 2, before the body is read. A forced write that succeeds exits 0.
 - `--json`, `-h, --help`.
 
-Exit code: 1 on over-ask without `--force`, or a blocking format error; 0 on a clean dry-run or a successful write.
+Exit code: 1 on over-ask without `--force`, or a blocking format error; 3 when the body was not evaluated (the `check` result NOT EVALUATED) and `--force` was not given, also in a dry-run; 2 for `--force` without `--yes`; 0 on a clean dry-run or a successful write. A successful write with `--yes --force` exits 0 also when the report above it says OVER-ASK or NOT EVALUATED. A not evaluated body prints the `check` report and then `Refusing to write: this request could not be evaluated (see above). Re-run with --yes --force to write it anyway.` With `--yes --force` it is written with the warning `Warning: writing a registration that could not be evaluated because --force was given. A forced write that succeeds exits 0.`
 
 Dry-run a clean body to the clone (nothing is written), exit 0:
 

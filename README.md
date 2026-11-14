@@ -20,6 +20,8 @@ The current release is `v0.4.1`. It judges the mdoc age element `age_over_NN` li
 - A deployed cached-sandbox backend at `https://cache.augenmass.tech/api` for stable public sandbox reads and demo prewarming.
 - A deployed wallet-only relay at `https://wallet.augenmass.tech`, proven with `just hosted-relay-proof`, so a phone wallet can reach `augenmass serve` without exposing trace, inspect, evidence, or unsafe debug artifacts publicly. The hosted relay is protected; operators configure the token through `AUGENMASS_RELAY_TOKEN`.
 
+The main branch carries changes that are not released yet and are not in the 0.4.1 binaries, including the ones bundled in the plugin. They are listed under `[Unreleased]` in `CHANGELOG.md`: a third result, NOT EVALUATED with exit code 3, for a request that the purpose baseline or the registration comparison could not judge in part (for example a credential format or type the baseline does not model); a usage error with exit code 2 for an unknown purpose id; the credential types each built-in baseline models; and `--baseline FILE` for `audit` and `check`, which judges against an entry of a baseline file of your own (`docs/BASELINES.md`). A binary built from main still reports version 0.4.1.
+
 The strongest demo path is still skill first, CLI underneath: ask the agent what an artifact is, have it run the Rust tool, show the over-ask finding with the legal basis, then switch to `serve --relay augenmass` for the real wallet exchange.
 
 ## Install the skill
@@ -117,7 +119,7 @@ cached-sandbox, live sandbox, deployed cache, and wallet-debugger workflows.
 
 ## Use it as a guardrail
 
-Finding an over-ask once is good; never shipping one is better. Because the judgment commands exit non-zero on a bad outcome, the same engine works as a pre-commit hook or a CI gate, so an over-ask fails the build instead of reaching the registrar.
+Finding an over-ask once is good; never shipping one is better. Because the judgment commands exit non-zero on a bad outcome, the same engine works as a pre-commit hook or a CI gate, so an over-ask fails the build instead of reaching the registrar. On main, `check`, `audit` and `register` exit 1 on an over-ask and 3 when a requested claim could not be judged (NOT EVALUATED), so a body nobody could judge does not pass either; exit 0 means that everything asked to be checked was checked and nothing asks for too much. The one exception is a write you force with `register --yes --force`, which exits 0 when the write succeeded (all exit codes: `docs/COMMANDS.md`).
 
 ```sh
 # pre-commit: refuse to commit a registration body that over-asks
@@ -151,20 +153,30 @@ Decode a specific type (SD-JWT VC: issuer claims, disclosures, KB-JWT, resolved 
 augenmass decode sd-jwt fixtures/presentations/erica-vp-VALID.sdjwt
 ```
 
-Gate a registration body before a write (over-ask plus format). Exits 1 on over-ask:
+Gate a registration body before a write (over-ask plus format). Exits 1 on over-ask or a blocking format error, and 3 when a requested claim could not be judged:
 
 ```sh
 augenmass check examples/over.json
-# OVER-ASK: 6 of 6 requested claims exceed the stated purpose.
+# OVER-ASK: Over-ask vs purpose: 6 of 6 requested claims exceed the stated purpose.
 augenmass check examples/min.json
 # OK: no over-ask, no format errors. examples/min.json is ready to register.
 ```
 
-Audit an OpenID4VP request against a purpose baseline. Exits 1 on over-ask:
+Audit an OpenID4VP request against a purpose baseline. Exits 1 on over-ask, 3 when a requested claim could not be judged (for example a credential type the baseline does not model), and 2 for an unknown purpose id:
 
 ```sh
 augenmass audit --request overask --purpose event_checkin
-# OVER-ASK: 4 of 6 requested claims exceed the stated purpose.
+# OVER-ASK: Over-ask vs purpose: 4 of 6 requested claims exceed the stated purpose.
+```
+
+Audit against an entry of a baseline file of your own instead of a built-in purpose (`docs/BASELINES.md`; the example file and its legal source are invented):
+
+```sh
+augenmass audit --request examples/age-minimal-request-sdjwt.json --baseline examples/baselines-example.json --purpose example.wine-shop.age-check.wine
+# OK: Within the purpose-minimal baseline; registration not evaluated.
+# Purpose: not stated   Baseline: Example Wine Shop: age check for an order of wine
+# Baseline file: baselines-example.json   entry: example.wine-shop.age-check.wine   version: 0.1   status: draft
+# draft baseline, no legal review
 ```
 
 Cryptographically verify a presentation against its binding values, with an injected clock:
@@ -229,7 +241,7 @@ augenmass serve --relay augenmass --age-only
 #   open      : http://127.0.0.1:8080/
 #   public    : https://wallet.augenmass.tech/r/<run-id>/
 #   client_id : x509_hash:...
-#   trace     : redacted by default; live on this console; also at <base>/trace/<session> and /api/trace/<session>
+#   trace     : redacted by default; live on this console; also at <local>/trace/<session> and /api/trace/<session>
 #   artifacts : off (set --unsafe-debug-artifacts <dir> to capture raw wallet material locally; UNSAFE)
 #
 #   23:20:51.551  29bbb9a0  SESSION_CREATED         new presentation session created
@@ -258,8 +270,8 @@ UNDERSTAND
 - `decode mdoc <input>`: decode an ISO 18013-5 mdoc (`mso_mdoc`): the document type, the disclosed namespaces and elements, the issuer authentication (COSE_Sign1 algorithm and its X.509 chain), and the Mobile Security Object (validity window, value-digest counts, device key). Accepts raw CBOR bytes, hex, or base64/base64url. Decode only; the COSE signature and value digests are not verified.
 
 PROPORTIONALITY (the core IP)
-- `check <body>`: pre-write gate on a registration body for over-ask and format errors.
-- `audit --request {minimal | overask | FILE} --purpose <id> [--cert FILE]`: lint a DCQL request against a purpose baseline.
+- `check <body> [--baseline FILE [--purpose <entry id>]]`: pre-write gate on a registration body for over-ask and format errors.
+- `audit --request {minimal | overask | FILE} --purpose <id> [--cert FILE]`: lint a DCQL request against a purpose baseline. With `--baseline FILE`, `--purpose` names an entry of that baseline file instead (`docs/BASELINES.md`).
 - `baselines [<id>]`: list the curated purpose baselines and the legal basis, or show one in detail.
 
 CRYPTO
@@ -310,7 +322,7 @@ Over-ask is the central concern: a relying party must not request more personal 
 2. GDPR (EU) 2016/679, Art. 5(1)(c): data minimisation, personal data must be "adequate, relevant and limited to what is necessary".
 3. EUDI ARF, registration certificate, RPRC_21 (ARF Annex 2, Topic 44): "After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes."
 
-The four built-in purpose baselines (`age_gate_18`, `event_checkin`, `car_rental`, `bank_kyc`) are curated assessments, not law and not legal advice. See `augenmass baselines`.
+The four built-in purpose baselines (`age_gate_18`, `event_checkin`, `car_rental`, `bank_kyc`) are curated assessments, not law and not legal advice. See `augenmass baselines`. On main, each built-in baseline states the credential types it models (the German and the EU PID as SD-JWT VC and as mdoc); a claim of another credential format or type is not evaluated instead of being judged against PID claim names. A baseline file passed with `--baseline` is its author's assessment, not law and not legal advice; an entry that is not marked as reviewed is labelled "draft baseline, no legal review" (`docs/BASELINES.md`).
 
 When `audit --cert` compares a request with a registration certificate, the Workbench decodes the certificate and does not validate its signature, issuer or revocation status.
 
@@ -349,7 +361,7 @@ Evidence replay turns that local capture into an audit artifact. Run `augenmass 
 
 ## Safety
 
-Writes are dry-run by default. `register` makes no network call until you pass `--yes`; if the body over-asks, it refuses (exit 1) unless you also pass `--force`. Blocking format errors are never written past.
+Writes are dry-run by default. `register` makes no network call until you pass `--yes`; if the body over-asks, it refuses (exit 1) unless you also pass `--force`. On main, a body that could not be evaluated is refused the same way (exit 3), also in a dry-run, and `--force` is accepted only together with `--yes` (alone it is a usage error, exit 2). A forced write that succeeds exits 0 and says so in its warning line. Blocking format errors are never written past.
 
 There are three target modes. `clone` (the default) is a local registrar-compatible store (axum plus SQLite) with no signing, no auth, and no x5c: it holds payload-only JWTs and exists so you can rehearse the read and write paths entirely offline. `cached-sandbox` is a read-only, server-side mirror for public sandbox reads, with bounded SQLite storage, provenance headers, stale fallback for demos, request coalescing on cache misses, and an RP allowlist for registration-certificate read-through. It can run locally or as a small backend on Railway or a VPS; the current presentation backend is proven at `https://cache.augenmass.tech/api`. Public binds require the admin token, a non-empty RP allowlist unless `--allow-any-rp` is explicitly set, and an https upstream without URL credentials, query, fragment, or private IP host unless `--unsafe-upstream` is explicitly set. Unlisted RP reads return `403` before the upstream is contacted. `sandbox` is the real registrar behind Keycloak; it is rehearsal-only and off-stage, and sandbox API/token URLs must be https unless `AUGENMASS_UNSAFE_SANDBOX_URLS=1` is used for loopback development. Configure targets through environment variables (see `docs/SANDBOX.md` and `.env.example`).
 
@@ -367,6 +379,7 @@ One engine is the spine. `augenmass-core` is a vendored, HTTP-free, pure-Rust cr
 - `docs/ASK-IT-LIKE-THIS.md`: natural-language recipes for driving the skill.
 - `docs/GUARDRAILS.md`: using the tool as a pre-commit hook and a CI gate so an over-ask never ships.
 - `docs/COMMANDS.md`: every command, flag, exit code, and output shape.
+- `docs/BASELINES.md`: the baseline file format (`augenmass-baselines/0.1`) for `--baseline`, its results, and how to write a file.
 - `docs/VECTORS.md`: the claim path test vectors (`fixtures/claim-paths/path-vectors.json`), their format, how to run them, and the change policy.
 - `docs/TOOLS.md`: an artifact field guide, organized by artifact type.
 - `docs/ARCHITECTURE.md`: the one-engine spine and how the CLI wraps `augenmass-core`.

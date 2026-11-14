@@ -35,7 +35,7 @@ cargo build
 cargo test
 ```
 
-`cargo test` runs unit tests plus integration suites that drive the real binary against the committed fixtures. `cargo test --workspace` currently runs 323 tests, all passing (measured 2026-11-13): 199 unit tests under `src/` and `crates/`, 94 CLI integration tests, 15 cache integration tests, 9 claim-path integration tests (`tests/claim_paths.rs`, which runs the shared vectors in `fixtures/claim-paths/path-vectors.json`), 5 demo-proof integration tests, and 1 serve integration test. There is a `just verify` convenience target that wraps the build, the test run, and smoke checks; `cargo build` and `cargo test` are the canonical path and always work.
+`cargo test` runs unit tests plus integration suites that drive the real binary against the committed fixtures. `cargo test --workspace` currently runs 422 tests, all passing (measured 2026-11-14): 259 unit tests under `src/` and `crates/`, 133 CLI integration tests, 15 cache integration tests, 9 claim-path integration tests (`tests/claim_paths.rs`, which runs the shared vectors in `fixtures/claim-paths/path-vectors.json`), 5 demo-proof integration tests, and 1 serve integration test. There is a `just verify` convenience target that wraps the build, the test run, and smoke checks; `cargo build` and `cargo test` are the canonical path and always work.
 
 For presentation and skill wording changes, run the focused proof gate too:
 
@@ -82,11 +82,11 @@ When in doubt about command behavior, do not guess. Run the binary:
 - `crates/augenmass-core/`: the vendored engine. See the rules below before editing.
 - `src/main.rs`, `src/lib.rs`, `src/cli.rs`: entry point, library surface, and clap command tree.
 - `src/commands/`: one module per command (`inspect`, `decode`, `check`, `audit`, `baselines`, `verify`, `x509hash`, `generate`, `doctor`, `register`, `clone`, `cache`, plus `mod.rs`). Add or change command behavior here.
-- `src/` supporting modules: `output.rs` (text and `--json` rendering), `config.rs` (env and targets), `jose.rs`, `dcql.rs`, `checkbody.rs`, `render.rs`, `artifact.rs` (the `inspect` sniffer and dispatch), `x509util.rs`, `http_target.rs`, `clone_server.rs` (the local registrar clone), `cache_server.rs` (the read-through cached-sandbox mirror), `generator.rs`.
+- `src/` supporting modules: `output.rs` (text and `--json` rendering), `config.rs` (env and targets), `jose.rs`, `dcql.rs`, `checkbody.rs`, `render.rs`, `baseline_file.rs` (reads and checks a baseline file for `--baseline`), `artifact.rs` (the `inspect` sniffer and dispatch), `x509util.rs`, `http_target.rs`, `clone_server.rs` (the local registrar clone), `cache_server.rs` (the read-through cached-sandbox mirror), `generator.rs`.
 - `tests/`: integration tests for the CLI, cache server, and serve debugger.
 - `scripts/`: local smoke gates wrapped by `just`, no Python and no remote CI.
 - `fixtures/`: committed offline test artifacts (see below).
-- `examples/`: sample registration bodies and requests (`min.json`, `over.json`, `bad-path.json`, `bad-request.json`) and demonstration inputs (`age-broad-registration.jwt` with its readable payload `age-broad-registration.payload.json`, `age-broad-request.json`, `age-minimal-request-sdjwt.json`, `age-minimal-request-mdoc.json`, `kyc-request-plus-birthdate.json`).
+- `examples/`: sample registration bodies and requests (`min.json`, `over.json`, `bad-path.json`, `bad-request.json`) and demonstration inputs (`age-broad-registration.jwt` with its readable payload `age-broad-registration.payload.json`, `age-broad-request.json`, `age-minimal-request-sdjwt.json`, `age-minimal-request-mdoc.json`, `kyc-request-plus-birthdate.json`), and a synthetic baseline file for `--baseline` (`baselines-example.json`; its use case and legal source are invented, see `docs/BASELINES.md`).
 - `docs/`: documentation.
   - `docs/DEPLOYMENT.md`: cache backend deployment notes for Railway, Docker, VPS, Cloudflare, and Vercel.
   - `docs/RELEASE.md`: CI, release archives, and platform support.
@@ -97,7 +97,7 @@ When in doubt about command behavior, do not guess. Run the binary:
 ### Command surface (for orientation)
 
 UNDERSTAND: `inspect <input>`, `decode {jwt|sd-jwt|regcert|request|offer|status-list|mdoc} <input>`.
-PROPORTIONALITY: `check <body>`, `audit --request {minimal|overask|FILE} --purpose <id> [--cert FILE]`, `baselines [<id>]`.
+PROPORTIONALITY: `check <body> [--baseline FILE [--purpose <entry id>]]`, `audit --request {minimal|overask|FILE} --purpose <id> [--cert FILE]` or `audit --request ... --baseline FILE [--purpose <entry id>] [--cert FILE]`, `baselines [<id>]`.
 CRYPTO: `verify {presentation|request|trust|status|status-list}`, `x509-hash <input> [--client-id]`.
 PRODUCE: `generate {regbody|dcql}`.
 DIAGNOSE: `doctor <request>`, `validate dcql <input>`.
@@ -105,15 +105,15 @@ DEBUG: `serve`.
 EVIDENCE: `evidence {export|verify|replay}`.
 WRITE AND TARGETS (guard-railed): `register <body> --target {clone|cached-sandbox|sandbox} [--yes --force]`, `list --target --rp`, `clone serve`, `cache serve`, `cache warm`.
 
-Input ergonomics: every artifact argument accepts a file path, an inline value, or `-` for stdin. Keep this contract when you add commands.
+Input ergonomics: the artifact argument of `inspect`, `decode`, `check`, `audit --request`, `verify`, `x509-hash`, `doctor`, `validate` and `register` accepts a file path, an inline value, or `-` for stdin. Arguments that name a file take a path only: `audit --cert`, `--baseline`, and the bundle and key arguments of the `evidence` commands. Keep this contract when you add commands.
 
-Exit codes: commands exit non-zero on the bad outcome so they work in CI. `check` and `audit` exit 1 on over-ask (or, for `check`, a blocking format error); the `verify` family exits 1 when not verified, untrusted, revoked, or on error; `x509-hash --client-id` exits 1 on mismatch; `doctor` exits 1 when it has findings; `register` exits 1 when it refuses an over-ask without `--force`. Preserve these semantics.
+Exit codes: commands exit non-zero on the bad outcome so they work in CI. Exit 0 from `check`, `audit` or `register` means that everything asked to be checked was checked and nothing asks for too much, with one exception: a forced write (`register --yes --force`) exits 0 when the write succeeded, and its warning line says so. `check` and `audit` exit 1 on over-ask (or, for `check`, a blocking format error) and 3 when no judged claim asks for too much but a requested claim could not be judged (NOT EVALUATED); an over-ask wins over not evaluated. The `verify` family exits 1 when not verified, untrusted, revoked, or on error; `x509-hash --client-id` exits 1 on mismatch; `doctor` exits 1 when it has findings; `register` exits 1 when it refuses an over-ask without `--force`, and 3 when it refuses a body that was not evaluated. A usage error, including an unknown purpose id or baseline entry id and `register --force` without `--yes`, exits 2 through clap. An error that stops a command ("Error: ..." on stderr) exits 1; stdout is empty when the error is found before the command prints its result. The full table is in `docs/COMMANDS.md`. Preserve these semantics; the headline, the `outcome` member of `--json` and the exit code must agree (the forced write is the only exception).
 
 ## Safety rules for the write path
 
 `register` is the only command that mutates registrar data, and it is guard-railed by design:
 
-- Writes are dry-run by default. `--yes` is required to actually write. `--force` is required to write past an over-ask warning, and `--force` requires `--yes`.
+- Writes are dry-run by default. `--yes` is required to actually write. `--force` is required to write past an over-ask warning or past a body that could not be evaluated, and `--force` requires `--yes` (clap enforces it: `--force` alone is a usage error, so a dry run never passes a refused body).
 - Three target modes: `clone` (default) is a local registrar-compatible store (axum plus SQLite) with no signing, no auth, and no x5c; it stores payload-only JWTs. `cached-sandbox` is a read-only mirror for public sandbox GET routes, local by default and deployable with an explicit `--host`, persistent `--db`, and optional admin token. `sandbox` is the real registrar behind Keycloak OAuth, for off-stage rehearsal only.
 - One relying party per entity, many certificates. Our relying party is "Hackathon - Reza", id `2af138a8-59ea-4a84-aea3-666cafdb1369`. Write only under it; never mint extra relying parties.
 - The clone is sound because every read path decodes payload-only and there is no client-side crypto on either path. Do not add signing or token handling to the clone.
@@ -140,7 +140,7 @@ Every command shown in any document must work exactly as written. If you cannot 
 
 ## The engine (augenmass-core) is vendored, keep it minimal and pure
 
-`crates/augenmass-core/` was reused as-is from the verifier project. Its modules are `inspector` (over-ask analysis, baselines, `LEGAL_BASIS`), `regcert`, `pid` (German PID model and DCQL builders; `PID_VCT = "urn:eudi:pid:de:1"`, `PID_FORMAT = "dc+sd-jwt"`), `disclosure`, `verify` (SD-JWT VC and KB-JWT verification with an injectable clock), `status` (token status list revocation, fail-closed, offline), `trust` (X.509 leaf chains-to-anchor plus validity window, not full path validation), and `crypto` (JWE decrypt, x5c to JWK, `leaf_cert_hash` = x509_hash).
+`crates/augenmass-core/` was reused as-is from the verifier project. Its modules are `inspector` (over-ask analysis, baselines, `LEGAL_BASIS`), `typed_baseline` (the engine side of a baseline file: entries, rows, the one-of rule; no file reading), `regcert`, `pid` (German PID model and DCQL builders; `PID_VCT = "urn:eudi:pid:de:1"`, `PID_FORMAT = "dc+sd-jwt"`), `disclosure`, `verify` (SD-JWT VC and KB-JWT verification with an injectable clock), `status` (token status list revocation, fail-closed, offline), `trust` (X.509 leaf chains-to-anchor plus validity window, not full path validation), and `crypto` (JWE decrypt, x5c to JWK, `leaf_cert_hash` = x509_hash).
 
 Rules for the engine:
 
@@ -156,7 +156,7 @@ Over-ask findings cite three sources, sourced from the engine's `LEGAL_BASIS`. C
 2. GDPR (EU) 2016/679, Art. 5(1)(c): data minimisation ("adequate, relevant and limited to what is necessary").
 3. EUDI ARF, registration certificate, RPRC_21 (ARF Annex 2, Topic 44): "After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes."
 
-The curated purpose baselines (`age_gate_18`, `event_checkin`, `car_rental`, `bank_kyc`) are taste judgments, not Rulebook derivations. Run `augenmass baselines` for the current set; do not hard-code a stale copy elsewhere.
+The curated purpose baselines (`age_gate_18`, `event_checkin`, `car_rental`, `bank_kyc`) are curated assessments, not law and not legal advice. Each states the credential types it models; a claim of another format or type is not evaluated. Run `augenmass baselines` for the current set; do not hard-code a stale copy elsewhere. A baseline file loaded with `--baseline` (`docs/BASELINES.md`) is its author's assessment, not law and not legal advice; keep the draft label and the file, entry, version and status lines on every result under such a file.
 
 ## Gotchas the tool catches (keep them caught)
 

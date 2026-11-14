@@ -8,6 +8,7 @@ This page shows local placements first: a pre-commit hook and a local verificati
 
 - `check <body>` exits 1 on an over-ask or a blocking format error, 0 when the body is clean and ready to register.
 - `audit --request <file> --purpose <id>` exits 1 on an over-ask against the named purpose baseline.
+- On main (not in the 0.4.1 binaries), `check` and `audit` exit 3 when no judged claim asks for too much but a requested claim could not be judged (NOT EVALUATED), for example a credential format or type the baseline does not model. A gate that fails on any non-zero code also fails on 3; a script that tests for exit code 1 only needs a case for 3. An unknown purpose id is a usage error with exit code 2.
 - `validate dcql <input>` exits 1 on a blocking DCQL error (duplicate ids, dangling `credential_sets` references, claim paths whose shape does not match the credential format).
 - `verify presentation`, `verify request`, `verify trust`, `verify status` exit 1 when not verified, unbound, untrusted, or revoked.
 - `x509-hash <input> --client-id <id>` exits 1 when the claimed client_id does not match the leaf certificate.

@@ -317,7 +317,7 @@ These guardrails apply to every `register` invocation:
 
 - Dry-run by default. `register` without `--yes` decodes, runs the over-ask and format gate, and prints the verdict, but writes nothing. The output ends with `DRY RUN: nothing written. Re-run with --yes to write to <target>.`
 - `--yes` is required to write. It confirms the write after the gate passes.
-- `--force` writes past an over-ask warning, and requires `--yes`. Without `--force`, an over-asking body is refused (exit 1) on every target. A blocking format error is fatal regardless of `--force`.
+- `--force` writes past an over-ask warning, and requires `--yes`. On main, `--force` without `--yes` is a usage error (exit 2). Without `--force`, an over-asking body is refused (exit 1) on every target. A blocking format error is fatal regardless of `--force`.
 - Demo fixtures and defaults use relying party id `2af138a8-59ea-4a84-aea3-666cafdb1369` ("Hackathon - Reza"). That id is the default for `--rp` on `list` and for `--rp` on `generate regbody`, and it is the `rpId` in `examples/min.json` and `examples/over.json`. Do not reuse it for a user's production relying party.
 - One relying party per entity, many certificates under it. Never mint additional relying parties; add certificates to the existing one.
 - Secrets hygiene. Never log, echo, or commit tokens, certs, or keys. The repo gitignores `.env*`, `secrets*.md`, `*.sqlite`, and `*signing-key*`. Review staged changes before any git operation.
@@ -402,7 +402,7 @@ Legal basis:
   Regulation (EU) No 910/2014, Article 5b(3)
     Relying parties shall not request users to provide any data other than that indicated pursuant to paragraph 2, point (c).
   GDPR (EU) 2016/679, Art. 5(1)(c)
-    Personal data shall be adequate, relevant and limited to what is necessary (data minimisation).
+    Personal data shall be: [...] (c) adequate, relevant and limited to what is necessary in relation to the purposes for which they are processed (‘data minimisation’);
   EUDI ARF, registration certificate, RPRC_21
     After receiving a presentation request from a Relying Party, a Wallet Unit SHALL verify that all attributes requested in the request are included in the list of attributes in the registration certificate included in the same request. If the outcome of the verification is negative, the Wallet Unit SHALL, when asking for User approval according to RPA_07, warn the User that the Relying Party is requesting more information than it has registered. In addition, the Wallet Provider SHALL determine, based on its risk analysis and security policy, whether the Wallet Unit must a) enable the User to approve (or reject) the presentation of all requested attributes, including the non-registered ones, b) enable the User to approve (or reject) the presentation of the registered attributes only, or c) reject the presentation of all requested attributes.
 
@@ -415,7 +415,7 @@ The command exits 1, so CI catches it. To deliberately write the over-asking bod
 augenmass register examples/over.json --target clone --yes --force
 ```
 
-That reprints the same verdict, then writes with an explicit warning (`Warning: writing an over-asking registration because --force was given.`) and exits 0. Use `--force` only when over-asking is intentional and justified; the default refusal is the point of the gate.
+That reprints the same verdict, then writes with an explicit warning (`Warning: writing an over-asking registration because --force was given.`; on main the line continues with `A forced write that succeeds exits 0.`) and exits 0. Use `--force` only when over-asking is intentional and justified; the default refusal is the point of the gate.
 
 The same gate runs before a confirmed write to any target, so a body that the clone refuses will be refused against the sandbox too. Prove proportionality locally, then rehearse against the sandbox.
 
