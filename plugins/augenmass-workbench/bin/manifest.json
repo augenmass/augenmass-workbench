@@ -1,10 +1,10 @@
 {
   "schema": "augenmass-plugin-bundle-v1",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "source": {
     "kind": "github-release",
     "repository": "augenmass/augenmass-workbench",
-    "tag": "v0.4.1"
+    "tag": "v0.5.0"
   },
   "launchers": [
     "augenmass",
@@ -15,34 +15,34 @@
     {
       "target": "aarch64-apple-darwin",
       "binary": "aarch64-apple-darwin/augenmass",
-      "binarySha256": "586ffac1c58964c0f0327c4fee4effde8a4dfcbbe5c6c44b9e663fe3d18927cf",
-      "archive": "augenmass-v0.4.1-aarch64-apple-darwin.tar.gz",
-      "archiveSha256": "2255cb9e65bcb5e319a5d925c0e13d0e865ae1e3236a715e1930298d337d2c36",
-      "sourceManifest": "augenmass-v0.4.1-aarch64-apple-darwin.tar.gz.manifest.json"
+      "binarySha256": "46cf87355457e73ab824523ca1a1d0d6dbfd4012e50dfdd58831eb005bbf27fe",
+      "archive": "augenmass-v0.5.0-aarch64-apple-darwin.tar.gz",
+      "archiveSha256": "1bb447aa244dc165259464aa39c9d0930df008344fa7ceac5e8dbf70d23a8184",
+      "sourceManifest": "augenmass-v0.5.0-aarch64-apple-darwin.tar.gz.manifest.json"
     },
     {
       "target": "x86_64-apple-darwin",
       "binary": "x86_64-apple-darwin/augenmass",
-      "binarySha256": "c2171a09b5f56c586f986149c3870efe3338273b51f70f0ec2d4317c7c1cb22e",
-      "archive": "augenmass-v0.4.1-x86_64-apple-darwin.tar.gz",
-      "archiveSha256": "2d68165e07781f464aea3ba70ce850e79bc214a34d031eeb3a62a7261408607f",
-      "sourceManifest": "augenmass-v0.4.1-x86_64-apple-darwin.tar.gz.manifest.json"
+      "binarySha256": "c5782f2c2abdb832f5a7220e110a8661aebf145d5c862a9d1b8576bbee21bb43",
+      "archive": "augenmass-v0.5.0-x86_64-apple-darwin.tar.gz",
+      "archiveSha256": "b01df8b044538584c7cac51871f486c88f0ce2671f94813d14640eac1c7807c7",
+      "sourceManifest": "augenmass-v0.5.0-x86_64-apple-darwin.tar.gz.manifest.json"
     },
     {
       "target": "x86_64-unknown-linux-gnu",
       "binary": "x86_64-unknown-linux-gnu/augenmass",
-      "binarySha256": "97d9bda8c4b39a429b81e9475c11d4fd34fc16217b789eaa769168e02f2ba8f3",
-      "archive": "augenmass-v0.4.1-x86_64-unknown-linux-gnu.tar.gz",
-      "archiveSha256": "ce9875d7a6bec095a2eb674300230891adc074d41a9a47365a00af0a9a6cc509",
-      "sourceManifest": "augenmass-v0.4.1-x86_64-unknown-linux-gnu.tar.gz.manifest.json"
+      "binarySha256": "a861d092198b3ac3fe3757e8dcade2e50ede575e8d56f77b284ca7f14a539e09",
+      "archive": "augenmass-v0.5.0-x86_64-unknown-linux-gnu.tar.gz",
+      "archiveSha256": "71f775c1f412836552178893afd42ae41f4a42ec35af5edac223339d8cacf687",
+      "sourceManifest": "augenmass-v0.5.0-x86_64-unknown-linux-gnu.tar.gz.manifest.json"
     },
     {
       "target": "x86_64-pc-windows-msvc",
       "binary": "x86_64-pc-windows-msvc/augenmass.exe",
-      "binarySha256": "1c1ee46e9d92ace98f821ab9f3d60b92055a0c97670856ed751ce3f3f0cc7363",
-      "archive": "augenmass-v0.4.1-x86_64-pc-windows-msvc.zip",
-      "archiveSha256": "4e86a8453cf5bd85abc2cabc50e11c7735feaef4d845291af484e0dec4b10fe5",
-      "sourceManifest": "augenmass-v0.4.1-x86_64-pc-windows-msvc.zip.manifest.json"
+      "binarySha256": "1b105ec69740c5c3cfa0aefc938620d04834de0cf9d6360d1ef7ee4fcdc11eca",
+      "archive": "augenmass-v0.5.0-x86_64-pc-windows-msvc.zip",
+      "archiveSha256": "1ee5115796b0e26985c3e87ccd774455f0225282dcfc849fbdca61e450cfa976",
+      "sourceManifest": "augenmass-v0.5.0-x86_64-pc-windows-msvc.zip.manifest.json"
     }
   ],
   "unsignedPreview": true,
