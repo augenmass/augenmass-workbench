@@ -203,12 +203,6 @@ impl TypedBaseline {
         self.label.as_deref().unwrap_or(&self.id)
     }
 
-    /// True only when the entry states the status `reviewed`. The statement
-    /// is the file's; it is not checked.
-    pub fn legal_review(&self) -> bool {
-        self.status == EntryStatus::Reviewed
-    }
-
     /// The line under the baseline facts: [`DRAFT_NOTICE`] for every status
     /// other than `reviewed`, else the reviewer the file names.
     pub fn notice(&self) -> String {
@@ -264,7 +258,6 @@ impl TypedBaseline {
             version: self.version.clone(),
             status: self.status,
             reviewer: self.reviewer.clone(),
-            legal_review: self.legal_review(),
             notice: self.notice(),
             applies_when: self.applies_when.clone(),
             assessment_notice: ASSESSMENT_NOTICE.to_string(),
@@ -706,7 +699,7 @@ mod tests {
         assert_eq!(baseline["version"], "0.1");
         assert_eq!(baseline["status"], "draft");
         assert_eq!(baseline["reviewer"], Value::Null);
-        assert_eq!(baseline["legal_review"], false);
+        assert!(baseline.get("legal_review").is_none());
         assert_eq!(baseline["notice"], DRAFT_NOTICE);
         assert_eq!(baseline["applies_when"], "the order holds wine");
         assert_eq!(
@@ -731,7 +724,6 @@ mod tests {
         let mut b = age_entry();
         b.status = EntryStatus::Reviewed;
         b.reviewer = Some("Example Reviewer".to_string());
-        assert!(b.legal_review());
         assert_eq!(
             b.notice(),
             "reviewed by Example Reviewer (as stated by the baseline file)"
@@ -739,7 +731,7 @@ mod tests {
         let json = serde_json::to_value(b.info()).expect("json");
         assert_eq!(json["status"], "reviewed");
         assert_eq!(json["reviewer"], "Example Reviewer");
-        assert_eq!(json["legal_review"], true);
+        assert!(json.get("legal_review").is_none());
         assert!(!json["notice"]
             .as_str()
             .expect("notice")

@@ -26,6 +26,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 
 use crate::config::trim_base;
+use crate::output::{diagln, outln};
 
 const USER_AGENT: &str = concat!("augenmass-cache/", env!("CARGO_PKG_VERSION"));
 const MAX_CACHE_BODY_BYTES: usize = 5 * 1024 * 1024;
@@ -137,7 +138,7 @@ impl CacheDisposition {
 
 pub async fn serve(config: ServeConfig) -> Result<()> {
     if let Some(notice) = crate::config::cache_upstream_notice(config.upstream_is_default) {
-        eprintln!("{notice}");
+        diagln!("{notice}");
     }
     let addr = resolve_bind_addr(&config.host, config.port)?;
     let admin_token = normalize_token(config.admin_token.clone());
@@ -170,12 +171,14 @@ pub async fn serve(config: ServeConfig) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .with_context(|| format!("bind {addr}"))?;
-    println!("cached-sandbox target listening on http://{addr}/api");
-    println!("upstream: {}", trim_base(&config.upstream));
-    println!("ttl: {}s", config.ttl_secs);
-    println!("upstream timeout: {}s", config.timeout_secs);
-    println!("max entries: {}", config.max_entries);
-    println!(
+    outln(&format!(
+        "cached-sandbox target listening on http://{addr}/api"
+    ))?;
+    outln(&format!("upstream: {}", trim_base(&config.upstream)))?;
+    outln(&format!("ttl: {}s", config.ttl_secs))?;
+    outln(&format!("upstream timeout: {}s", config.timeout_secs))?;
+    outln(&format!("max entries: {}", config.max_entries))?;
+    outln(&format!(
         "registration RP read-through: {}",
         if allowed_rps.is_empty() && config.allow_any_rp {
             "any syntactically valid RP".to_string()
@@ -184,15 +187,15 @@ pub async fn serve(config: ServeConfig) -> Result<()> {
         } else {
             allowed_rps.iter().cloned().collect::<Vec<_>>().join(", ")
         }
-    );
-    println!(
+    ))?;
+    outln(&format!(
         "admin endpoints: {}",
         if admin_token.is_some() {
             "protected by token"
         } else {
             "open on this listener"
         }
-    );
+    ))?;
     axum::serve(listener, app)
         .await
         .context("serve cached sandbox target")
@@ -428,9 +431,10 @@ async fn cached_or_fetch(state: &AppState, request: CacheRequest, force: bool) -
             if let Some(stale) = cached {
                 response_from_cache(&stale, CacheDisposition::Stale)
             } else {
-                eprintln!(
+                diagln!(
                     "cache upstream fetch failed for {} ({}): {error:#}",
-                    request.key, request.upstream_url
+                    request.key,
+                    request.upstream_url
                 );
                 (
                     StatusCode::BAD_GATEWAY,

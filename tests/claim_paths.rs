@@ -521,6 +521,10 @@ const NOT_REGISTRATIONS: &[(&str, &str)] = &[
         "a DCQL request, not a registration",
     ),
     (
+        "examples/age-request-ignored-member.json",
+        "a DCQL request with a member a wallet ignores, not a registration",
+    ),
+    (
         "examples/baselines-example.json",
         "a baseline file, not a registration",
     ),

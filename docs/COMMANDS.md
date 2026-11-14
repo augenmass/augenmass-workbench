@@ -28,6 +28,8 @@ augenmass check examples/min.json --json
 
 The text rendering goes to stdout. With `--json`, the structured object goes to stdout instead. Server commands document their own output and do not use JSON-oriented rendering.
 
+The flag is accepted on every command. It has no effect on `register` and `list`, which print their text output with and without it, on `generate`, whose output is JSON in both cases, and on the server commands (`serve`, `clone serve`, `cache serve`).
+
 ## Input ergonomics: file path, inline value, or stdin
 
 The core artifact parameter on the judgment commands accepts three input forms:
@@ -45,11 +47,13 @@ Every exit code the binary uses:
 | Code | Meaning |
 |---|---|
 | 0 | Success. For `check`, `audit` and `register`: everything that was asked to be checked was checked, and no requested claim asks for too much. The one exception is a forced write: `register --yes --force` exits 0 when the write succeeded, although the body asks for too much or was not evaluated (see below). `--help` and `--version` also exit 0. |
-| 1 | The command's bad outcome (see the table below), or an error that stops the command: the reason is printed on stderr after `Error:`. An error found before the command prints its result leaves stdout empty (for example an input that cannot be read, or a baseline file that does not match its format). An error found after that follows what was already printed: `register` prints the check report on stdout and then stops on a blocking format error, a read-only target or a failed write. |
+| 1 | The command's bad outcome (see the table below), or an error that stops the command: the reason is printed on stderr after `Error:`. An error found before the command prints its result leaves stdout empty (for example an input that cannot be read, or a baseline file that does not match its format). An error found after that follows what was already printed: `register` prints the check report on stdout and then stops on a blocking format error, a read-only target or a failed write. A write to standard output that fails for another reason than a closed reader, for example a full disk, is such an error too (`Error: write standard output`). |
 | 2 | Usage error, printed by the argument parser on stderr with the usage line: an unknown command or flag, a missing argument, an unknown purpose id (`audit --purpose`, `serve --purpose`), a `--purpose` that names no entry of the `--baseline` file or is missing where the file needs one, `--baseline` together with a built-in purpose id, `check --purpose` without `--baseline`, or `register --force` without `--yes`. |
-| 3 | NOT EVALUATED (`check`, `audit`, `register` only): no judged claim asks for too much, but the purpose baseline or the registration comparison could not judge at least one requested claim. For example, a claim of a credential format or type that the baseline does not model. |
+| 3 | NOT EVALUATED (`check`, `audit`, `register` only): no judged claim asks for too much, but the purpose baseline or the registration comparison could not judge at least one requested claim. For example, a claim of a credential format or type that the baseline does not model. `audit` has a second cause: the DCQL query has a member that OpenID4VP 1.0 does not define at its level and that resembles a defined one, for example `claim` for `claims` (see `audit`, "Member names that resemble a defined one"). |
 
-When a request both asks for too much and has a claim that could not be judged, the result is OVER-ASK with exit code 1: an over-ask wins over not evaluated. The headline, the per-claim lines, the `outcome` member of `--json` and the exit code agree: `ok` is 0, `over_ask` is 1, `not_evaluated` is 3, and `format_error` (only `check`) is 1.
+When the reader of standard output or standard error closes it early (for example `augenmass audit --request overask --purpose age_gate_18 | head -n 1`), the command writes nothing more to that stream and exits with the same code as with an open reader.
+
+When a request both asks for too much and has a claim that could not be judged, or a member of the second cause, the result is OVER-ASK with exit code 1: an over-ask wins over not evaluated. The headline, the per-claim lines, the `outcome` member of `--json` and the exit code agree: `ok` is 0, `over_ask` is 1, `not_evaluated` is 3, and `format_error` (only `check`) is 1.
 
 The one exception is a forced write. `register --yes --force` writes a body under the headline OVER-ASK or NOT EVALUATED and exits 0 when the write succeeded; the exit code then reports the write, not the check. The output says so before the write: `Warning: writing an over-asking registration because --force was given. A forced write that succeeds exits 0.` (for a body that was not evaluated: `Warning: writing a registration that could not be evaluated because --force was given. A forced write that succeeds exits 0.`). A script that needs the result of the check runs `check` first and reads its exit code.
 
@@ -95,6 +99,22 @@ Options:
 - `-h, --help`: print help.
 
 It recognises SD-JWT VC presentations, ISO 18013-5 mdoc artifacts (hex or base64), WRPRC registration certificates, OpenID4VP authorization requests / JARs, OpenID4VP request URIs (`openid4vp://`), OpenID4VCI credential offers, token status lists, DCQL queries, registrar registration bodies, X.509 PEM certificates, and generic JWT/JWS.
+
+For a DCQL query, `inspect` also prints the authoring warnings of the query: one line for each member whose name OpenID4VP 1.0 does not define at its level and that resembles a defined one, for example `claim` for `claims`. A wallet ignores a member it does not know, so the query below requests no claim, although its author very likely meant three. The lines appear only when there is such a member; `--json` carries them in the member `warnings`, an empty array when there is none. The rule and its limit are described under `audit`, "Member names that resemble a defined one". The exit code stays 0.
+
+```
+augenmass inspect examples/age-request-ignored-member.json
+```
+
+```
+Detected: DCQL query
+DCQL query
+  requested claims: 0
+  authoring warnings: 1
+    credentials[0]: member "claim" is not defined by OpenID4VP 1.0 for a Credential Query and resembles "claims". A wallet ignores a member it does not know (OpenID4VP 1.0, section 6: "Implementations MUST ignore any unknown properties."), so "claim" has no effect on the request unless the wallet implements an extension that defines it.
+```
+
+An authorization request is read as a signed JAR (a compact JWT) or as a plain request object: a JSON object with `response_type` or `client_metadata`, or with `dcql_query` and `client_id`. The `Detected:` line names the form: `Detected: OpenID4VP authorization request (JAR)` for the first, `Detected: OpenID4VP authorization request object (plain JSON, not a signed JAR)` for the second. For both, `inspect` prints the authoring warnings of the request's `dcql_query` under the line `query: dcql_query present`, and `--json` carries them in `warnings`. The output is the one of `decode request`, which shows an example.
 
 Exit code: 0 on success.
 
@@ -248,7 +268,7 @@ Note: `fixtures/regcert/rc-payload.json` is a raw payload view (a plain JSON obj
 
 ### `decode request`
 
-Decode an OpenID4VP authorization request, either a signed JAR (`typ oauth-authz-req+jwt`) or a plain request object.
+Decode an OpenID4VP authorization request, either a signed JAR (`typ oauth-authz-req+jwt`, a compact JWT) or a plain request object (a JSON object, for example the `payload` member of this command's `--json` output). A plain request object has no header: the `typ`, `alg` and `x5c present` lines are left out, and `header` is `null` in `--json`. When the request carries a `dcql_query`, the authoring warnings of that query are printed under `query: dcql_query present` (the rule is described under `audit`, "Member names that resemble a defined one"); `--json` carries them in the member `warnings`, an empty array when there is none.
 
 ```
 Usage: augenmass decode request [OPTIONS] <INPUT>
@@ -276,6 +296,23 @@ OpenID4VP authorization request / JAR (no signature verified)
   nonce: b4ba2623-76a2-486b-a1f6-f1656025d07b
   state: f6d6d27a-adc9-40f5-baee-27be994d65ec
   query: dcql_query present
+```
+
+A plain request object whose query says `claim` for `claims`:
+
+```
+augenmass decode request '{"response_type":"vp_token","client_id":"x509_hash:example-not-a-real-hash","nonce":"n-0S6_WzA2Mj","dcql_query":{"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["urn:eudi:pid:de:1"]},"claim":[{"path":["birthdate"]}]}]}}'
+```
+
+```
+OpenID4VP authorization request object (plain JSON, not a signed JAR)
+  client_id: x509_hash:example-not-a-real-hash
+  client_id scheme: x509_hash
+  response_type: vp_token
+  nonce: n-0S6_WzA2Mj
+  query: dcql_query present
+  authoring warnings: 1
+    credentials[0]: member "claim" is not defined by OpenID4VP 1.0 for a Credential Query and resembles "claims". A wallet ignores a member it does not know (OpenID4VP 1.0, section 6: "Implementations MUST ignore any unknown properties."), so "claim" has no effect on the request unless the wallet implements an extension that defines it.
 ```
 
 ### `decode offer`
@@ -430,7 +467,7 @@ augenmass check examples/over.json
 
 ```
 OVER-ASK: Over-ask vs purpose: 6 of 6 requested claims exceed the stated purpose.
-Purpose: Age verification   Baseline: Age gate (over 18)
+Registration purpose: Age verification   Baseline: Age gate (over 18)
 
 Requested claims:
   [over]  given_name                   Registered, but beyond what the stated purpose needs.
@@ -469,7 +506,7 @@ augenmass check '{"rpId":"2af138a8-59ea-4a84-aea3-666cafdb1369","support_uri":"s
 
 ```
 NOT EVALUATED: 1 of 1 requested claims could not be judged.
-Purpose: Driving licence check   Baseline: Age gate (over 18)
+Registration purpose: Driving licence check   Baseline: Age gate (over 18)
 
 Requested claims:
   [n/a]  org.iso.18013.5.1.family_name Not evaluated: the baseline age_gate_18 does not model the credential type org.iso.18013.5.1.mDL. It models dc+sd-jwt and vc+sd-jwt with vct urn:eudi:pid:de:1 or urn:eudi:pid:1, and mso_mdoc with doctype eu.europa.ec.eudi.pid.1.
@@ -519,7 +556,9 @@ Options:
 - `--vct <VCT>`: override the expected `vct` (defaults to the German PID, `urn:eudi:pid:de:1`).
 - `--json`, `-h, --help`.
 
-Exit code: 1 on over-ask vs the chosen baseline (or, with `--cert`, the registration); 3 when no judged claim asks for too much but at least one requested claim could not be judged (NOT EVALUATED); 0 when every requested claim was judged and none asks for too much.
+Exit code: 1 on over-ask vs the chosen baseline (or, with `--cert`, the registration); 3 when no judged claim asks for too much but at least one requested claim could not be judged, or the query has a member that OpenID4VP 1.0 does not define at its level and that resembles a defined one (NOT EVALUATED); 0 when every requested claim was judged, none asks for too much and the query has no such member.
+
+The line `Registration purpose: ...   Baseline: ...` under the headline of every result names two different things. The first value is the purpose text of the registration certificate given with `--cert` (for `check` and `register`: of the body); it reads `no registration given` without `--cert`, and `not stated in the registration` when the registration has no purpose text or a purpose text that shows nothing: it is empty, or made only of white space, of code points that Unicode 16.0.0 lists with the property Default_Ignorable_Code_Point (for example the zero width space U+200B, the combining grapheme joiner U+034F and the variation selector U+FE0F) and of the blank Braille pattern U+2800. The bidirectional formatting characters are the exception among the listed code points: the text output prints them as their escape, for example `\u{202e}`, so a purpose text made of them is printed as those escapes. The second value is the baseline that `--purpose` or `--baseline` selects. In `--json` the two are the members `purpose` and `baseline_label`; `purpose` carries the text of the registration as written, also when it shows nothing.
 
 Credential types. Each built-in baseline states the credential types it models (`augenmass baselines` lists them): `dc+sd-jwt` and `vc+sd-jwt` with vct `urn:eudi:pid:de:1` or `urn:eudi:pid:1`, and `mso_mdoc` with doctype `eu.europa.ec.eudi.pid.1`. A requested claim is not evaluated when its credential has another format (for example `jwt_vc_json`), another type (for example the mDL doctype `org.iso.18013.5.1.mDL`), or names no type in `meta`. A credential that accepts several types is judged per type: a claim beyond the baseline under a modelled type is an over-ask; a claim within it is not evaluated when another accepted type is not modelled. A credential without `claims` of a format or type the baseline does not model gets one not evaluated row.
 
@@ -531,7 +570,7 @@ augenmass audit --request minimal --purpose event_checkin
 
 ```
 OK: Within the purpose-minimal baseline; registration not evaluated.
-Purpose: not stated   Baseline: Event check-in
+Registration purpose: no registration given   Baseline: Event check-in
 
 Requested claims:
   [ok]  given_name                   Within the purpose-minimal baseline.
@@ -547,7 +586,7 @@ augenmass audit --request minimal --purpose age_gate_18
 
 ```
 OVER-ASK: Over-ask vs purpose: 2 of 3 requested claims exceed the stated purpose.
-Purpose: not stated   Baseline: Age gate (over 18)
+Registration purpose: no registration given   Baseline: Age gate (over 18)
 
 Requested claims:
   [over]  given_name                   Beyond what the stated purpose needs; registration not evaluated.
@@ -569,7 +608,7 @@ augenmass audit --request '{"credentials":[{"id":"mdl","format":"mso_mdoc","meta
 
 ```
 NOT EVALUATED: 2 of 2 requested claims could not be judged.
-Purpose: not stated   Baseline: Event check-in
+Registration purpose: no registration given   Baseline: Event check-in
 
 Requested claims:
   [n/a]  org.iso.18013.5.1.given_name Not evaluated: the baseline event_checkin does not model the credential type org.iso.18013.5.1.mDL. It models dc+sd-jwt and vc+sd-jwt with vct urn:eudi:pid:de:1 or urn:eudi:pid:1, and mso_mdoc with doctype eu.europa.ec.eudi.pid.1.
@@ -589,7 +628,7 @@ augenmass audit --request '{"credentials":[{"id":"example_jwt_vc","format":"jwt_
 
 ```
 NOT EVALUATED: 1 of 1 requested claims could not be judged.
-Purpose: not stated   Baseline: Age gate (over 18)
+Registration purpose: no registration given   Baseline: Age gate (over 18)
 
 Requested claims:
   [n/a]  credentialSubject.family_name Not evaluated: the purpose baselines model only SD-JWT VC (dc+sd-jwt, vc+sd-jwt) and mso_mdoc claim paths, not the format jwt_vc_json.
@@ -598,6 +637,46 @@ Not evaluated: 1 claim(s). No judged claim asks for too much; exit code 3.
 
 Suggested minimal request (jwt_vc_json, no type):
   No claim names are known for this credential type. The purpose baseline asks only for: Age over 18.
+```
+
+Member names that resemble a defined one (exit 3). OpenID4VP 1.0, section 6, says about a DCQL query: "Implementations MUST ignore any unknown properties." A credential query that says `claim` for `claims` is therefore a valid query, and a wallet that does not know `claim` treats it as a credential query without `claims`. That is very likely not what its author meant. `audit` reports each member of the query object, of a credential query, of a claims query and of a credential set query whose name OpenID4VP 1.0 does not define at that level and that differs from a name it does define there only by the plural ending of a word, by upper and lower case, by a letter written twice, or by characters that are not letters: the separator between its words, a space or a tab before or after the name, a digit, a dot (`claim` for `claims`, `claims_set` or `claim_set` for `claim_sets`, `credential_set` for `credential_sets`, `credential` for `credentials`, `option` for `options`, `paths` for `path`, `value` for `values`; also `claimS`, `Claims`, `claims1`, `claimss`, and `claims` with a space after it). The place of an upper-case letter makes no difference. A second rule covers the claims of a credential query under any other name. OpenID4VP 1.0, section 6.1, defines the value of `claims` as "A non-empty array of objects as defined in Section 6.3", and section 6.3 lists `path` as "REQUIRED". In a credential query that has no `claims` member, a member that section 6.1 does not define and whose value is a non-empty array of objects that each have a `path` member is reported as resembling `claims`, whatever its name (`klaims`, `claimz`, a name with a look-alike letter that is not ASCII); its warning line says that the value has the form of a `claims` value. A warning line prints every character of the member name that is not ASCII, and every control character, as its escape (for example `\u{200b}` for a zero width space and `\t` for a tab), so that such a name does not read like the defined one; `--json` carries the name as written in `member`. Such a request never gets a bare OK. If no judged claim asks for too much, the result is NOT EVALUATED with exit code 3; an over-ask stays OVER-ASK with exit code 1 and lists the warning as well. An unknown member that resembles no defined one gets no warning. The comparison of names is not an edit distance: a name that differs from a defined one by another letter gets no warning for its name (`valuez` in a claims query, or `klaims` in a credential query that also has `claims`). The members of `meta` and of a trusted authorities query are not examined. The rule is for DCQL queries only: in a registration body and in a registration certificate `claim` is a defined name, and `check`, `register` and `--cert` have no such warning.
+
+```
+augenmass audit --request examples/age-request-ignored-member.json --purpose age_gate_18
+```
+
+```
+NOT EVALUATED: 1 member(s) of the query resemble a defined member and are ignored by a wallet that does not know them.
+Registration purpose: no registration given   Baseline: Age gate (over 18)
+
+Requested claims:
+
+Authoring warnings:
+  credentials[0]: member "claim" is not defined by OpenID4VP 1.0 for a Credential Query and resembles "claims". A wallet ignores a member it does not know (OpenID4VP 1.0, section 6: "Implementations MUST ignore any unknown properties."), so "claim" has no effect on the request unless the wallet implements an extension that defines it.
+
+Not evaluated: 1 member(s) of the query that a wallet ignores unless it knows them from an extension. No judged claim asks for too much; exit code 3.
+
+Suggested minimal request (dc+sd-jwt, urn:eudi:pid:de:1), as claim paths:
+  ["age_equal_or_over", "18"]
+```
+
+The same request with `claims` asks for `given_name`, `birthdate` and `address` and is an OVER-ASK with exit code 1. The released version 0.4.1 prints `OK: No claims requested.` with exit code 0 for the file above.
+
+The warning is about the spelling of a member name or, for `claims`, about the form of a member's value. OpenID4VP 1.0 lets an extension define further members (section 6: "Future extensions may define additional properties both at the top level and in the rest of the DCQL data structure."). If an extension that your wallets implement defines a member whose name differs from a defined one only in the ways listed above (for example by a plural ending, a separator, a digit, or upper and lower case), `audit` reports it too and gives NOT EVALUATED, exit code 3. The same holds for an extension member whose value has the form of a `claims` value in a credential query without `claims`. This version has no option to accept such a member.
+
+A query that the typed parse rejects stays an error with exit code 1. When it has such a member, the error names it, because it is the likely cause (here `paths` for `path`):
+
+```
+augenmass audit --request '{"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["urn:eudi:pid:de:1"]},"claims":[{"paths":["birthdate"]}]}]}' --purpose age_gate_18
+```
+
+```
+Error: --request must be 'minimal', 'overask', or a DCQL JSON value ({"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["urn:eudi:pid:de:1"]},"claims":[{"paths":["birthdate"]}]}]})
+
+Caused by:
+    0: the query has 1 member(s) that a wallet ignores unless it knows them from an extension: credentials[0].claims[0]: member "paths" is not defined by OpenID4VP 1.0 for a Claims Query and resembles "path". A wallet ignores a member it does not know (OpenID4VP 1.0, section 6: "Implementations MUST ignore any unknown properties."), so "paths" has no effect on the request unless the wallet implements an extension that defines it.
+    1: parse DCQL query
+    2: missing field `path`
 ```
 
 An unknown purpose id is a usage error, exit 2, with nothing on stdout:
@@ -622,7 +701,7 @@ augenmass audit --request examples/age-minimal-request-sdjwt.json --baseline exa
 
 ```
 OK: Within the purpose-minimal baseline; registration not evaluated.
-Purpose: not stated   Baseline: Example Wine Shop: age check for an order of wine
+Registration purpose: no registration given   Baseline: Example Wine Shop: age check for an order of wine
 Baseline file: baselines-example.json   entry: example.wine-shop.age-check.wine   version: 0.1   status: draft
 draft baseline, no legal review
 Applies when (stated by the baseline, not checked by this tool): the order holds wine and no spirits (invented rule: wine is sold from 18)
@@ -633,7 +712,7 @@ Requested claims:
 A baseline file is its author's assessment, not law and not legal advice.
 ```
 
-JSON shape: `audit --json` carries `outcome` (`ok`, `over_ask` or `not_evaluated`), `baseline` (for a built-in baseline `{"source": "built-in", "id", "label", "credential_types"}`; for a baseline file the members listed in `docs/BASELINES.md`), and in `counts` the members `could_not_judge` (requested claims that a supplied baseline or registration could not judge) and `acceptable_alternative` (0 under a built-in baseline). A claim that is not evaluated has `status` `NotEvaluated`; an acceptable alternative of a baseline file has `AcceptableAlternative`. The other members keep their names and types.
+JSON shape: `audit --json` carries `outcome` (`ok`, `over_ask` or `not_evaluated`), `baseline` (for a built-in baseline `{"source": "built-in", "id", "label", "credential_types"}`; for a baseline file the members listed in `docs/BASELINES.md`), and in `counts` the members `could_not_judge` (requested claims that a supplied baseline or registration could not judge) and `acceptable_alternative` (0 under a built-in baseline). A claim that is not evaluated has `status` `NotEvaluated`; an acceptable alternative of a baseline file has `AcceptableAlternative`. The member `warnings` is an array, empty when the query has no member that resembles a defined one; each element has `id` (`DCQL-MEMBER-NEAR-MISS`), `place` (for example `credentials[0]`), `level` (`dcql_query`, `credential_query`, `claims_query` or `credential_set_query`), `member`, `resembles` (the defined member it resembles by its name, or `claims` for a member reported for the form of its value) and `message`. `counts` counts claims, so the number of such members is the length of `warnings`. The other members keep their names and types.
 
 ### Registration comparison (`--cert`)
 
@@ -657,7 +736,7 @@ augenmass audit --request fixtures/claim-paths/request-identical.json --purpose 
 ```
 OK: Minimal: all 3 requested claims are within purpose and registration.
 Registration certificate: payload decoded; signature, issuer and revocation status not verified.
-Purpose: Example check   Baseline: Bank onboarding (KYC)
+Registration purpose: Example check   Baseline: Bank onboarding (KYC)
 
 Requested claims:
   [ok]  given_name                   Within the purpose-minimal baseline.
@@ -1079,7 +1158,7 @@ Produce a proportionate registration body or a DCQL query.
 Usage: augenmass generate [OPTIONS] <COMMAND>
 ```
 
-Subcommands: `regbody`, `dcql`. Options on the group: `--json`, `-h, --help`.
+Subcommands: `regbody`, `dcql`. Options on the group: `-h, --help`. `--json` is accepted and changes nothing: the output is JSON in both cases.
 
 ### `generate regbody`
 
@@ -1097,7 +1176,7 @@ Options:
 - `--support-uri <SUPPORT_URI>`: default `support@example.com`.
 - `--privacy-policy <PRIVACY_POLICY>`: default `https://example.com/privacy`.
 - `--purpose <PURPOSE>`: default `Age verification`.
-- `--json`, `-h, --help`.
+- `-h, --help`. `--json` is accepted and changes nothing: the output is JSON in both cases.
 
 Exit code: 0 on success.
 
@@ -1159,7 +1238,7 @@ Usage: augenmass generate dcql [OPTIONS] --claim <CLAIMS>
 Options:
 
 - `--claim <CLAIMS>` (required, repeatable): a claim path, for example `--claim age_equal_or_over.18`.
-- `--json`, `-h, --help`.
+- `-h, --help`. `--json` is accepted and changes nothing: the output is JSON in both cases.
 
 Exit code: 0 on success.
 
@@ -1267,8 +1346,11 @@ Checks (each finding has a stable id, a severity, and a fix):
 - `DCQL-MDOC-PATH`: an `mso_mdoc` path must be `[namespace, element]` (two strings).
 - `DCQL-SDJWT-PATH`: an SD-JWT path's segments must be strings, null (all array elements), or integer indices.
 - `DCQL-SET-REF-DANGLING` (and the `DCQL-SET-*` shape checks): every id referenced in a `credential_sets` option must match a `credentials[].id`.
+- `DCQL-MEMBER-NEAR-MISS` (warning): a member whose name OpenID4VP 1.0 does not define at its level and that resembles a defined one, for example `claim` for `claims` in a credential query, or a member that holds the claims of a credential query without `claims` under another name. A wallet ignores a member it does not know, so the query is valid and very likely not what its author meant. The rule and its limit are described under `audit`, "Member names that resemble a defined one".
 
-Exit code: 1 if there is a blocking finding; 0 otherwise (warnings do not block).
+Exit code: 1 if there is a blocking finding; 0 otherwise (warnings do not block). A query whose only finding is `DCQL-MEMBER-NEAR-MISS` is valid and exits 0; `audit` is the command that refuses it an OK (NOT EVALUATED, exit 3).
+
+JSON shape: `valid`, `findingCount`, `findings` (each with `id`, `severity`, `message` and `fix`), and `warnings`, the same array as in `audit --json`, empty when the query has no such member.
 
 Clean query, exit 0:
 
@@ -1296,6 +1378,20 @@ DCQL findings:
     Fix: every id in a credential_set option must match a credentials[].id
 
 DCQL INVALID: at least one blocking error above.
+```
+
+A member name that resembles a defined one (exit 0, a warning):
+
+```
+augenmass validate dcql examples/age-request-ignored-member.json
+```
+
+```
+DCQL findings:
+  DCQL-MEMBER-NEAR-MISS [warning]: credentials[0]: member "claim" is not defined by OpenID4VP 1.0 for a Credential Query and resembles "claims". A wallet ignores a member it does not know (OpenID4VP 1.0, section 6: "Implementations MUST ignore any unknown properties."), so "claim" has no effect on the request unless the wallet implements an extension that defines it.
+    Fix: rename the member to the defined name if that was meant. If it belongs to an extension that the wallet implements, keep it; this warning then does not apply.
+
+DCQL OK (warnings only).
 ```
 
 ---
@@ -1670,9 +1766,11 @@ Options:
 - `--target <TARGET>`: `clone`, `cached-sandbox`, or `sandbox`. Default `clone`.
 - `--yes`: confirm a write. Without this flag the command is a dry-run.
 - `--force`: write past an over-ask warning, or past a body that could not be evaluated. Requires `--yes`: `--force` without `--yes` is a usage error with exit code 2, before the body is read. A forced write that succeeds exits 0.
-- `--json`, `-h, --help`.
+- `-h, --help`. `--json` is accepted and has no effect: `register` prints its text output. For the result as JSON, run `check <BODY> --json` first; its `outcome` member and its exit code carry the result of the same check.
 
 Exit code: 1 on over-ask without `--force`, or a blocking format error; 3 when the body was not evaluated (the `check` result NOT EVALUATED) and `--force` was not given, also in a dry-run; 2 for `--force` without `--yes`; 0 on a clean dry-run or a successful write. A successful write with `--yes --force` exits 0 also when the report above it says OVER-ASK or NOT EVALUATED. A not evaluated body prints the `check` report and then `Refusing to write: this request could not be evaluated (see above). Re-run with --yes --force to write it anyway.` With `--yes --force` it is written with the warning `Warning: writing a registration that could not be evaluated because --force was given. A forced write that succeeds exits 0.`
+
+A closed reader of standard output does not change these codes: a dry run, a refusal and a format error exit as with an open reader. A confirmed write (`--yes`) is the one exception. When standard output was closed before the check report could be read, the command stops before anything is sent, with `Error: standard output was closed before the check report could be read; nothing was written` and exit code 1.
 
 Dry-run a clean body to the clone (nothing is written), exit 0:
 
@@ -1722,7 +1820,7 @@ Options:
 
 - `--target <TARGET>`: `clone`, `cached-sandbox`, or `sandbox`. Default `clone`.
 - `--rp <RP>`: the relying-party id. Default `2af138a8-59ea-4a84-aea3-666cafdb1369`.
-- `--json`, `-h, --help`.
+- `-h, --help`. `--json` is accepted and has no effect: `list` prints its text output.
 
 Exit code: 0 on a successful read.
 

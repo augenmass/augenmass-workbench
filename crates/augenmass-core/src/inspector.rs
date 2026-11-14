@@ -58,6 +58,9 @@ pub enum Outcome {
     OverAsk,
     /// No judged claim asks for too much, and a supplied baseline or a
     /// supplied registration could not judge at least one requested claim.
+    /// The `audit` command of the shell also sets it for a request that
+    /// would be ok and whose DCQL query has a member that OpenID4VP 1.0 does
+    /// not define at its level and that resembles a defined one.
     NotEvaluated,
 }
 
@@ -297,8 +300,6 @@ pub struct FileBaselineInfo {
     pub version: String,
     pub status: EntryStatus,
     pub reviewer: Option<String>,
-    /// True only when the entry states the status `reviewed`.
-    pub legal_review: bool,
     /// "draft baseline, no legal review", or the reviewer the file names.
     pub notice: String,
     pub applies_when: Option<String>,

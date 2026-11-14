@@ -26,7 +26,7 @@ use serde_json::{Map, Number, Value};
 use url::Url;
 
 use crate::commands::baselines::KNOWN_BASELINES;
-use crate::render::printable;
+use crate::render::{printable, printable_json};
 
 /// A baseline file that passed every check, with all its entries.
 #[derive(Debug, Clone)]
@@ -70,6 +70,16 @@ fn io_reason(e: &std::io::Error) -> String {
 /// Check the text of a baseline file named `file`. The error is
 /// "{where}: {what}".
 pub fn parse(file: &str, text: &str) -> Result<BaselineFile, String> {
+    // A byte order mark is not part of a JSON text, and the JSON reader
+    // would only say "expected value at line 1 column 1". The file is
+    // rejected like every other input that starts with one; the error names
+    // the cause and the remedy.
+    if text.starts_with('\u{feff}') {
+        return err(
+            "the document",
+            "starts with a UTF-8 byte order mark (the bytes EF BB BF); save the file as UTF-8 without a byte order mark",
+        );
+    }
     let document = parse_without_duplicates(text).map_err(|e| format!("the document: {e}"))?;
     let top = members(&document, "the document", &["schema", "info", "entries"])?;
 
@@ -543,9 +553,9 @@ fn parse_block(block: &Value, at: &str) -> Result<TypedCredential, String> {
                     at,
                     format!(
                         "the rows {} and {} overlap (both cover the path {}); a requested claim must match at most one row of a block",
-                        path_text(a),
-                        path_text(b),
-                        path_text(&common)
+                        printable_json(&path_text(a)),
+                        printable_json(&path_text(b)),
+                        printable_json(&path_text(&common))
                     ),
                 );
             }
@@ -1310,6 +1320,50 @@ mod tests {
                 json!(["eu.europa.ec.eudi.pid.de.1", "age_over_18"])
         });
         assert!(e.contains("overlap"), "{e}");
+    }
+
+    /// The overlap error quotes its paths as JSON arrays that stay valid
+    /// JSON: a character the text output never prints raw is written as the
+    /// JSON escape (six ASCII characters such as `\u202e`), not as the raw
+    /// character and not as the Rust escape `\u{202e}`.
+    #[test]
+    fn overlap_error_quotes_paths_in_the_json_form() {
+        let path = "a\u{202e}b\u{2028}c";
+        let file = with_rows(
+            json!([{ "path": [path] }, { "path": [path] }]),
+            json!([]),
+            json!([]),
+        );
+        let quoted = r#"["a\u202eb\u2028c"]"#;
+        let expected = format!(
+            "the rows {quoted} and {quoted} overlap (both cover the path {quoted}); a requested claim must match at most one row of a block"
+        );
+        let e = load_value(&file).expect_err("overlap");
+        assert!(e.ends_with(&expected), "{e}");
+        assert_eq!(e.matches(quoted).count(), 3, "{e}");
+        assert!(!e.contains('\u{202e}'), "{e:?}");
+        assert!(!e.contains('\u{2028}'), "{e:?}");
+        assert!(!e.contains("\\u{"), "{e}");
+        // `load` runs `printable` over the whole error: nothing is left to
+        // replace in the quoted paths.
+        assert_eq!(printable(&e), e);
+        let parsed: Vec<String> = serde_json::from_str(quoted).expect("valid JSON");
+        assert_eq!(parsed, [path]);
+    }
+
+    /// A file that starts with a UTF-8 byte order mark is rejected, and the
+    /// error names the mark instead of "expected value at line 1 column 1".
+    #[test]
+    fn a_byte_order_mark_is_named() {
+        let text = format!("\u{feff}{}", valid());
+        let e = parse("test.json", &text).expect_err("byte order mark");
+        assert_eq!(
+            e,
+            "the document: starts with a UTF-8 byte order mark (the bytes EF BB BF); save the file as UTF-8 without a byte order mark"
+        );
+        assert!(!e.contains('\u{feff}'));
+        // The mark anywhere else is not this case.
+        parse("test.json", &valid().to_string()).expect("no mark");
     }
 
     #[test]

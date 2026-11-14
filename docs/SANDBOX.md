@@ -317,7 +317,7 @@ These guardrails apply to every `register` invocation:
 
 - Dry-run by default. `register` without `--yes` decodes, runs the over-ask and format gate, and prints the verdict, but writes nothing. The output ends with `DRY RUN: nothing written. Re-run with --yes to write to <target>.`
 - `--yes` is required to write. It confirms the write after the gate passes.
-- `--force` writes past an over-ask warning, and requires `--yes`. On main, `--force` without `--yes` is a usage error (exit 2). Without `--force`, an over-asking body is refused (exit 1) on every target. A blocking format error is fatal regardless of `--force`.
+- `--force` writes past an over-ask warning, or past a body that could not be evaluated, and requires `--yes`. On main, `--force` without `--yes` is a usage error (exit 2). Without `--force`, an over-asking body is refused (exit 1) on every target. A blocking format error is fatal regardless of `--force`.
 - Demo fixtures and defaults use relying party id `2af138a8-59ea-4a84-aea3-666cafdb1369` ("Hackathon - Reza"). That id is the default for `--rp` on `list` and for `--rp` on `generate regbody`, and it is the `rpId` in `examples/min.json` and `examples/over.json`. Do not reuse it for a user's production relying party.
 - One relying party per entity, many certificates under it. Never mint additional relying parties; add certificates to the existing one.
 - Secrets hygiene. Never log, echo, or commit tokens, certs, or keys. The repo gitignores `.env*`, `secrets*.md`, `*.sqlite`, and `*signing-key*`. Review staged changes before any git operation.
@@ -383,7 +383,7 @@ augenmass register examples/over.json --target clone --yes
 
 ```
 OVER-ASK: Over-ask vs purpose: 6 of 6 requested claims exceed the stated purpose.
-Purpose: Age verification   Baseline: Age gate (over 18)
+Registration purpose: Age verification   Baseline: Age gate (over 18)
 
 Requested claims:
   [over]  given_name                   Registered, but beyond what the stated purpose needs.

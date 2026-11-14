@@ -31,6 +31,8 @@ use url::Url;
 
 use augenmass_core::pid;
 
+use crate::output::{self, diagln};
+
 use state::{AppState, CertSource};
 
 /// Arguments for `augenmass serve`.
@@ -114,6 +116,11 @@ pub async fn run(args: ServeArgs) -> Result<()> {
                 .unwrap_or_else(|_| EnvFilter::new("warn,augenmass=info")),
         )
         .with_ansi(std::io::stdout().is_terminal())
+        // A log line is a note. Its write goes through the guarded writer of
+        // `output`, and the layer's own report of a failed write (a print
+        // macro, which panics on a closed standard error) is turned off.
+        .log_internal_errors(false)
+        .with_writer(|| output::LogWriter)
         .try_init();
 
     // The public URL is baked into the request_uri, response_uri, QR, and every
@@ -163,7 +170,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     let relay_target = args.relay.clone();
     let bind_host = if relay_target.is_some() {
         if !is_loopback_host(&args.host) {
-            eprintln!(
+            diagln!(
                 "note: --relay makes the relay the public ingress; binding local serve to 127.0.0.1 instead of {}",
                 args.host
             );
@@ -194,7 +201,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
                 (conn.public_url.clone(), Some(conn))
             }
             Err(err) if args.relay_optional => {
-                eprintln!(
+                diagln!(
                     "warning: relay setup failed ({err}); continuing local-only because --relay-optional is set"
                 );
                 (operator_url.clone(), None)
@@ -246,28 +253,28 @@ pub async fn run(args: ServeArgs) -> Result<()> {
     });
 
     if relay_summary.is_some() {
-        eprintln!("augenmass serve: wallet-interaction debugger (relay)");
+        diagln!("augenmass serve: wallet-interaction debugger (relay)");
     } else {
-        eprintln!("augenmass serve: wallet-interaction debugger");
+        diagln!("augenmass serve: wallet-interaction debugger");
     }
-    eprintln!("  open         : {}", state.operator_url);
-    eprintln!("  listening    : http://{}", local_addr);
+    diagln!("  open         : {}", state.operator_url);
+    diagln!("  listening    : http://{}", local_addr);
     if let Some((run_id, ttl_secs, public_url)) = relay_summary.as_ref() {
-        eprintln!(
+        diagln!(
             "  relay        : {}",
             relay_target.as_deref().unwrap_or("custom")
         );
-        eprintln!(
+        diagln!(
             "  run          : {} (TTL {}s)",
             short_for_display(run_id),
             ttl_secs
         );
-        eprintln!("  public       : {}", public_url);
-        eprintln!("  scope        : relay carries only /request and /response; trace and evidence stay local");
+        diagln!("  public       : {}", public_url);
+        diagln!("  scope        : relay carries only /request and /response; trace and evidence stay local");
     }
-    eprintln!("  client_id    : {}", state.client_id);
-    eprintln!("{}", bundled_registration_line());
-    eprintln!(
+    diagln!("  client_id    : {}", state.client_id);
+    diagln!("{}", bundled_registration_line());
+    diagln!(
         "  cert         : {}",
         if state.ephemeral {
             "throwaway (development); set --key + --leaf for the real registrar leaf"
@@ -275,7 +282,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
             "registrar-issued leaf"
         }
     );
-    eprintln!(
+    diagln!(
         "  issuer trust : {}",
         if enforce_trust {
             "enforced (--trust-anchor set)"
@@ -283,7 +290,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
             "not enforced (set --trust-anchor to anchor PID issuers)"
         }
     );
-    eprintln!(
+    diagln!(
         "  status check : {}",
         if args.live_status && enforce_trust && args.status_signer.is_some() {
             "live (--status-signer set; revocation resolved over the network)"
@@ -295,7 +302,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
             "offline (set --live-status to resolve token-status-list revocation)"
         }
     );
-    eprintln!(
+    diagln!(
         "  trace        : {}",
         if console_trace {
             "redacted by default; live on this console; also at <local>/trace/<session> and /api/trace/<session>"
@@ -303,7 +310,7 @@ pub async fn run(args: ServeArgs) -> Result<()> {
             "redacted by default; quiet on console; at <local>/trace/<session> and /api/trace/<session>"
         }
     );
-    eprintln!(
+    diagln!(
         "  artifacts    : {}",
         args.unsafe_debug_artifacts
             .as_ref()
@@ -318,8 +325,8 @@ pub async fn run(args: ServeArgs) -> Result<()> {
             })
     );
     if bind_mismatch {
-        eprintln!();
-        eprintln!(
+        diagln!();
+        diagln!(
             "  warning: binding {}:{} but --public-url advertises {} (port {}); a wallet will fetch the wrong address. Set --public-url to match the bind address.",
             args.host,
             args.port,
@@ -330,13 +337,13 @@ pub async fn run(args: ServeArgs) -> Result<()> {
         );
     }
     if relay_summary.is_none() && is_loopback_host(&args.host) {
-        eprintln!(
+        diagln!(
             "  note: bound to loopback; a phone wallet on your LAN cannot reach this. Use --host 0.0.0.0 with a --public-url that has your LAN IP, or a tunnel."
         );
     }
-    eprintln!();
-    eprintln!("  Open the URL above, scan the QR with a wallet, and watch the trace below.");
-    eprintln!();
+    diagln!();
+    diagln!("  Open the URL above, scan the QR with a wallet, and watch the trace below.");
+    diagln!();
 
     let app = handlers::router(state);
     tracing::info!("listening on http://{}", local_addr);
@@ -374,7 +381,7 @@ fn normalize_base_url(url: &mut Url, label: &str) {
     if !url.path().ends_with('/') {
         let fixed = format!("{}/", url.path());
         url.set_path(&fixed);
-        eprintln!("note: {label} did not end in '/'; using {url}");
+        diagln!("note: {label} did not end in '/'; using {url}");
     }
 }
 

@@ -16,7 +16,7 @@ augenmass audit --request examples/age-minimal-request-sdjwt.json --baseline exa
 
 ```
 OK: Within the purpose-minimal baseline; registration not evaluated.
-Purpose: not stated   Baseline: Example Wine Shop: age check for an order of wine
+Registration purpose: no registration given   Baseline: Example Wine Shop: age check for an order of wine
 Baseline file: baselines-example.json   entry: example.wine-shop.age-check.wine   version: 0.1   status: draft
 draft baseline, no legal review
 Applies when (stated by the baseline, not checked by this tool): the order holds wine and no spirits (invented rule: wine is sold from 18)
@@ -133,6 +133,7 @@ Which members decide something:
 A file that does not match the format is an error, never a partial pass. The error is printed on stderr as `Error: baseline file <file name>: <where>: <what>`, nothing is printed on stdout, and the exit code is 1. The tool rejects, among others:
 
 - a document that is not JSON, not an object, or names one member twice in an object;
+- a document that starts with a UTF-8 byte order mark (the error names the mark: `the document: starts with a UTF-8 byte order mark (the bytes EF BB BF); save the file as UTF-8 without a byte order mark`);
 - a missing or different `schema`;
 - any member that is not listed above, at any level except inside `info` (this catches a misspelt machine field such as `vct_value` or `minimial`, and a row member such as `when` or `condition`);
 - an empty `entries` list, a duplicate entry id, an id with other characters, or the id of a built-in purpose;
@@ -210,7 +211,7 @@ augenmass audit --request examples/age-minimal-request-mdoc.json --baseline exam
 
 ```
 OK: Within the purpose-minimal baseline; registration not evaluated.
-Purpose: not stated   Baseline: Example Wine Shop: age check for an order of wine
+Registration purpose: no registration given   Baseline: Example Wine Shop: age check for an order of wine
 Baseline file: baselines-example.json   entry: example.wine-shop.age-check.wine   version: 0.1   status: draft
 draft baseline, no legal review
 Applies when (stated by the baseline, not checked by this tool): the order holds wine and no spirits (invented rule: wine is sold from 18)
@@ -229,7 +230,7 @@ augenmass audit --request '{"credentials":[{"id":"card","format":"dc+sd-jwt","me
 
 ```
 NOT EVALUATED: 1 of 2 requested claims could not be judged.
-Purpose: not stated   Baseline: Example Wine Shop: loyalty card at checkout
+Registration purpose: no registration given   Baseline: Example Wine Shop: loyalty card at checkout
 Baseline file: baselines-example.json   entry: example.wine-shop.loyalty-card   version: 0.1   status: draft
 draft baseline, no legal review
 
@@ -284,7 +285,7 @@ The text output names, under the purpose line:
 Baseline file: <file name>   entry: <id>   version: <version>   status: <status>
 ```
 
-The file is named by its file name only, also when the argument was a path with directories. Text that comes from the baseline file or from the request (the label, the version, `applies_when`, every reason, credential types, claim paths) is printed on one line each: a line break, any other control character, and the Unicode characters that separate lines or change the reading direction are printed as an escape such as `\n` or `\u{1b}`. A path that is printed as a JSON array (the lines under `Minimal claims of this baseline entry` and `Acceptable alternatives of this baseline entry`) uses the JSON escape instead, for example `\u202e`, so the array stays valid JSON and can be pasted into a DCQL `path`. A file can therefore not print a second `Baseline file` line or remove the status line and the draft label on a terminal. `--json` carries the strings as the file has them. An entry whose status is not `reviewed` is labelled `draft baseline, no legal review`. A `reviewed` entry prints `reviewed by <reviewer> (as stated by the baseline file)`; the tool cannot check that statement. The `Applies when` line follows when the entry has `applies_when`, and every result ends with the assessment sentence.
+The file is named by its file name only, also when the argument was a path with directories. Text that comes from the baseline file or from the request (the label, the version, `applies_when`, every reason, credential types, claim paths) is printed on one line each: a line break, any other control character, and the Unicode characters that separate lines or change the reading direction are printed as an escape such as `\n` or `\u{1b}`. A path that is printed as a JSON array (the lines under `Minimal claims of this baseline entry` and `Acceptable alternatives of this baseline entry`) uses the JSON escape instead, for example `\u202e`, so the array stays valid JSON and can be pasted into a DCQL `path`. The error for overlapping rows quotes its paths in the same JSON form. A file can therefore not print a second `Baseline file` line or remove the status line and the draft label on a terminal. `--json` carries the strings as the file has them. An entry whose status is not `reviewed` is labelled `draft baseline, no legal review`. A `reviewed` entry prints `reviewed by <reviewer> (as stated by the baseline file)`; the tool cannot check that statement. The `Applies when` line follows when the entry has `applies_when`, and every result ends with the assessment sentence.
 
 `check --baseline` names the file, the entry, its version and its status also when it prints no report (a body that passes, a format error).
 
@@ -307,7 +308,6 @@ An excerpt of its output (the full `claims` list holds every block of the entry)
   "version": "0.1",
   "status": "draft",
   "reviewer": null,
-  "legal_review": false,
   "notice": "draft baseline, no legal review",
   "applies_when": "the order holds wine and no spirits (invented rule: wine is sold from 18)",
   "assessment_notice": "A baseline file is its author's assessment, not law and not legal advice.",

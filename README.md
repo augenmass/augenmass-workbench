@@ -20,7 +20,7 @@ The current release is `v0.4.1`. It judges the mdoc age element `age_over_NN` li
 - A deployed cached-sandbox backend at `https://cache.augenmass.tech/api` for stable public sandbox reads and demo prewarming.
 - A deployed wallet-only relay at `https://wallet.augenmass.tech`, proven with `just hosted-relay-proof`, so a phone wallet can reach `augenmass serve` without exposing trace, inspect, evidence, or unsafe debug artifacts publicly. The hosted relay is protected; operators configure the token through `AUGENMASS_RELAY_TOKEN`.
 
-The main branch carries changes that are not released yet and are not in the 0.4.1 binaries, including the ones bundled in the plugin. They are listed under `[Unreleased]` in `CHANGELOG.md`: a third result, NOT EVALUATED with exit code 3, for a request that the purpose baseline or the registration comparison could not judge in part (for example a credential format or type the baseline does not model); a usage error with exit code 2 for an unknown purpose id; the credential types each built-in baseline models; and `--baseline FILE` for `audit` and `check`, which judges against an entry of a baseline file of your own (`docs/BASELINES.md`). A binary built from main still reports version 0.4.1.
+The main branch carries changes that are not released yet and are not in the 0.4.1 binaries, including the ones bundled in the plugin. They are listed under `[Unreleased]` in `CHANGELOG.md`: a third result, NOT EVALUATED with exit code 3, for a request that the purpose baseline or the registration comparison could not judge in part (for example a credential format or type the baseline does not model); a usage error with exit code 2 for an unknown purpose id; the credential types each built-in baseline models; `--baseline FILE` for `audit` and `check`, which judges against an entry of a baseline file of your own (`docs/BASELINES.md`); a warning in `validate dcql`, `inspect` and `audit` for a DCQL member name that resembles a defined one (for example `claim` for `claims`), for which `audit` gives NOT EVALUATED where 0.4.1 says OK; and exit codes that survive a reader that closes the output early (for example `| head -n 1`). A binary built from main still reports version 0.4.1.
 
 The strongest demo path is still skill first, CLI underneath: ask the agent what an artifact is, have it run the Rust tool, show the over-ask finding with the legal basis, then switch to `serve --relay augenmass` for the real wallet exchange.
 
@@ -174,7 +174,7 @@ Audit against an entry of a baseline file of your own instead of a built-in purp
 ```sh
 augenmass audit --request examples/age-minimal-request-sdjwt.json --baseline examples/baselines-example.json --purpose example.wine-shop.age-check.wine
 # OK: Within the purpose-minimal baseline; registration not evaluated.
-# Purpose: not stated   Baseline: Example Wine Shop: age check for an order of wine
+# Registration purpose: no registration given   Baseline: Example Wine Shop: age check for an order of wine
 # Baseline file: baselines-example.json   entry: example.wine-shop.age-check.wine   version: 0.1   status: draft
 # draft baseline, no legal review
 ```

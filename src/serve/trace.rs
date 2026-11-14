@@ -18,6 +18,8 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use crate::output::diagln;
+
 /// A coarse severity used for console coloring and quick scanning.
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -211,7 +213,7 @@ impl TraceStore {
                 TraceLevel::Bad => "31m",
                 TraceLevel::Info => "36m",
             };
-            eprintln!(
+            diagln!(
                 "  {at}  {short}  {open}{col}{code:<22}{close}  {summary}",
                 at = at,
                 short = short,
@@ -222,7 +224,7 @@ impl TraceStore {
                 summary = summary,
             );
         } else {
-            eprintln!("  {at}  {short}  {code:<22}  {summary}");
+            diagln!("  {at}  {short}  {code:<22}  {summary}");
         }
     }
 

@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 
 use crate::baseline_file::path_text;
 use crate::checkbody::{CheckOutcome, CheckResult, Finding};
+use crate::dcql::IgnoredMember;
 
 /// The one line every output that read a registration certificate carries:
 /// the payload was decoded, nothing about it was verified.
@@ -95,7 +96,7 @@ pub fn render_check(path: &str, outcome: &CheckOutcome) -> String {
     let mut baseline_named = false;
     if let Some(report) = &outcome.report {
         if report.outcome() != Outcome::Ok {
-            out.push_str(&render_report(report, None));
+            out.push_str(&render_report(report, None, &[]));
             out.push('\n');
             baseline_named = true;
         }
@@ -206,7 +207,7 @@ fn baseline_file_blocks(info: &BaselineInfo) -> Vec<(String, Vec<String>)> {
 }
 
 pub fn render_over_ask(report: &OverAskReport) -> String {
-    render_report(report, None)
+    render_report(report, None, &[])
 }
 
 /// The headline word of a report: `OK`, `OVER-ASK`, or `NOT EVALUATED`.
@@ -218,13 +219,84 @@ pub fn headline(outcome: Outcome) -> &'static str {
     }
 }
 
+/// The first value of the purpose line: the purpose text of the registration
+/// the request was compared with (the registration certificate of `audit
+/// --cert`, or the body itself for `check` and `register`). It is not the
+/// purpose id of `--purpose`, which selects the baseline, so the line says
+/// which of the two it is and why it has no text: the registration states
+/// none, or no registration was given. A purpose text without a visible
+/// character ([`is_blank`]) states nothing and reads as not stated; `--json`
+/// carries the text unchanged.
+fn registration_purpose(report: &OverAskReport) -> String {
+    match report.purpose.as_deref() {
+        Some(text) if !is_blank(text) => printable(text),
+        _ if report.counts.registration_evaluated => "not stated in the registration".to_string(),
+        _ => "no registration given".to_string(),
+    }
+}
+
+/// Whether a text shows nothing when printed: it is empty, or every
+/// character of it is one that a display shows as nothing ([`shows_nothing`]).
+fn is_blank(text: &str) -> bool {
+    text.chars().all(shows_nothing)
+}
+
+/// Whether a display shows a character as nothing: white space, a code point
+/// that Unicode lists as default ignorable ([`default_ignorable`]: the zero
+/// width space, the combining grapheme joiner, the variation selectors and
+/// the like), or the blank Braille pattern U+2800, which has a width and no
+/// dots. A character that [`printable`] replaces by its escape is seen by
+/// the reader as that escape, so the other control characters and the
+/// bidirectional formatting characters do not count, although Unicode lists
+/// the latter as default ignorable.
+fn shows_nothing(c: char) -> bool {
+    c.is_whitespace() || c == '\u{2800}' || (default_ignorable(c) && !not_printed_raw(c))
+}
+
+/// The Unicode property Default_Ignorable_Code_Point: the code points that a
+/// display shows as nothing when it does not support them. The ranges are
+/// copied from `DerivedCoreProperties.txt` of Unicode 16.0.0 (section
+/// "Derived Property: Default_Ignorable_Code_Point"), adjacent ranges of
+/// that list joined. The list includes the reserved code points that Unicode
+/// keeps for such characters, so it does not grow when one of them is
+/// assigned.
+fn default_ignorable(c: char) -> bool {
+    matches!(
+        c,
+        '\u{00AD}'
+            | '\u{034F}'
+            | '\u{061C}'
+            | '\u{115F}'..='\u{1160}'
+            | '\u{17B4}'..='\u{17B5}'
+            | '\u{180B}'..='\u{180F}'
+            | '\u{200B}'..='\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2060}'..='\u{206F}'
+            | '\u{3164}'
+            | '\u{FE00}'..='\u{FE0F}'
+            | '\u{FEFF}'
+            | '\u{FFA0}'
+            | '\u{FFF0}'..='\u{FFF8}'
+            | '\u{1BCA0}'..='\u{1BCA3}'
+            | '\u{1D173}'..='\u{1D17A}'
+            | '\u{E0000}'..='\u{E0FFF}'
+    )
+}
+
 /// One renderer for the three headlines, with an optional notice line right
 /// under the verdict. Every result prints the headline, the purpose line and
-/// the claim list. OVER-ASK adds the over-ask summary, a count of the claims
-/// that could not be judged (when there are any), the suggestion blocks and
-/// the legal basis. NOT EVALUATED adds the count of claims that could not be
-/// judged and the suggestion blocks.
-fn render_report(report: &OverAskReport, notice: Option<&str>) -> String {
+/// the claim list, and the authoring warnings of the query when there are
+/// any (`audit` only; the other callers pass none). OVER-ASK adds the
+/// over-ask summary, a count of the claims that could not be judged and of
+/// the members with a warning (when there are any), the suggestion blocks
+/// and the legal basis. NOT EVALUATED adds the count of claims that could
+/// not be judged and of the members with a warning, and the suggestion
+/// blocks.
+fn render_report(
+    report: &OverAskReport,
+    notice: Option<&str>,
+    warnings: &[IgnoredMember],
+) -> String {
     let outcome = report.outcome();
     let mut out = String::new();
     out.push_str(&format!("{}: {}\n", headline(outcome), report.verdict_line));
@@ -235,9 +307,11 @@ fn render_report(report: &OverAskReport, notice: Option<&str>) -> String {
     // baseline from its file, the claim keys and parts of the rationales
     // from the request and the baseline file: all are printed on one line
     // each ([`printable`]).
-    let purpose = printable(report.purpose.as_deref().unwrap_or("not stated"));
+    let purpose = registration_purpose(report);
     let baseline = printable(report.baseline_label.as_deref().unwrap_or("not evaluated"));
-    out.push_str(&format!("Purpose: {purpose}   Baseline: {baseline}\n"));
+    out.push_str(&format!(
+        "Registration purpose: {purpose}   Baseline: {baseline}\n"
+    ));
     let file_baseline = report
         .baseline
         .as_ref()
@@ -260,6 +334,17 @@ fn render_report(report: &OverAskReport, notice: Option<&str>) -> String {
             printable(&claim.key),
             printable(&claim.rationale)
         ));
+    }
+
+    // A member of the query that a wallet ignores unless it knows it from an
+    // extension: the message is built by `dcql::ignored_members`, with the
+    // member name already escaped for one line.
+    let ignored = warnings.len();
+    if ignored > 0 {
+        out.push_str("\nAuthoring warnings:\n");
+        for warning in warnings {
+            out.push_str(&format!("  {}\n", warning.message));
+        }
     }
 
     // Every result under a loaded baseline file ends with the sentence that
@@ -289,10 +374,23 @@ fn render_report(report: &OverAskReport, notice: Option<&str>) -> String {
             if unjudged > 0 {
                 out.push_str(&format!("Not evaluated: {unjudged} claim(s).\n"));
             }
+            if ignored > 0 {
+                out.push_str(&format!(
+                    "Ignored by a wallet that does not know them: {ignored} member(s) of the query.\n"
+                ));
+            }
         }
         Outcome::NotEvaluated => {
+            let members = format!(
+                "{ignored} member(s) of the query that a wallet ignores unless it knows them from an extension"
+            );
+            let what = match (unjudged, ignored) {
+                (_, 0) => format!("{unjudged} claim(s)"),
+                (0, _) => members,
+                (_, _) => format!("{unjudged} claim(s), and {members}"),
+            };
             out.push_str(&format!(
-                "\nNot evaluated: {unjudged} claim(s). No judged claim asks for too much; exit code {}.\n",
+                "\nNot evaluated: {what}. No judged claim asks for too much; exit code {}.\n",
                 outcome.exit_code()
             ));
         }
@@ -413,9 +511,14 @@ fn suggestion_blocks_with(
 
 /// Render a report for the `audit` command: OK, OVER-ASK, or NOT EVALUATED.
 /// With `cert_decoded`, the registration-certificate notice follows the
-/// verdict line on every path.
-pub fn render_audit(report: &OverAskReport, cert_decoded: bool) -> String {
-    render_report(report, cert_decoded.then_some(REGCERT_NOTICE))
+/// verdict line on every path. `warnings` are the authoring warnings of the
+/// request (`dcql::ignored_members`).
+pub fn render_audit(
+    report: &OverAskReport,
+    cert_decoded: bool,
+    warnings: &[IgnoredMember],
+) -> String {
+    render_report(report, cert_decoded.then_some(REGCERT_NOTICE), warnings)
 }
 
 pub fn render_legal_basis(report: &OverAskReport) -> String {
@@ -446,6 +549,88 @@ pub fn render_findings(findings: &[Finding]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A purpose text that shows nothing is blank; one with a visible
+    /// character, or with a character that is printed as its escape, is not.
+    #[test]
+    fn is_blank_is_true_only_for_text_that_shows_nothing() {
+        for text in [
+            "",
+            " ",
+            "   ",
+            "\t",
+            " \n ",
+            "\u{a0}",
+            "\u{3000}",
+            "\u{200b}",
+            " \u{200b}\u{200c}\u{200d}\u{2060}\u{feff} ",
+        ] {
+            assert!(is_blank(text), "{text:?}");
+        }
+        for text in ["a", " a ", "-", "\u{202e}", "\u{1b}", "\u{200b}x"] {
+            assert!(!is_blank(text), "{text:?}");
+        }
+    }
+
+    /// Every code point that Unicode 16.0.0 lists as
+    /// Default_Ignorable_Code_Point shows nothing and is blank, at both ends
+    /// of each range of the list, and so is the blank Braille pattern. The
+    /// bidirectional formatting characters of that list are the exception:
+    /// `printable` prints them as their escape, which a reader sees. The
+    /// code points next to each range are not blank.
+    #[test]
+    fn is_blank_covers_the_default_ignorable_code_points() {
+        let ranges: [(u32, u32); 18] = [
+            (0x00AD, 0x00AD),
+            (0x034F, 0x034F),
+            (0x115F, 0x1160),
+            (0x17B4, 0x17B5),
+            (0x180B, 0x180F),
+            (0x200B, 0x200D),
+            (0x2060, 0x2065),
+            (0x206A, 0x206F),
+            (0x2800, 0x2800),
+            (0x3164, 0x3164),
+            (0xFE00, 0xFE0F),
+            (0xFEFF, 0xFEFF),
+            (0xFFA0, 0xFFA0),
+            (0xFFF0, 0xFFF8),
+            (0x1BCA0, 0x1BCA3),
+            (0x1D173, 0x1D17A),
+            (0xE0000, 0xE0FFF),
+            // Not default ignorable, but white space: blank as well.
+            (0x2000, 0x200A),
+        ];
+        let text = |code: u32| char::from_u32(code).expect("scalar value").to_string();
+        for (first, last) in ranges {
+            for code in [first, last] {
+                assert!(is_blank(&text(code)), "U+{code:04X}");
+                assert_eq!(printable(&text(code)), text(code), "U+{code:04X}");
+            }
+        }
+        // The two characters of the finding, alone and between spaces.
+        assert!(is_blank("\u{34f}"));
+        assert!(is_blank("\u{fe0f}"));
+        assert!(is_blank(" \u{34f}\u{fe0f}\u{ad}\u{2800}\u{e0020} "));
+
+        // Printed as an escape, so not blank.
+        for code in [
+            0x061C, 0x200E, 0x200F, 0x202A, 0x202E, 0x2066, 0x2069, 0x001B, 0x007F,
+        ] {
+            assert!(!is_blank(&text(code)), "U+{code:04X}");
+            assert_ne!(printable(&text(code)), text(code), "U+{code:04X}");
+        }
+        // The neighbours of the ranges, and characters that show something.
+        for code in [
+            0x00AC, 0x00AE, 0x034E, 0x0350, 0x115E, 0x1161, 0x17B3, 0x17B6, 0x180A, 0x1810, 0x2010,
+            0x2070, 0x27FF, 0x2801, 0x3163, 0x3165, 0xFDFF, 0xFE10, 0xFEFE, 0xFF9F, 0xFFA1, 0xFFEF,
+            0xFFF9, 0xFFFC, 0xFFFD, 0x1BC9F, 0x1BCA4, 0x1D172, 0x1D17B, 0xDFFFF, 0xE1000, 0x0301,
+        ] {
+            assert!(!is_blank(&text(code)), "U+{code:04X}");
+        }
+        assert!(!is_blank("a\u{fe0f}"));
+        assert!(!is_blank("\u{34f}x\u{34f}"));
+    }
 
     /// A serialized path with characters the text output may not print raw
     /// stays valid JSON with the same value, on one line, and `printable`

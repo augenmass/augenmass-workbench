@@ -16,7 +16,7 @@ use openid4vp::core::dcql_query::DcqlQuery;
 use serde_json::Value;
 
 use crate::commands::decode::extract_regcert_jwt;
-use crate::dcql::parse_dcql;
+use crate::dcql::{apply_ignored_members, parse_dcql_with_warnings, IgnoredMember};
 use crate::output::{emit, OutputFormat};
 use crate::render::{regcert_status_json, render_audit};
 
@@ -54,9 +54,9 @@ pub struct AuditArgs {
 /// caller turns it into the exit code (0, 1, 3).
 pub fn run(args: AuditArgs, format: OutputFormat) -> Result<Outcome> {
     let scope = load_scope(args.cert.as_ref())?;
-    let query = build_request(&args.request)?;
+    let (query, warnings) = build_request(&args.request)?;
     let vct = args.vct.as_deref().unwrap_or(PID_VCT);
-    let report: OverAskReport = inspector::analyze_against(
+    let mut report: OverAskReport = inspector::analyze_against(
         vct,
         &query,
         scope.as_ref(),
@@ -64,10 +64,18 @@ pub fn run(args: AuditArgs, format: OutputFormat) -> Result<Outcome> {
         Subject::Request,
         &[],
     );
+    // A query with a member that a wallet ignores unless it knows it from an
+    // extension never gets a bare OK: the request may ask for something
+    // else than its author meant. An over-ask stays an over-ask.
+    apply_ignored_members(&mut report, &warnings);
 
     // The certificate is decoded, never verified: say so in both outputs.
     let mut json = serde_json::to_value(&report).unwrap_or(Value::Null);
     if let Some(obj) = json.as_object_mut() {
+        obj.insert(
+            "warnings".to_string(),
+            serde_json::to_value(&warnings).unwrap_or(Value::Null),
+        );
         obj.insert(
             "registration_certificate".to_string(),
             if scope.is_some() {
@@ -77,7 +85,7 @@ pub fn run(args: AuditArgs, format: OutputFormat) -> Result<Outcome> {
             },
         );
     }
-    let text = render_audit(&report, scope.is_some());
+    let text = render_audit(&report, scope.is_some(), &warnings);
     emit(format, &json, &text)?;
     Ok(report.outcome())
 }
@@ -93,15 +101,18 @@ fn load_scope(cert: Option<&PathBuf>) -> Result<Option<RegisteredScope>> {
     Ok(Some(scope))
 }
 
-fn build_request(request: &str) -> Result<DcqlQuery> {
+/// The request and the authoring warnings of its JSON text. The two
+/// built-in requests have none.
+fn build_request(request: &str) -> Result<(DcqlQuery, Vec<IgnoredMember>)> {
     match request {
-        "minimal" => Ok(pid::pid_dcql_minimal()),
-        "overask" => Ok(pid::pid_dcql_overask_example()),
+        "minimal" => Ok((pid::pid_dcql_minimal(), Vec::new())),
+        "overask" => Ok((pid::pid_dcql_overask_example(), Vec::new())),
         input => {
             let content = read_request_input(input)?;
-            parse_dcql(&content).with_context(|| {
+            let parsed = parse_dcql_with_warnings(&content).with_context(|| {
                 format!("--request must be 'minimal', 'overask', or a DCQL JSON value ({input})")
-            })
+            })?;
+            Ok((parsed.query, parsed.warnings))
         }
     }
 }

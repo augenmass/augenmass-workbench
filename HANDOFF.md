@@ -95,7 +95,8 @@ request/trace path is integration-tested on an ephemeral port (tests/serve.rs).
 Exit codes are CI-friendly: non-zero on the "bad" outcome (over-ask, blocking format error,
 verification reject, untrusted, revoked, x509_hash mismatch, doctor findings). On main,
 `check`, `audit` and `register` also exit 3 when a requested claim could not be judged
-(NOT EVALUATED); the full table is in `docs/COMMANDS.md`.
+(NOT EVALUATED), and `audit` does so for a DCQL query with a member name that resembles a
+defined one (for example `claim` for `claims`); the full table is in `docs/COMMANDS.md`.
 
 ## Architecture
 

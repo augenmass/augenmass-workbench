@@ -4149,7 +4149,7 @@ fn baseline_file_minimal_request_is_ok_and_names_the_baseline() {
         stdout,
         format!(
             "OK: Within the purpose-minimal baseline; registration not evaluated.\n\
-             Purpose: not stated   Baseline: Example Wine Shop: age check for an order of wine\n\
+             Registration purpose: no registration given   Baseline: Example Wine Shop: age check for an order of wine\n\
              {WINE_FACTS}{DRAFT_LINE}{WINE_APPLIES}\n\
              Requested claims:\n  [ok]  age_equal_or_over.18         Minimal under this baseline entry.\n\n\
              {ASSESSMENT_LINE}"
@@ -4414,7 +4414,7 @@ fn baseline_file_json_carries_the_outcome_and_the_baseline_facts() {
     assert_eq!(b["version"], "0.1");
     assert_eq!(b["status"], "draft");
     assert_eq!(b["reviewer"], serde_json::Value::Null);
-    assert_eq!(b["legal_review"], false);
+    assert!(b.get("legal_review").is_none());
     assert_eq!(b["notice"], "draft baseline, no legal review");
     assert_eq!(
         b["applies_when"],
@@ -4533,7 +4533,7 @@ fn baseline_file_reviewed_entry_names_the_reviewer_and_has_no_draft_label() {
     );
     assert_eq!(json["baseline"]["status"], "reviewed");
     assert_eq!(json["baseline"]["reviewer"], "Example Reviewer");
-    assert_eq!(json["baseline"]["legal_review"], true);
+    assert!(json["baseline"].get("legal_review").is_none());
     assert_eq!(
         json["baseline"]["notice"],
         "reviewed by Example Reviewer (as stated by the baseline file)"
@@ -5441,7 +5441,7 @@ fn text_output_escapes_control_characters_of_file_strings() {
     let value = json_of(&json_args, 3);
     assert_eq!(value["baseline"]["applies_when"], forged);
     assert_eq!(value["baseline"]["status"], "draft");
-    assert_eq!(value["baseline"]["legal_review"], false);
+    assert!(value["baseline"].get("legal_review").is_none());
 
     // An error that quotes the file is printed on one line as well.
     let mut bad = one_entry_baseline();
@@ -5550,4 +5550,2512 @@ fn baseline_file_path_suggestions_stay_valid_json() {
         value["baseline"]["claims"][0]["alternatives"][0]["path"],
         alternative
     );
+}
+
+// --- closed output streams ---------------------------------------------------
+//
+// The exit code carries the verdict. A reader that closes standard output or
+// standard error early must not turn it into a panic with exit code 101: the
+// command writes nothing more to that stream and exits with the code it
+// computes with an open reader.
+
+/// Which of the two output streams have a reader.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Readers {
+    Open,
+    StdoutClosed,
+    StderrClosed,
+    BothClosed,
+}
+
+/// The write end of a pipe whose read end is already closed. No race: the
+/// reader is gone before the child starts.
+fn pipe_without_reader() -> std::process::Stdio {
+    let (reader, writer) = std::io::pipe().expect("pipe");
+    drop(reader);
+    writer.into()
+}
+
+/// Exit code, standard output and standard error of one run. A stream
+/// without a reader gives an empty string.
+fn run_with_readers(mut cmd: std::process::Command, readers: Readers) -> (i32, String, String) {
+    use std::process::Stdio;
+    let closed_out = matches!(readers, Readers::StdoutClosed | Readers::BothClosed);
+    let closed_err = matches!(readers, Readers::StderrClosed | Readers::BothClosed);
+    cmd.stdin(Stdio::null());
+    cmd.stdout(if closed_out {
+        pipe_without_reader()
+    } else {
+        Stdio::piped()
+    });
+    cmd.stderr(if closed_err {
+        pipe_without_reader()
+    } else {
+        Stdio::piped()
+    });
+    let out = cmd.output().expect("run binary");
+    (
+        out.status.code().expect("exit code, not a signal"),
+        String::from_utf8(out.stdout).expect("utf8"),
+        String::from_utf8(out.stderr).expect("utf8"),
+    )
+}
+
+/// The binary in the repository root (the fixtures are named relative to it).
+fn augenmass(args: &[&str]) -> std::process::Command {
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_augenmass"));
+    cmd.args(args);
+    cmd
+}
+
+/// Runs `args` with open readers and with each stream closed before the
+/// start. The exit code is `code` every time, no run panics, and the stream
+/// that still has a reader holds exactly what it holds in the open run
+/// (nothing further is printed, also no "Broken pipe" line).
+fn assert_exit_code_survives_closed_streams(label: &str, args: &[&str], code: i32) {
+    let (open_code, open_out, open_err) = run_with_readers(augenmass(args), Readers::Open);
+    assert_eq!(
+        open_code, code,
+        "{label}: open readers\n{open_out}{open_err}"
+    );
+    assert!(!open_err.contains("panicked"), "{label}: {open_err}");
+
+    let (c, out, err) = run_with_readers(augenmass(args), Readers::StdoutClosed);
+    assert_eq!(c, code, "{label}: stdout closed\n{err}");
+    assert!(out.is_empty(), "{label}");
+    assert!(!err.contains("panicked"), "{label}: {err}");
+    assert_eq!(err, open_err, "{label}: stderr with stdout closed");
+
+    let (c, out, err) = run_with_readers(augenmass(args), Readers::StderrClosed);
+    assert_eq!(c, code, "{label}: stderr closed\n{out}");
+    assert!(err.is_empty(), "{label}");
+    assert_eq!(out, open_out, "{label}: stdout with stderr closed");
+
+    let (c, _, _) = run_with_readers(augenmass(args), Readers::BothClosed);
+    assert_eq!(c, code, "{label}: both closed");
+}
+
+/// A request whose second credential type the built-in baseline does not
+/// model: NOT EVALUATED, exit code 3.
+fn not_evaluated_request() -> String {
+    dcql(&[
+        pid_sd_jwt(&[json!(["age_equal_or_over", "18"])]),
+        credential(
+            "card",
+            "dc+sd-jwt",
+            json!({ "vct_values": ["urn:example:member-card:1"] }),
+            &[json!(["member_number"])],
+        ),
+    ])
+}
+
+#[test]
+fn closed_output_streams_keep_the_exit_code_of_a_verdict() {
+    let not_evaluated = not_evaluated_request();
+    let not_evaluated_body = body_with(json!([jwt_vc_entry(json!([
+        "credentialSubject",
+        "family_name"
+    ]))]));
+    let minimal = "examples/age-minimal-request-sdjwt.json";
+    let cases: Vec<(&str, Vec<&str>, i32)> = vec![
+        (
+            "audit, OVER-ASK",
+            vec!["audit", "--request", "overask", "--purpose", "age_gate_18"],
+            1,
+        ),
+        (
+            "audit, OK",
+            vec!["audit", "--request", minimal, "--purpose", "age_gate_18"],
+            0,
+        ),
+        (
+            "audit, NOT EVALUATED",
+            vec![
+                "audit",
+                "--request",
+                &not_evaluated,
+                "--purpose",
+                "age_gate_18",
+            ],
+            3,
+        ),
+        (
+            "audit, NOT EVALUATED for an ignored member",
+            vec![
+                "audit",
+                "--request",
+                "examples/age-request-ignored-member.json",
+                "--purpose",
+                "age_gate_18",
+            ],
+            3,
+        ),
+        (
+            "audit --json, OVER-ASK",
+            vec![
+                "audit",
+                "--request",
+                "overask",
+                "--purpose",
+                "age_gate_18",
+                "--json",
+            ],
+            1,
+        ),
+        (
+            "audit --json, NOT EVALUATED",
+            vec![
+                "--json",
+                "audit",
+                "--request",
+                &not_evaluated,
+                "--purpose",
+                "age_gate_18",
+            ],
+            3,
+        ),
+        ("check, over-ask", vec!["check", "examples/over.json"], 1),
+        ("check, ok", vec!["check", "examples/min.json"], 0),
+        (
+            "check, not evaluated",
+            vec!["check", &not_evaluated_body],
+            3,
+        ),
+        (
+            "check, format error",
+            vec!["check", "examples/bad-path.json"],
+            1,
+        ),
+        (
+            "check --json, over-ask",
+            vec!["check", "examples/over.json", "--json"],
+            1,
+        ),
+        (
+            "register dry run, ok",
+            vec!["register", "examples/min.json"],
+            0,
+        ),
+        (
+            "register dry run, refused over-ask",
+            vec!["register", "examples/over.json"],
+            1,
+        ),
+        (
+            "register dry run, refused not evaluated",
+            vec!["register", &not_evaluated_body],
+            3,
+        ),
+        (
+            "register dry run, format error",
+            vec!["register", "examples/bad-path.json"],
+            1,
+        ),
+    ];
+    for (label, args, code) in &cases {
+        assert_exit_code_survives_closed_streams(label, args, *code);
+    }
+}
+
+#[test]
+fn closed_output_streams_never_panic_any_command() {
+    let source = evidence_source_session();
+    let bundle_dir = test_temp_dir("augenmass-cli-closed-evidence");
+    let bundle = bundle_dir.join("bundle.json");
+    let bundle = bundle.to_str().expect("utf8 path").to_string();
+    bin()
+        .args([
+            "evidence",
+            "export",
+            source.to_str().unwrap(),
+            "--out",
+            &bundle,
+        ])
+        .assert()
+        .success();
+
+    let erica = "fixtures/presentations/erica-vp-VALID.sdjwt";
+    let wrong_nonce = "fixtures/presentations/erica-vp-WRONG_NONCE.sdjwt";
+    let registration = "examples/age-broad-registration.jwt";
+    let cases: Vec<(&str, Vec<&str>, i32)> = vec![
+        (
+            "validate dcql, valid",
+            vec!["validate", "dcql", "examples/age-broad-request.json"],
+            0,
+        ),
+        (
+            "validate dcql, valid with a warning",
+            vec![
+                "validate",
+                "dcql",
+                "examples/age-request-ignored-member.json",
+            ],
+            0,
+        ),
+        (
+            "validate dcql, invalid",
+            vec!["validate", "dcql", r#"{"credentials":[]}"#],
+            1,
+        ),
+        (
+            "inspect",
+            vec!["inspect", "examples/age-broad-request.json"],
+            0,
+        ),
+        ("inspect --json", vec!["inspect", erica, "--json"], 0),
+        ("decode jwt", vec!["decode", "jwt", registration], 0),
+        ("decode sd-jwt", vec!["decode", "sd-jwt", erica], 0),
+        ("decode regcert", vec!["decode", "regcert", registration], 0),
+        (
+            "decode request",
+            vec!["decode", "request", "fixtures/requests/eudiplo-request.jwt"],
+            0,
+        ),
+        (
+            "decode offer",
+            vec!["decode", "offer", "fixtures/offers/eudiplo-offer-uri.txt"],
+            0,
+        ),
+        (
+            "decode status-list",
+            vec![
+                "decode",
+                "status-list",
+                "fixtures/status/status-list-CLEAR.jwt",
+            ],
+            0,
+        ),
+        (
+            "decode mdoc",
+            vec!["decode", "mdoc", "fixtures/mdoc/issuer-signed.hex"],
+            0,
+        ),
+        ("baselines", vec!["baselines"], 0),
+        ("baselines age_gate_18", vec!["baselines", "age_gate_18"], 0),
+        ("baselines --json", vec!["baselines", "--json"], 0),
+        (
+            "doctor with findings",
+            vec!["doctor", "examples/bad-request.json"],
+            1,
+        ),
+        (
+            "x509-hash",
+            vec!["x509-hash", "fixtures/certs/access-leaf.pem"],
+            0,
+        ),
+        (
+            "x509-hash, mismatch",
+            vec![
+                "x509-hash",
+                "fixtures/certs/access-leaf.pem",
+                "--client-id",
+                "x509_hash:not-the-hash",
+            ],
+            1,
+        ),
+        (
+            "verify presentation, verified",
+            vec![
+                "verify",
+                "presentation",
+                erica,
+                "--nonce",
+                NONCE,
+                "--aud",
+                AUD,
+                "--now",
+                NOW,
+            ],
+            0,
+        ),
+        (
+            "verify presentation, not verified",
+            vec![
+                "verify",
+                "presentation",
+                wrong_nonce,
+                "--nonce",
+                NONCE,
+                "--aud",
+                AUD,
+                "--now",
+                NOW,
+            ],
+            1,
+        ),
+        ("generate regbody", vec!["generate", "regbody"], 0),
+        (
+            "generate dcql",
+            vec!["generate", "dcql", "--claim", "age_equal_or_over.18"],
+            0,
+        ),
+        ("evidence verify", vec!["evidence", "verify", &bundle], 0),
+        ("--help", vec!["--help"], 0),
+        ("--version", vec!["--version"], 0),
+        (
+            "usage error",
+            vec![
+                "audit",
+                "--request",
+                "overask",
+                "--purpose",
+                "no_such_purpose",
+            ],
+            2,
+        ),
+        (
+            "unreadable input",
+            vec![
+                "audit",
+                "--request",
+                "no-such-file",
+                "--purpose",
+                "age_gate_18",
+            ],
+            1,
+        ),
+    ];
+    for (label, args, code) in &cases {
+        assert_exit_code_survives_closed_streams(label, args, *code);
+    }
+
+    let _ = fs::remove_dir_all(source);
+    let _ = fs::remove_dir_all(bundle_dir);
+}
+
+/// One run with a reader of standard output that stops early: it reads
+/// `take` bytes (or up to the first line break for `None`) and closes.
+/// Returns the exit code and standard error.
+fn run_with_a_reader_that_stops(args: &[&str], take: Option<usize>) -> (i32, String) {
+    use std::io::{BufRead, Read};
+    use std::process::Stdio;
+    let mut child = augenmass(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn binary");
+    let stdout = child.stdout.take().expect("stdout");
+    match take {
+        None => {
+            let mut reader = std::io::BufReader::with_capacity(64, stdout);
+            let mut line = Vec::new();
+            reader.read_until(b'\n', &mut line).expect("first line");
+            assert!(line.ends_with(b"\n"), "a first line");
+        }
+        Some(count) => {
+            let mut read = vec![0u8; count];
+            let mut stdout = stdout;
+            stdout
+                .read_exact(&mut read)
+                .expect("the bytes before the stop");
+        }
+    }
+    // The reader is dropped here: the pipe has no reader from now on.
+    let out = child.wait_with_output().expect("wait");
+    (
+        out.status.code().expect("exit code, not a signal"),
+        String::from_utf8(out.stderr).expect("utf8"),
+    )
+}
+
+/// A DCQL query with 3000 invented claim paths of a credential type that no
+/// built-in baseline models, as a file. Its `audit` output is larger than a
+/// pipe buffer, so the write is still in progress when a reader goes away:
+/// the failed write is certain, not a race. With `over_ask`, a second
+/// credential query asks a PID for `given_name`, which `age_gate_18` judges
+/// as too much.
+fn large_request_file(dir: &Path, over_ask: bool) -> String {
+    let paths: Vec<serde_json::Value> = (0..3000)
+        .map(|i| json!([format!("invented_claim_{i:04}")]))
+        .collect();
+    let mut credentials = vec![credential(
+        "card",
+        "dc+sd-jwt",
+        json!({ "vct_values": ["urn:example:member-card:1"] }),
+        &paths,
+    )];
+    if over_ask {
+        credentials.push(pid_sd_jwt(&[json!(["given_name"])]));
+    }
+    let name = if over_ask {
+        "large-over.json"
+    } else {
+        "large.json"
+    };
+    let file = dir.join(name);
+    fs::write(&file, dcql(&credentials)).expect("write large request");
+    file.to_str().expect("utf8 path").to_string()
+}
+
+#[test]
+fn closed_stdout_during_a_large_output_keeps_the_exit_code() {
+    let dir = test_temp_dir("augenmass-cli-large");
+    fs::create_dir_all(&dir).expect("create dir");
+    let not_evaluated = large_request_file(&dir, false);
+    let over_ask = large_request_file(&dir, true);
+    let large_json = dir.join("large-document.json");
+    let strings: Vec<String> = (0..20000).map(|i| format!("invented string {i}")).collect();
+    fs::write(&large_json, json!(strings).to_string()).expect("write large document");
+    let large_json = large_json.to_str().expect("utf8 path").to_string();
+
+    let cases: Vec<(&str, Vec<&str>, i32, &str)> = vec![
+        (
+            "NOT EVALUATED, text",
+            vec![
+                "audit",
+                "--request",
+                &not_evaluated,
+                "--purpose",
+                "age_gate_18",
+            ],
+            3,
+            "NOT EVALUATED: ",
+        ),
+        (
+            "NOT EVALUATED, --json",
+            vec![
+                "audit",
+                "--request",
+                &not_evaluated,
+                "--purpose",
+                "age_gate_18",
+                "--json",
+            ],
+            3,
+            "{",
+        ),
+        (
+            "OVER-ASK, text",
+            vec!["audit", "--request", &over_ask, "--purpose", "age_gate_18"],
+            1,
+            "OVER-ASK: ",
+        ),
+        (
+            "OVER-ASK, --json",
+            vec![
+                "audit",
+                "--request",
+                &over_ask,
+                "--purpose",
+                "age_gate_18",
+                "--json",
+            ],
+            1,
+            "{",
+        ),
+        (
+            "inspect of a large document",
+            vec!["inspect", &large_json],
+            0,
+            "[",
+        ),
+    ];
+    for (label, args, code, start) in &cases {
+        // The open run first: the expected result is really there, and the
+        // output is larger than any pipe buffer.
+        let (open_code, open_out, open_err) = run_with_readers(augenmass(args), Readers::Open);
+        assert_eq!(open_code, *code, "{label}: open reader\n{open_err}");
+        assert!(open_out.starts_with(start), "{label}");
+        assert!(
+            open_out.len() > 400_000,
+            "{label}: {} bytes",
+            open_out.len()
+        );
+        if *start == "{" {
+            let value: serde_json::Value = serde_json::from_str(&open_out).expect("json");
+            let outcome = if *code == 1 {
+                "over_ask"
+            } else {
+                "not_evaluated"
+            };
+            assert_eq!(value["outcome"], outcome, "{label}");
+        }
+
+        // Where the reader stops: after the first line; after 20 bytes
+        // (inside the first line of a text result); after 300000 bytes,
+        // moved by one if that is a line end, so that the stop is inside a
+        // line; and before the last ten bytes. In the last case the child
+        // has usually finished its write, so it shows the exit code and the
+        // absence of a panic, not a failed last write (the unit tests of
+        // `output` pin that).
+        let bytes = open_out.as_bytes();
+        let mut middle = 300_000;
+        if bytes[middle - 1] == b'\n' {
+            middle += 1;
+        }
+        if start.ends_with(": ") {
+            assert!(!bytes[..20].contains(&b'\n'), "{label}: a long first line");
+        }
+        for (stop, take) in [
+            ("after the first line", None),
+            ("after 20 bytes", Some(20)),
+            ("inside a line", Some(middle)),
+            ("before the last bytes", Some(bytes.len() - 10)),
+        ] {
+            let (stopped_code, stderr) = run_with_a_reader_that_stops(args, take);
+            assert_eq!(
+                stopped_code, *code,
+                "{label}, reader stops {stop}\n{stderr}"
+            );
+            assert!(!stderr.contains("panicked"), "{label}, {stop}: {stderr}");
+            assert_eq!(stderr, open_err, "{label}, {stop}");
+        }
+    }
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// A write error that is not a closed reader is reported as an error, with
+/// exit code 1 and not the code of the verdict, and without a panic.
+/// `/dev/full` accepts no byte ("No space left on device"); macOS has no
+/// such device.
+#[cfg(target_os = "linux")]
+#[test]
+fn full_disk_on_stdout_is_an_error_not_a_panic() {
+    for args in [
+        vec!["baselines", "age_gate_18"],
+        vec!["audit", "--request", "minimal", "--purpose", "age_gate_18"],
+        vec!["register", "examples/min.json"],
+    ] {
+        let full = fs::OpenOptions::new()
+            .write(true)
+            .open("/dev/full")
+            .expect("open /dev/full");
+        let out = augenmass(&args)
+            .stdin(std::process::Stdio::null())
+            .stdout(full)
+            .output()
+            .expect("run binary");
+        let stderr = String::from_utf8(out.stderr).expect("utf8");
+        assert_eq!(out.status.code(), Some(1), "{args:?}: {stderr}");
+        assert!(
+            stderr.starts_with("Error: write standard output"),
+            "{args:?}: {stderr}"
+        );
+        assert!(!stderr.contains("panicked"), "{args:?}: {stderr}");
+    }
+}
+
+/// This pins a stated limit, not a wish. The Rust standard library reports a
+/// write to a standard stream that is not open for writing (the error EBADF)
+/// as done, so the binary cannot see it: nothing is written, nothing is
+/// reported, and the exit code is the one the command computed, as with a
+/// closed reader. A later change of that handle shows up here.
+#[cfg(unix)]
+#[test]
+fn stdout_not_open_for_writing_keeps_the_exit_code() {
+    let dir = test_temp_dir("augenmass-cli-read-only-stream");
+    fs::create_dir_all(&dir).expect("create dir");
+    let file = dir.join("opened-for-reading.txt");
+    let content = "a file opened for reading only\n";
+    fs::write(&file, content).expect("write file");
+    let read_only = || fs::File::open(&file).expect("open for reading");
+    let not_evaluated = not_evaluated_request();
+
+    for (args, code) in [
+        (vec!["baselines", "age_gate_18"], 0),
+        (
+            vec!["audit", "--request", "overask", "--purpose", "age_gate_18"],
+            1,
+        ),
+        (
+            vec![
+                "audit",
+                "--request",
+                &not_evaluated,
+                "--purpose",
+                "age_gate_18",
+            ],
+            3,
+        ),
+    ] {
+        let (open_code, _, _) = run_with_readers(augenmass(&args), Readers::Open);
+        assert_eq!(open_code, code, "{args:?}");
+        let out = augenmass(&args)
+            .stdin(std::process::Stdio::null())
+            .stdout(read_only())
+            .output()
+            .expect("run binary");
+        let stderr = String::from_utf8(out.stderr).expect("utf8");
+        assert_eq!(out.status.code(), Some(code), "{args:?}: {stderr}");
+        assert!(stderr.is_empty(), "{args:?}: {stderr}");
+        assert_eq!(fs::read_to_string(&file).expect("read"), content);
+    }
+
+    // The same for standard error: the result of `inspect` is on standard
+    // output, its "Detected:" line would go to standard error.
+    let out = augenmass(&["inspect", "examples/age-minimal-request-sdjwt.json"])
+        .stdin(std::process::Stdio::null())
+        .stderr(read_only())
+        .output()
+        .expect("run binary");
+    assert_eq!(out.status.code(), Some(0));
+    let stdout = String::from_utf8(out.stdout).expect("utf8");
+    assert!(stdout.starts_with("DCQL query\n"), "{stdout}");
+    assert_eq!(fs::read_to_string(&file).expect("read"), content);
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// Answers every connection with one JSON document until the listener is
+/// dropped with the test process. Read path only: it never stores anything.
+fn serve_json_once_per_connection(body: String) -> u16 {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut request = Vec::new();
+            let mut chunk = [0u8; 1024];
+            while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                match stream.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => request.extend_from_slice(&chunk[..n]),
+                }
+            }
+            let _ = write!(
+                stream,
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+        }
+    });
+    port
+}
+
+/// `list` prints outside the shared result function. A local listener
+/// stands in for the clone; `list` only reads.
+#[test]
+fn list_survives_a_closed_stdout() {
+    let entry = fs::read_to_string("fixtures/regcert/rc-by-id.json").expect("fixture");
+    for (body, expected) in [
+        (
+            format!("[{entry}]"),
+            "1 registration(s) for RP rp-example on clone:\n",
+        ),
+        (
+            "[]".to_string(),
+            "No registrations for RP rp-example on clone.\n",
+        ),
+    ] {
+        let port = serve_json_once_per_connection(body);
+        let base = format!("http://127.0.0.1:{port}/api");
+        let command = || {
+            let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_augenmass"));
+            cmd.env_clear()
+                .current_dir(isolated_dir())
+                .env("AUGENMASS_CLONE_API_BASE", &base)
+                .args(["list", "--target", "clone", "--rp", "rp-example"]);
+            cmd
+        };
+        let (code, stdout, stderr) = run_with_readers(command(), Readers::Open);
+        assert_eq!(code, 0, "{stdout}{stderr}");
+        assert!(stdout.starts_with(expected), "{stdout}");
+        for readers in [Readers::StdoutClosed, Readers::BothClosed] {
+            let (code, _, stderr) = run_with_readers(command(), readers);
+            assert_eq!(code, 0, "{readers:?}: {stderr}");
+            assert!(!stderr.contains("panicked"), "{stderr}");
+        }
+    }
+}
+
+/// Sends `GET <path>` to a local port and returns the status line, or `None`
+/// while nothing answers there.
+fn http_status_line(port: u16, path: &str) -> Option<String> {
+    use std::io::{Read, Write};
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).ok()?;
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .ok()?;
+    write!(
+        stream,
+        "GET {path} HTTP/1.1\r\nhost: 127.0.0.1\r\nconnection: close\r\n\r\n"
+    )
+    .ok()?;
+    let mut response = String::new();
+    let _ = stream.read_to_string(&mut response);
+    response.lines().next().map(str::to_string)
+}
+
+/// A server process that is stopped when the test ends, also when it fails.
+struct Server(std::process::Child);
+
+impl Server {
+    /// True once `GET <path>` answers 200; false when the process exited or
+    /// nothing answered in time.
+    fn answers(&mut self, port: u16, path: &str) -> bool {
+        for _ in 0..300 {
+            if self.0.try_wait().expect("try_wait").is_some() {
+                return false;
+            }
+            if http_status_line(port, path).is_some_and(|line| line.contains(" 200")) {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        false
+    }
+
+    fn still_runs(&mut self) -> bool {
+        self.0.try_wait().expect("try_wait").is_none()
+    }
+
+    /// Stops the process and returns what it wrote to the streams that were
+    /// piped.
+    fn stop(mut self) -> (String, String) {
+        use std::io::Read;
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+        let mut stdout = String::new();
+        if let Some(mut pipe) = self.0.stdout.take() {
+            let _ = pipe.read_to_string(&mut stdout);
+        }
+        let mut stderr = String::new();
+        if let Some(mut pipe) = self.0.stderr.take() {
+            let _ = pipe.read_to_string(&mut stderr);
+        }
+        (stdout, stderr)
+    }
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+fn spawn_with_readers(mut cmd: std::process::Command, readers: Readers) -> Server {
+    use std::process::Stdio;
+    let closed_out = matches!(readers, Readers::StdoutClosed | Readers::BothClosed);
+    let closed_err = matches!(readers, Readers::StderrClosed | Readers::BothClosed);
+    cmd.stdin(Stdio::null());
+    cmd.stdout(if closed_out {
+        pipe_without_reader()
+    } else {
+        Stdio::piped()
+    });
+    cmd.stderr(if closed_err {
+        pipe_without_reader()
+    } else {
+        Stdio::piped()
+    });
+    Server(cmd.spawn().expect("spawn server"))
+}
+
+/// `serve` writes its start lines to standard error and its log lines to
+/// standard output through a log layer of a dependency. That layer reports a
+/// failed write with a print macro of its own: with standard output closed
+/// it printed "[tracing-subscriber] Unable to write an event ..." for every
+/// log line, and with both streams closed that print panicked. The server
+/// runs with an empty environment in an empty directory and without a
+/// relay, so no connection leaves the machine.
+#[test]
+fn serve_survives_closed_streams() {
+    for readers in [Readers::Open, Readers::StdoutClosed, Readers::BothClosed] {
+        let port = closed_local_port();
+        let port_text = port.to_string();
+        let public_url = format!("http://127.0.0.1:{port}/");
+        let cmd = isolated_command(
+            &[
+                "serve",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                &port_text,
+                "--public-url",
+                &public_url,
+            ],
+            &[],
+        );
+        let mut server = spawn_with_readers(cmd, readers);
+        let healthy = server.answers(port, "/health");
+        let running = server.still_runs();
+        let (stdout, stderr) = server.stop();
+        assert!(healthy, "{readers:?}: /health did not answer\n{stderr}");
+        assert!(running, "{readers:?}: the server exited\n{stderr}");
+        assert!(!stderr.contains("panicked"), "{readers:?}: {stderr}");
+        assert!(
+            !stderr.contains("[tracing-subscriber]"),
+            "{readers:?}: {stderr}"
+        );
+        match readers {
+            // The log line is written: the next two runs reach that write.
+            Readers::Open => {
+                assert!(stdout.contains("listening on"), "{stdout}");
+                assert!(stderr.contains("augenmass serve: "), "{stderr}");
+            }
+            Readers::StdoutClosed => assert!(stderr.contains("augenmass serve: "), "{stderr}"),
+            _ => {}
+        }
+    }
+}
+
+// --- member names that resemble a defined one --------------------------------
+//
+// A credential query that says `claim` for `claims` is a valid DCQL query: a
+// wallet ignores a member it does not know. It is very likely not what its
+// author meant. `validate dcql`, `inspect` and `audit` warn about it, and
+// `audit` never gives it a bare OK.
+
+const IGNORED_MEMBER_EXAMPLE: &str = "examples/age-request-ignored-member.json";
+
+/// The warning line for a member at a place of the query.
+fn near_miss_line(place: &str, member: &str, level: &str, resembles: &str) -> String {
+    format!(
+        "{place}: member \"{member}\" is not defined by OpenID4VP 1.0 for a {level} and resembles \"{resembles}\". A wallet ignores a member it does not know (OpenID4VP 1.0, section 6: \"Implementations MUST ignore any unknown properties.\"), so \"{member}\" has no effect on the request unless the wallet implements an extension that defines it."
+    )
+}
+
+fn claim_for_claims_line() -> String {
+    near_miss_line("credentials[0]", "claim", "Credential Query", "claims")
+}
+
+const NEAR_MISS_FIX_LINE: &str = "    Fix: rename the member to the defined name if that was meant. If it belongs to an extension that the wallet implements, keep it; this warning then does not apply.\n";
+
+/// A PID credential query that asks for the age attribute, with further
+/// members next to `claims`.
+fn pid_age_query_with(extra: serde_json::Value) -> serde_json::Value {
+    let mut query = json!({
+        "id": "pid",
+        "format": "dc+sd-jwt",
+        "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+        "claims": [{ "id": "age", "path": ["age_equal_or_over", "18"] }],
+    });
+    for (key, value) in extra.as_object().expect("object") {
+        query[key] = value.clone();
+    }
+    query
+}
+
+fn audit_age_gate(request: &str) -> (i32, String, String) {
+    run_cli(&["audit", "--request", request, "--purpose", "age_gate_18"])
+}
+
+#[test]
+fn validate_dcql_warns_on_a_near_miss_and_stays_valid() {
+    let (code, stdout, stderr) = run_cli(&["validate", "dcql", IGNORED_MEMBER_EXAMPLE]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(
+        stdout,
+        format!(
+            "DCQL findings:\n  DCQL-MEMBER-NEAR-MISS [warning]: {}\n{NEAR_MISS_FIX_LINE}\nDCQL OK (warnings only).\n",
+            claim_for_claims_line()
+        )
+    );
+
+    let value = json_of(&["validate", "dcql", IGNORED_MEMBER_EXAMPLE, "--json"], 0);
+    assert_eq!(value["valid"], true);
+    assert_eq!(value["findingCount"], 1);
+    assert_eq!(value["findings"][0]["id"], "DCQL-MEMBER-NEAR-MISS");
+    assert_eq!(value["findings"][0]["severity"], "warning");
+    assert_eq!(value["findings"][0]["message"], claim_for_claims_line());
+    assert_eq!(
+        value["warnings"],
+        json!([{
+            "id": "DCQL-MEMBER-NEAR-MISS",
+            "place": "credentials[0]",
+            "level": "credential_query",
+            "member": "claim",
+            "resembles": "claims",
+            "message": claim_for_claims_line(),
+        }])
+    );
+
+    // A query without such a member: the result of before, and an empty list.
+    let clean = "examples/age-broad-request.json";
+    let (code, stdout, _) = run_cli(&["validate", "dcql", clean]);
+    assert_eq!(code, 0);
+    assert_eq!(
+        stdout,
+        "DCQL VALID: no structural or reference issues found.\n"
+    );
+    let value = json_of(&["validate", "dcql", clean, "--json"], 0);
+    assert_eq!(value["warnings"], json!([]));
+    assert_eq!(value["findingCount"], 0);
+
+    // A warning does not turn an invalid query valid, and a blocking error
+    // does not hide the warning. `option` for `options`: the set has no
+    // options. `credential` for `credentials`: the query has no credentials.
+    let no_options = json!({
+        "credentials": [pid_age_query_with(json!({}))],
+        "credential_sets": [{ "option": [["pid"]] }],
+    })
+    .to_string();
+    let value = json_of(&["validate", "dcql", &no_options, "--json"], 1);
+    assert_eq!(value["valid"], false);
+    assert_eq!(value["warnings"][0]["place"], "credential_sets[0]");
+    assert_eq!(value["warnings"][0]["level"], "credential_set_query");
+    assert_eq!(value["warnings"][0]["resembles"], "options");
+    let ids: Vec<&str> = value["findings"]
+        .as_array()
+        .expect("findings")
+        .iter()
+        .map(|f| f["id"].as_str().expect("id"))
+        .collect();
+    assert_eq!(ids[0], "DCQL-MEMBER-NEAR-MISS", "{ids:?}");
+    assert!(ids.contains(&"DCQL-SET-OPTIONS-MISSING"), "{ids:?}");
+
+    let no_credentials = json!({ "credential": [pid_age_query_with(json!({}))] }).to_string();
+    let (code, stdout, _) = run_cli(&["validate", "dcql", &no_credentials]);
+    assert_eq!(code, 1, "{stdout}");
+    assert!(
+        stdout.contains(&near_miss_line(
+            "query",
+            "credential",
+            "DCQL query",
+            "credentials"
+        )),
+        "{stdout}"
+    );
+    assert!(stdout.contains("DCQL-CREDENTIALS-MISSING"), "{stdout}");
+    assert!(stdout.ends_with("DCQL INVALID: at least one blocking error above.\n"));
+
+    // `paths` for `path` in a claims query, and a wrapped query.
+    let paths = json!({ "dcql_query": { "credentials": [{
+        "id": "pid", "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+        "claims": [{ "path": ["age_equal_or_over", "18"] }, { "paths": ["birthdate"] }],
+    }] } })
+    .to_string();
+    let (code, stdout, _) = run_cli(&["validate", "dcql", &paths]);
+    assert_eq!(code, 0, "{stdout}");
+    assert!(
+        stdout.contains(&near_miss_line(
+            "credentials[0].claims[1]",
+            "paths",
+            "Claims Query",
+            "path"
+        )),
+        "{stdout}"
+    );
+    assert!(stdout.ends_with("DCQL OK (warnings only).\n"), "{stdout}");
+}
+
+#[test]
+fn inspect_prints_the_authoring_warning_for_a_dcql_query() {
+    let (code, stdout, stderr) = run_cli(&["inspect", IGNORED_MEMBER_EXAMPLE]);
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(stderr, "Detected: DCQL query\n");
+    assert_eq!(
+        stdout,
+        format!(
+            "DCQL query\n  requested claims: 0\n  authoring warnings: 1\n    {}\n",
+            claim_for_claims_line()
+        )
+    );
+    let value = json_of(&["inspect", IGNORED_MEMBER_EXAMPLE, "--json"], 0);
+    assert_eq!(value["artifact"], "dcql-query");
+    assert_eq!(value["requestedKeys"], json!([]));
+    assert_eq!(value["warnings"].as_array().expect("warnings").len(), 1);
+    assert_eq!(value["warnings"][0]["member"], "claim");
+    assert_eq!(value["warnings"][0]["resembles"], "claims");
+
+    // A query without such a member has no warning lines and an empty list.
+    let clean = "examples/age-minimal-request-sdjwt.json";
+    let (code, stdout, _) = run_cli(&["inspect", clean]);
+    assert_eq!(code, 0);
+    assert_eq!(
+        stdout,
+        "DCQL query\n  requested claims: 1\n    age_equal_or_over.18\n"
+    );
+    let value = json_of(&["inspect", clean, "--json"], 0);
+    assert_eq!(value["warnings"], json!([]));
+
+    // `value` for `values`: the claim is still requested, the warning names
+    // the claims query.
+    let value_query = json!({ "credentials": [{
+        "id": "pid", "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+        "claims": [{ "path": ["age_equal_or_over", "18"], "value": [true] }],
+    }] })
+    .to_string();
+    let (code, stdout, _) = run_cli(&["inspect", &value_query]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("  requested claims: 1\n"), "{stdout}");
+    assert!(
+        stdout.contains(&format!(
+            "  authoring warnings: 1\n    {}\n",
+            near_miss_line(
+                "credentials[0].claims[0]",
+                "value",
+                "Claims Query",
+                "values"
+            )
+        )),
+        "{stdout}"
+    );
+
+    // A query the typed parse rejects stays an error; the error names the
+    // member that is the likely cause.
+    let paths = json!({ "credentials": [{
+        "id": "pid", "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+        "claims": [{ "paths": ["birthdate"] }],
+    }] })
+    .to_string();
+    let (code, stdout, stderr) = run_cli(&["inspect", &paths]);
+    assert_eq!(code, 1, "{stdout}");
+    assert!(stdout.is_empty(), "{stdout}");
+    assert!(
+        stderr.starts_with(
+            "Detected: DCQL query\nError: the query has 1 member(s) that a wallet ignores unless it knows them from an extension: credentials[0].claims[0]: member \"paths\" is not defined by OpenID4VP 1.0 for a Claims Query and resembles \"path\"."
+        ),
+        "{stderr}"
+    );
+    assert!(
+        stderr.ends_with("Caused by:\n    0: parse DCQL query\n    1: missing field `path`\n"),
+        "{stderr}"
+    );
+
+    // A document whose only DCQL-like member is `credential` is not detected
+    // as a DCQL query, so `inspect` has no warning for it.
+    let no_credentials = json!({ "credential": [pid_age_query_with(json!({}))] }).to_string();
+    let (code, stdout, stderr) = run_cli(&["inspect", &no_credentials]);
+    assert_eq!(code, 0, "{stderr}");
+    assert_eq!(stderr, "Detected: JSON document\n");
+    assert!(!stdout.contains("authoring warnings"), "{stdout}");
+}
+
+#[test]
+fn audit_never_prints_ok_for_a_query_with_an_ignored_member() {
+    let (code, stdout, stderr) = audit_age_gate(IGNORED_MEMBER_EXAMPLE);
+    assert_eq!(code, 3, "{stdout}{stderr}");
+    assert_eq!(
+        stdout,
+        format!(
+            "NOT EVALUATED: 1 member(s) of the query resemble a defined member and are ignored by a wallet that does not know them.\n\
+             Registration purpose: no registration given   Baseline: Age gate (over 18)\n\
+             \n\
+             Requested claims:\n\
+             \n\
+             Authoring warnings:\n  {}\n\
+             \n\
+             Not evaluated: 1 member(s) of the query that a wallet ignores unless it knows them from an extension. No judged claim asks for too much; exit code 3.\n\
+             \n\
+             Suggested minimal request (dc+sd-jwt, urn:eudi:pid:de:1), as claim paths:\n  [\"age_equal_or_over\", \"18\"]\n",
+            claim_for_claims_line()
+        )
+    );
+    for line in stdout.lines() {
+        assert!(!line.starts_with("OK"), "{stdout}");
+    }
+
+    let value = json_of(
+        &[
+            "audit",
+            "--request",
+            IGNORED_MEMBER_EXAMPLE,
+            "--purpose",
+            "age_gate_18",
+            "--json",
+        ],
+        3,
+    );
+    assert_eq!(value["outcome"], "not_evaluated");
+    assert_eq!(
+        value["verdict_line"],
+        "1 member(s) of the query resemble a defined member and are ignored by a wallet that does not know them."
+    );
+    assert_eq!(value["warnings"].as_array().expect("warnings").len(), 1);
+    assert_eq!(value["warnings"][0]["id"], "DCQL-MEMBER-NEAR-MISS");
+    assert_eq!(value["warnings"][0]["place"], "credentials[0]");
+    assert_eq!(value["warnings"][0]["member"], "claim");
+    assert_eq!(value["warnings"][0]["message"], claim_for_claims_line());
+    // The counts are about claims: no claim was requested, none was unjudged.
+    assert_eq!(value["counts"]["requested"], 0);
+    assert_eq!(value["counts"]["could_not_judge"], 0);
+
+    // Under the default purpose as well (no --purpose).
+    let (code, stdout, _) = run_cli(&["audit", "--request", IGNORED_MEMBER_EXAMPLE]);
+    assert_eq!(code, 3, "{stdout}");
+    assert!(stdout.starts_with("NOT EVALUATED: "), "{stdout}");
+
+    // The correctly spelled query asks for the same three claims and two
+    // more: OVER-ASK, as before, with an empty list of warnings.
+    let (code, stdout, _) = audit_age_gate("examples/age-broad-request.json");
+    assert_eq!(code, 1, "{stdout}");
+    assert!(stdout.starts_with("OVER-ASK: "), "{stdout}");
+    assert!(!stdout.contains("Authoring warnings"), "{stdout}");
+    let value = json_of(
+        &[
+            "audit",
+            "--request",
+            "examples/age-broad-request.json",
+            "--purpose",
+            "age_gate_18",
+            "--json",
+        ],
+        1,
+    );
+    assert_eq!(value["warnings"], json!([]));
+
+    // A request that is OK has the empty list too, and the two built-in
+    // requests never have a warning.
+    let value = json_of(
+        &[
+            "audit",
+            "--request",
+            "examples/age-minimal-request-sdjwt.json",
+            "--purpose",
+            "age_gate_18",
+            "--json",
+        ],
+        0,
+    );
+    assert_eq!(value["outcome"], "ok");
+    assert_eq!(value["warnings"], json!([]));
+    let value = json_of(&["audit", "--request", "minimal", "--json"], 0);
+    assert_eq!(value["warnings"], json!([]));
+}
+
+#[test]
+fn audit_over_ask_wins_over_an_ignored_member() {
+    let request = json!({ "credentials": [{
+        "id": "pid", "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+        "claims": [{ "path": ["age_equal_or_over", "18"] }, { "path": ["address"] }],
+        "claim": [{ "path": ["given_name"] }],
+    }] })
+    .to_string();
+    let (code, stdout, stderr) = audit_age_gate(&request);
+    assert_eq!(code, 1, "{stdout}{stderr}");
+    assert!(
+        stdout.starts_with(
+            "OVER-ASK: Over-ask vs purpose: 1 of 2 requested claims exceed the stated purpose.\n"
+        ),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!(
+            "\nAuthoring warnings:\n  {}\n\nOver-asking 1 claim(s) beyond the stated purpose.\nIgnored by a wallet that does not know them: 1 member(s) of the query.\n",
+            claim_for_claims_line()
+        )),
+        "{stdout}"
+    );
+    assert!(stdout.contains("\nLegal basis:\n"), "{stdout}");
+    let value = json_of(
+        &[
+            "audit",
+            "--request",
+            &request,
+            "--purpose",
+            "age_gate_18",
+            "--json",
+        ],
+        1,
+    );
+    assert_eq!(value["outcome"], "over_ask");
+    assert_eq!(value["warnings"].as_array().expect("warnings").len(), 1);
+    assert_eq!(
+        value["verdict_line"],
+        "Over-ask vs purpose: 1 of 2 requested claims exceed the stated purpose."
+    );
+
+    // With a claim that could not be judged: the result was NOT EVALUATED
+    // already, and the reason line names the claim and the member.
+    let request = json!({
+        "credentials": [
+            pid_age_query_with(json!({})),
+            { "id": "card", "format": "dc+sd-jwt",
+              "meta": { "vct_values": ["urn:example:member-card:1"] },
+              "claims": [{ "path": ["member_number"] }] },
+        ],
+        "credential_set": [{ "options": [["pid"], ["card"]] }],
+    })
+    .to_string();
+    let (code, stdout, _) = audit_age_gate(&request);
+    assert_eq!(code, 3, "{stdout}");
+    assert!(
+        stdout.starts_with("NOT EVALUATED: 1 of 2 requested claims could not be judged.\n"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains(&format!(
+            "\nAuthoring warnings:\n  {}\n",
+            near_miss_line("query", "credential_set", "DCQL query", "credential_sets")
+        )),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("\nNot evaluated: 1 claim(s), and 1 member(s) of the query that a wallet ignores unless it knows them from an extension. No judged claim asks for too much; exit code 3.\n"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn audit_ignored_member_under_a_baseline_file() {
+    let (code, stdout, stderr) = audit_with_example(IGNORED_MEMBER_EXAMPLE, WINE);
+    assert_eq!(code, 3, "{stdout}{stderr}");
+    assert!(
+        stdout.starts_with(&format!(
+            "NOT EVALUATED: 1 member(s) of the query resemble a defined member and are ignored by a wallet that does not know them.\n\
+             Registration purpose: no registration given   Baseline: Example Wine Shop: age check for an order of wine\n\
+             {WINE_FACTS}{DRAFT_LINE}{WINE_APPLIES}\n\
+             Requested claims:\n\
+             \n\
+             Authoring warnings:\n  {}\n\
+             \n\
+             Not evaluated: 1 member(s) of the query that a wallet ignores unless it knows them from an extension. No judged claim asks for too much; exit code 3.\n\
+             \n\
+             Minimal claims of this baseline entry (dc+sd-jwt, urn:eudi:pid:de:1):\n",
+            claim_for_claims_line()
+        )),
+        "{stdout}"
+    );
+    assert!(
+        stdout.ends_with(&format!("\n{ASSESSMENT_LINE}")),
+        "{stdout}"
+    );
+    let value = json_of(
+        &[
+            "audit",
+            "--request",
+            IGNORED_MEMBER_EXAMPLE,
+            "--baseline",
+            EXAMPLE_BASELINES,
+            "--purpose",
+            WINE,
+            "--json",
+        ],
+        3,
+    );
+    assert_eq!(value["outcome"], "not_evaluated");
+    assert_eq!(value["baseline"]["source"], "file");
+    assert_eq!(value["warnings"][0]["member"], "claim");
+
+    // The correctly spelled minimal request stays OK under the same entry.
+    let (code, _, _) = audit_with_example("examples/age-minimal-request-sdjwt.json", WINE);
+    assert_eq!(code, 0);
+}
+
+/// Extensions are allowed: an unknown member that resembles no defined one
+/// gets no warning and changes nothing.
+#[test]
+fn audit_unknown_member_that_is_no_near_miss_stays_ok() {
+    let plain = json!({ "credentials": [pid_age_query_with(json!({}))] }).to_string();
+    let mut credential = pid_age_query_with(json!({ "x_example_profile": "invented" }));
+    credential["claims"][0]["x_example_note"] = json!("invented extension member");
+    let extended = json!({
+        "credentials": [credential],
+        "x_example_extension": { "enabled": true },
+    })
+    .to_string();
+
+    let (plain_code, plain_text, _) = audit_age_gate(&plain);
+    let (code, text, stderr) = audit_age_gate(&extended);
+    assert_eq!(plain_code, 0, "{plain_text}");
+    assert_eq!(code, 0, "{text}{stderr}");
+    assert!(text.starts_with("OK: "), "{text}");
+    assert_eq!(text, plain_text);
+    let value = json_of(
+        &[
+            "audit",
+            "--request",
+            &extended,
+            "--purpose",
+            "age_gate_18",
+            "--json",
+        ],
+        0,
+    );
+    assert_eq!(value["outcome"], "ok");
+    assert_eq!(value["warnings"], json!([]));
+
+    let (code, stdout, _) = run_cli(&["validate", "dcql", &extended]);
+    assert_eq!(code, 0);
+    assert_eq!(
+        stdout,
+        "DCQL VALID: no structural or reference issues found.\n"
+    );
+    let (code, stdout, _) = run_cli(&["inspect", &extended]);
+    assert_eq!(code, 0);
+    assert!(!stdout.contains("authoring warnings"), "{stdout}");
+}
+
+/// One run per near-miss name: the member is named with its place and the
+/// defined name, and no run ends with OK.
+#[test]
+fn audit_each_listed_near_miss() {
+    let pid = |extra: serde_json::Value| pid_age_query_with(extra);
+    let claims_with = |claim: serde_json::Value| {
+        json!({ "id": "pid", "format": "dc+sd-jwt",
+            "meta": { "vct_values": ["urn:eudi:pid:de:1"] }, "claims": [claim] })
+    };
+    // (query, place, member, level, defined name, exit code)
+    let cases = [
+        (
+            fs::read_to_string(IGNORED_MEMBER_EXAMPLE).expect("example"),
+            "credentials[0]",
+            "claim",
+            "Credential Query",
+            "claims",
+            3,
+        ),
+        (
+            json!({ "credentials": [pid(json!({ "claims_set": [["age"]] }))] }).to_string(),
+            "credentials[0]",
+            "claims_set",
+            "Credential Query",
+            "claim_sets",
+            3,
+        ),
+        (
+            json!({ "credentials": [pid(json!({ "claim_set": [["age"]] }))] }).to_string(),
+            "credentials[0]",
+            "claim_set",
+            "Credential Query",
+            "claim_sets",
+            3,
+        ),
+        (
+            json!({ "credentials": [pid(json!({}))],
+                "credential_set": [{ "options": [["pid"]] }] })
+            .to_string(),
+            "query",
+            "credential_set",
+            "DCQL query",
+            "credential_sets",
+            3,
+        ),
+        (
+            json!({ "credential": [pid(json!({}))] }).to_string(),
+            "query",
+            "credential",
+            "DCQL query",
+            "credentials",
+            1,
+        ),
+        (
+            json!({ "credentials": [pid(json!({}))],
+                "credential_sets": [{ "option": [["pid"]] }] })
+            .to_string(),
+            "credential_sets[0]",
+            "option",
+            "Credential Set Query",
+            "options",
+            1,
+        ),
+        (
+            json!({ "credentials": [claims_with(json!({ "paths": ["age_equal_or_over", "18"] }))] })
+                .to_string(),
+            "credentials[0].claims[0]",
+            "paths",
+            "Claims Query",
+            "path",
+            1,
+        ),
+        (
+            json!({ "credentials": [claims_with(
+                json!({ "path": ["age_equal_or_over", "18"], "value": [true] })
+            )] })
+            .to_string(),
+            "credentials[0].claims[0]",
+            "value",
+            "Claims Query",
+            "values",
+            3,
+        ),
+    ];
+    for (query, place, member, level, defined, expected) in &cases {
+        let line = near_miss_line(place, member, level, defined);
+        let (code, stdout, stderr) = audit_age_gate(query);
+        assert_eq!(code, *expected, "{member}: {stdout}{stderr}");
+        assert!(!stdout.starts_with("OK"), "{member}: {stdout}");
+        if *expected == 3 {
+            assert!(stdout.starts_with("NOT EVALUATED: "), "{member}: {stdout}");
+            assert!(
+                stdout.contains(&format!("\nAuthoring warnings:\n  {line}\n")),
+                "{member}: {stdout}"
+            );
+        } else {
+            // The typed parse rejects the query: an error as before, with
+            // one more cause line that names the member.
+            assert!(stdout.is_empty(), "{member}: {stdout}");
+            assert!(
+                stderr.starts_with(
+                    "Error: --request must be 'minimal', 'overask', or a DCQL JSON value ("
+                ),
+                "{member}: {stderr}"
+            );
+            assert!(
+                stderr.contains(&format!(
+                    "\nCaused by:\n    0: the query has 1 member(s) that a wallet ignores unless it knows them from an extension: {line}\n    1: parse DCQL query\n    2: missing field `"
+                )),
+                "{member}: {stderr}"
+            );
+        }
+    }
+}
+
+/// An unsigned registration certificate (only the payload is read) with the
+/// given payload, as a file. Returns its path.
+fn unsigned_certificate(name: &str, payload: &serde_json::Value) -> String {
+    let b64 = |v: &str| BASE64_URL_SAFE_NO_PAD.encode(v.as_bytes());
+    let header = json!({ "alg": "ES256", "typ": "rc-wrp+jwt" }).to_string();
+    let dir = test_temp_dir("augenmass-cli-cert");
+    fs::create_dir_all(&dir).expect("create cert dir");
+    let path = dir.join(name);
+    fs::write(
+        &path,
+        format!(
+            "{}.{}.{}",
+            b64(&header),
+            b64(&payload.to_string()),
+            b64("not-a-signature")
+        ),
+    )
+    .expect("write certificate");
+    path.display().to_string()
+}
+
+/// The rule is for DCQL queries only. In a registration body and in a
+/// registration certificate `claim` is a defined name.
+#[test]
+fn registration_bodies_and_certificates_get_no_warning() {
+    let body = json!({
+        "rpId": "rp-example",
+        "purpose": [{ "lang": "en", "content": "age check" }],
+        "privacy_policy": "https://shop.example/privacy",
+        "support_uri": "support@shop.example",
+        "credentials": [{
+            "format": "dc+sd-jwt",
+            "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+            "claim": [{ "path": ["age_equal_or_over", "18"] }],
+        }],
+    })
+    .to_string();
+    let (code, stdout, stderr) = run_cli(&["check", &body]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(
+        stdout.starts_with("OK: no over-ask, no format errors. "),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("warning"), "{stdout}");
+    let value = json_of(&["check", &body, "--json"], 0);
+    assert_eq!(value["outcome"], "ok");
+    assert!(value.get("warnings").is_none());
+    assert!(value["report"].get("warnings").is_none());
+    let (code, stdout, _) = isolated_output(&["register", &body], &[]);
+    assert_eq!(code, 0, "{stdout}");
+    assert!(!stdout.contains("warning"), "{stdout}");
+    // `inspect` detects a registration body and runs the same check.
+    let (code, stdout, stderr) = run_cli(&["inspect", &body]);
+    assert_eq!(code, 0);
+    assert_eq!(stderr, "Detected: registrar registration body\n");
+    assert!(!stdout.contains("warning"), "{stdout}");
+
+    // A registration certificate whose credential uses `claim`.
+    let certificate = unsigned_certificate(
+        "cert-claim.jwt",
+        &json!({
+            "name": "Example Wine Shop",
+            "purpose": [{ "lang": "en", "content": "Example Wine Shop: confirm the buyer is over 18" }],
+            "privacy_policy": "https://wine.example.org/privacy",
+            "support_uri": "support@wine.example.org",
+            "credentials": [{
+                "format": "dc+sd-jwt",
+                "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+                "claim": [{ "path": ["age_equal_or_over", "18"] }],
+            }],
+        }),
+    );
+    for args in [
+        vec!["decode", "regcert", certificate.as_str()],
+        vec!["inspect", certificate.as_str()],
+        vec!["decode", "regcert", "examples/age-broad-registration.jwt"],
+    ] {
+        let (code, stdout, stderr) = run_cli(&args);
+        assert_eq!(code, 0, "{args:?}: {stderr}");
+        assert!(stdout.contains("      claim "), "{args:?}: {stdout}");
+        assert!(
+            !stdout.to_lowercase().contains("warning"),
+            "{args:?}: {stdout}"
+        );
+        assert!(
+            !stdout.contains("DCQL-MEMBER-NEAR-MISS"),
+            "{args:?}: {stdout}"
+        );
+    }
+    let args = [
+        "audit",
+        "--request",
+        "examples/age-minimal-request-sdjwt.json",
+        "--purpose",
+        "age_gate_18",
+        "--cert",
+        certificate.as_str(),
+    ];
+    let (code, stdout, stderr) = run_cli(&args);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(stdout.starts_with("OK: "), "{stdout}");
+    assert!(!stdout.contains("Authoring warnings"), "{stdout}");
+    let mut json_args = vec!["--json"];
+    json_args.extend(args);
+    let value = json_of(&json_args, 0);
+    assert_eq!(value["warnings"], json!([]));
+    assert_eq!(value["counts"]["registration_evaluated"], true);
+}
+
+/// This pins a stated limit of the rule, not a claim that the member is a
+/// mistake. OpenID4VP 1.0 lets an extension define further members, and an
+/// extension may choose a name that differs from a defined one only by
+/// upper and lower case. The tool cannot know which extensions a wallet
+/// implements: it reports the member with that condition, and the result is
+/// NOT EVALUATED, never OVER-ASK and never an error.
+#[test]
+fn near_miss_that_an_extension_could_define_is_reported_with_the_condition() {
+    let request = json!({ "credentials": [pid_age_query_with(
+        json!({ "ID": "x-example-correlation" })
+    )] })
+    .to_string();
+    let (code, stdout, stderr) = audit_age_gate(&request);
+    assert_eq!(code, 3, "{stdout}{stderr}");
+    assert!(stdout.starts_with("NOT EVALUATED: "), "{stdout}");
+    let line = near_miss_line("credentials[0]", "ID", "Credential Query", "id");
+    assert!(
+        stdout.contains(&format!("\nAuthoring warnings:\n  {line}\n")),
+        "{stdout}"
+    );
+    assert!(
+        line.ends_with("unless the wallet implements an extension that defines it."),
+        "{line}"
+    );
+    let (code, stdout, _) = run_cli(&["validate", "dcql", &request]);
+    assert_eq!(code, 0, "{stdout}");
+    assert!(stdout.contains(&line), "{stdout}");
+    assert!(
+        stdout.contains("If it belongs to an extension that the wallet implements, keep it; this warning then does not apply."),
+        "{stdout}"
+    );
+}
+
+/// No output says without a condition that a member has no effect or that a
+/// wallet ignores it: a wallet that implements an extension which defines
+/// the member does not ignore it. This keeps a later rewording from
+/// dropping the condition.
+#[test]
+fn no_output_says_unconditionally_that_a_member_has_no_effect() {
+    let over_ask = json!({ "credentials": [{
+        "id": "pid", "format": "dc+sd-jwt", "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+        "claims": [{ "path": ["address"] }],
+        "claim": [{ "path": ["given_name"] }],
+    }] })
+    .to_string();
+    let with_unjudged = json!({
+        "credentials": [
+            pid_age_query_with(json!({ "ID": "x-example-correlation" })),
+            { "id": "card", "format": "dc+sd-jwt",
+              "meta": { "vct_values": ["urn:example:member-card:1"] },
+              "claims": [{ "path": ["member_number"] }] },
+        ],
+    })
+    .to_string();
+    let rejected = json!({ "credential": [pid_age_query_with(json!({}))] }).to_string();
+    let runs: Vec<Vec<&str>> = vec![
+        vec!["validate", "dcql", IGNORED_MEMBER_EXAMPLE],
+        vec!["inspect", IGNORED_MEMBER_EXAMPLE],
+        vec![
+            "audit",
+            "--request",
+            IGNORED_MEMBER_EXAMPLE,
+            "--purpose",
+            "age_gate_18",
+        ],
+        vec!["audit", "--request", &over_ask, "--purpose", "age_gate_18"],
+        vec![
+            "audit",
+            "--request",
+            &with_unjudged,
+            "--purpose",
+            "age_gate_18",
+        ],
+        vec![
+            "audit",
+            "--request",
+            IGNORED_MEMBER_EXAMPLE,
+            "--baseline",
+            EXAMPLE_BASELINES,
+            "--purpose",
+            WINE,
+        ],
+        vec!["audit", "--request", &rejected, "--purpose", "age_gate_18"],
+        vec!["validate", "dcql", &rejected],
+    ];
+    let mut checked = 0;
+    for args in &runs {
+        let (_, stdout, stderr) = run_cli(args);
+        for line in stdout.lines().chain(stderr.lines()) {
+            let lower = line.to_lowercase();
+            if lower.contains("has no effect") {
+                assert!(lower.contains("unless"), "{args:?}: {line}");
+                checked += 1;
+            }
+            if lower.contains("ignores") || lower.contains("ignored by") {
+                assert!(
+                    lower.contains("does not know") || lower.contains("unless"),
+                    "{args:?}: {line}"
+                );
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked >= 2 * runs.len(), "{checked} lines checked");
+    assert!(!IGNORED_MEMBER_EXAMPLE.contains("ignores"));
+    assert!(!IGNORED_MEMBER_EXAMPLE.contains("no effect"));
+}
+
+/// A PID credential query whose three claims sit under `member`.
+fn three_claims_under(member: &str) -> serde_json::Value {
+    let mut credential = json!({
+        "id": "pid",
+        "format": "dc+sd-jwt",
+        "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+    });
+    credential[member] = json!([
+        { "path": ["given_name"] },
+        { "path": ["birthdate"] },
+        { "path": ["address"] },
+    ]);
+    credential
+}
+
+/// One query through the three commands: `audit` gives NOT EVALUATED with
+/// exit code 3 and never a bare OK, `validate dcql` stays valid with the
+/// warning, `inspect` prints it. All three name the member and the defined
+/// name. `line` is a part of the warning line.
+fn assert_warned_by_all_three_commands(query: &str, member: &str, resembles: &str, line: &str) {
+    let (code, stdout, stderr) = audit_age_gate(query);
+    assert_eq!(code, 3, "{member:?}: {stdout}{stderr}");
+    assert!(
+        stdout.starts_with(
+            "NOT EVALUATED: 1 member(s) of the query resemble a defined member and are ignored by a wallet that does not know them.\n"
+        ),
+        "{member:?}: {stdout}"
+    );
+    assert!(
+        stdout.contains("\nAuthoring warnings:\n  ") && stdout.contains(line),
+        "{member:?}: {stdout}"
+    );
+    let value = json_of(
+        &[
+            "audit",
+            "--request",
+            query,
+            "--purpose",
+            "age_gate_18",
+            "--json",
+        ],
+        3,
+    );
+    assert_eq!(value["outcome"], "not_evaluated", "{member:?}");
+    assert_eq!(value["warnings"].as_array().expect("warnings").len(), 1);
+    assert_eq!(value["warnings"][0]["id"], "DCQL-MEMBER-NEAR-MISS");
+    assert_eq!(value["warnings"][0]["member"], member);
+    assert_eq!(value["warnings"][0]["resembles"], resembles);
+
+    let (code, stdout, stderr) = run_cli(&["validate", "dcql", query]);
+    assert_eq!(code, 0, "{member:?}: {stdout}{stderr}");
+    assert!(
+        stdout.starts_with("DCQL findings:\n  DCQL-MEMBER-NEAR-MISS [warning]: "),
+        "{member:?}: {stdout}"
+    );
+    assert!(stdout.contains(line), "{member:?}: {stdout}");
+    assert!(
+        stdout.ends_with("DCQL OK (warnings only).\n"),
+        "{member:?}: {stdout}"
+    );
+    let value = json_of(&["validate", "dcql", query, "--json"], 0);
+    assert_eq!(value["valid"], true);
+    assert_eq!(value["warnings"][0]["member"], member);
+
+    let (code, stdout, stderr) = run_cli(&["inspect", query]);
+    assert_eq!(code, 0, "{member:?}: {stdout}{stderr}");
+    assert!(
+        stdout.contains("  authoring warnings: 1\n    ") && stdout.contains(line),
+        "{member:?}: {stdout}"
+    );
+    let value = json_of(&["inspect", query, "--json"], 0);
+    assert_eq!(value["warnings"][0]["member"], member);
+    assert_eq!(value["warnings"][0]["resembles"], resembles);
+}
+
+/// A member name that differs from a defined one only by upper and lower
+/// case is reported wherever the upper-case letter is. `claimS` and the
+/// other names that end in an upper-case S got a bare OK before.
+#[test]
+fn near_miss_by_case_only_is_warned_by_all_three_commands() {
+    for member in [
+        "claimS", "cLaImS", "CLAIMS", "Claims", "ClaimS", "claiM", "CLAIM",
+    ] {
+        let query = json!({ "credentials": [three_claims_under(member)] }).to_string();
+        let line = near_miss_line("credentials[0]", member, "Credential Query", "claims");
+        assert_warned_by_all_three_commands(&query, member, "claims", &line);
+    }
+    // The same at the other levels: the query object, a claims query, and
+    // `claim_sets` next to `claims`.
+    let pid = pid_age_query_with(json!({}));
+    for member in ["credential_setS", "cReDeNtIaL_sEtS", "credentialSetS"] {
+        let mut query = json!({ "credentials": [pid] });
+        query[member] = json!([{ "options": [["pid"]] }]);
+        let line = near_miss_line("query", member, "DCQL query", "credential_sets");
+        assert_warned_by_all_three_commands(&query.to_string(), member, "credential_sets", &line);
+    }
+    for member in ["valueS", "vAlUeS"] {
+        let mut credential = pid_age_query_with(json!({}));
+        credential["claims"][0][member] = json!([true]);
+        let query = json!({ "credentials": [credential] }).to_string();
+        let line = near_miss_line("credentials[0].claims[0]", member, "Claims Query", "values");
+        assert_warned_by_all_three_commands(&query, member, "values", &line);
+    }
+    for member in ["claim_setS", "cLaIm_sEtS", "claimSetS"] {
+        let mut credential = pid_age_query_with(json!({}));
+        credential[member] = json!([["age"]]);
+        let query = json!({ "credentials": [credential] }).to_string();
+        let line = near_miss_line("credentials[0]", member, "Credential Query", "claim_sets");
+        assert_warned_by_all_three_commands(&query, member, "claim_sets", &line);
+    }
+}
+
+/// A member name that differs from a defined one only by characters that
+/// are not letters (a space or a tab before or after it, a digit, a dot, a
+/// character without width) or by a letter written twice is reported. Each
+/// of these got a bare OK before.
+#[test]
+fn near_miss_by_characters_that_are_not_letters_is_warned_by_all_three_commands() {
+    for member in [
+        "claims ", "claim ", " claim", " claims", "claims1", "claim1", "claims.", "claimss",
+    ] {
+        let query = json!({ "credentials": [three_claims_under(member)] }).to_string();
+        let line = near_miss_line("credentials[0]", member, "Credential Query", "claims");
+        assert_warned_by_all_three_commands(&query, member, "claims", &line);
+    }
+    // A tab and a character without width are printed as their escape in
+    // the warning line, so the name does not read like the defined one;
+    // `--json` carries the name as written in `member`.
+    for (member, printed) in [
+        ("claims\t", "claims\\t"),
+        ("claims\u{200b}", "claims\\u{200b}"),
+    ] {
+        let query = json!({ "credentials": [three_claims_under(member)] }).to_string();
+        let line = near_miss_line("credentials[0]", printed, "Credential Query", "claims");
+        assert_warned_by_all_three_commands(&query, member, "claims", &line);
+    }
+
+    // The other levels.
+    for (member, resembles) in [
+        ("values ", "values"),
+        ("value ", "values"),
+        ("valuess", "values"),
+    ] {
+        let mut credential = pid_age_query_with(json!({}));
+        credential["claims"][0][member] = json!([true]);
+        let query = json!({ "credentials": [credential] }).to_string();
+        let line = near_miss_line(
+            "credentials[0].claims[0]",
+            member,
+            "Claims Query",
+            resembles,
+        );
+        assert_warned_by_all_three_commands(&query, member, resembles, &line);
+    }
+    for member in ["credential_sets ", "credential_sets1"] {
+        let mut query = json!({ "credentials": [pid_age_query_with(json!({}))] });
+        query[member] = json!([{ "options": [["pid"]] }]);
+        let line = near_miss_line("query", member, "DCQL query", "credential_sets");
+        assert_warned_by_all_three_commands(&query.to_string(), member, "credential_sets", &line);
+    }
+    for member in ["claim_sets ", "claim_setss"] {
+        let mut credential = pid_age_query_with(json!({}));
+        credential[member] = json!([["age"]]);
+        let query = json!({ "credentials": [credential] }).to_string();
+        let line = near_miss_line("credentials[0]", member, "Credential Query", "claim_sets");
+        assert_warned_by_all_three_commands(&query, member, "claim_sets", &line);
+    }
+}
+
+/// The claims of a credential query under a name that is no near miss of
+/// `claims` by its spelling (another letter, a look-alike letter outside
+/// ASCII): the member is reported by the form of its value, because the
+/// credential query has no `claims` member. Each of these got a bare OK
+/// before. With `claims` present the same member is an extension member
+/// and changes nothing.
+#[test]
+fn claims_under_another_name_never_get_a_bare_ok() {
+    // (member, the member as the warning line prints it)
+    for (member, printed) in [
+        ("claimz", "claimz"),
+        ("klaims", "klaims"),
+        ("cla\u{456}ms", "cla\\u{456}ms"),
+        ("requested_claims", "requested_claims"),
+    ] {
+        let query = json!({ "credentials": [three_claims_under(member)] }).to_string();
+        let line = format!(
+            "credentials[0]: member \"{printed}\" is not defined by OpenID4VP 1.0 for a Credential Query, its value has the form of a \"claims\" value (an array of objects with a \"path\" member), and the Credential Query has no \"claims\" member. A wallet ignores a member it does not know (OpenID4VP 1.0, section 6: \"Implementations MUST ignore any unknown properties.\"), so \"{printed}\" has no effect on the request unless the wallet implements an extension that defines it."
+        );
+        assert_warned_by_all_three_commands(&query, member, "claims", &line);
+    }
+
+    // `claims` is there: the other member is an extension member.
+    let plain = json!({ "credentials": [pid_age_query_with(json!({}))] }).to_string();
+    let extended = json!({ "credentials": [pid_age_query_with(json!({
+        "klaims": [{ "path": ["given_name"] }, { "path": ["address"] }],
+    }))] })
+    .to_string();
+    let (plain_code, plain_text, _) = audit_age_gate(&plain);
+    let (code, text, stderr) = audit_age_gate(&extended);
+    assert_eq!((plain_code, code), (0, 0), "{text}{stderr}");
+    assert_eq!(text, plain_text);
+    let (code, stdout, _) = run_cli(&["validate", "dcql", &extended]);
+    assert_eq!(code, 0);
+    assert_eq!(
+        stdout,
+        "DCQL VALID: no structural or reference issues found.\n"
+    );
+
+    // A credential query without claims and without such a member stays OK.
+    let no_claims = json!({ "credentials": [{
+        "id": "pid", "format": "dc+sd-jwt",
+        "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+        "x_example_labels": [{ "lang": "en", "text": "invented" }],
+    }] })
+    .to_string();
+    let (code, stdout, stderr) = audit_age_gate(&no_claims);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(stdout.starts_with("OK: No claims requested.\n"), "{stdout}");
+}
+
+/// A request object given as JSON (not a signed JAR) is read by `inspect`
+/// and `decode request`, and `inspect` prints the authoring warnings of its
+/// `dcql_query`, as `audit` and `validate dcql` do for the same file. Before,
+/// `inspect` tried to decode the JSON as a compact JWT and ended with an
+/// error and exit code 1.
+#[test]
+fn inspect_reads_a_plain_request_object_and_agrees_with_audit_and_validate() {
+    let request = json!({
+        "response_type": "vp_token",
+        "response_mode": "direct_post",
+        "client_id": "x509_hash:example-not-a-real-hash",
+        "nonce": "n-0S6_WzA2Mj",
+        "state": "invented-state",
+        "dcql_query": { "credentials": [three_claims_under("claim")] },
+    })
+    .to_string();
+    let line = claim_for_claims_line();
+
+    let (code, stdout, stderr) = audit_age_gate(&request);
+    assert_eq!(code, 3, "{stdout}{stderr}");
+    assert!(stdout.contains(&line), "{stdout}");
+    let (code, stdout, _) = run_cli(&["validate", "dcql", &request]);
+    assert_eq!(code, 0);
+    assert!(stdout.contains(&line), "{stdout}");
+
+    let expected = format!(
+        "OpenID4VP authorization request object (plain JSON, not a signed JAR)\n  client_id: x509_hash:example-not-a-real-hash\n  client_id scheme: x509_hash\n  response_type: vp_token\n  response_mode: direct_post\n  nonce: n-0S6_WzA2Mj\n  state: invented-state\n  query: dcql_query present\n  authoring warnings: 1\n    {line}\n"
+    );
+    let (code, stdout, stderr) = run_cli(&["inspect", &request]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(
+        stderr,
+        "Detected: OpenID4VP authorization request object (plain JSON, not a signed JAR)\n"
+    );
+    assert_eq!(stdout, expected);
+    let (code, stdout, stderr) = run_cli(&["decode", "request", &request]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(stdout, expected);
+
+    let value = json_of(&["inspect", &request, "--json"], 0);
+    assert_eq!(value["artifact"], "authorization-request");
+    assert_eq!(value["header"], serde_json::Value::Null);
+    assert_eq!(value["x5cPresent"], false);
+    assert_eq!(value["clientIdScheme"], "x509_hash");
+    assert_eq!(value["warnings"].as_array().expect("warnings").len(), 1);
+    assert_eq!(value["warnings"][0]["member"], "claim");
+    assert_eq!(value["warnings"][0]["place"], "credentials[0]");
+    assert_eq!(
+        value["payload"],
+        serde_json::from_str::<serde_json::Value>(&request).expect("json")
+    );
+
+    // The request object without a `client_id` is detected by `response_type`.
+    let mut without_client: serde_json::Value = serde_json::from_str(&request).expect("json");
+    without_client
+        .as_object_mut()
+        .expect("object")
+        .remove("client_id");
+    let (code, stdout, stderr) = run_cli(&["inspect", &without_client.to_string()]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(stdout.contains("  authoring warnings: 1\n"), "{stdout}");
+
+    // The payload of a decoded JAR is such a request object: it goes back
+    // into `inspect` and `decode request`. The JAR has no warning.
+    let jar = json_of(&["decode", "request", JAR_FIXTURE, "--json"], 0);
+    assert_eq!(jar["warnings"], json!([]));
+    assert!(jar["header"].is_object());
+    let payload = jar["payload"].to_string();
+    for args in [
+        vec!["inspect", payload.as_str()],
+        vec!["decode", "request", payload.as_str()],
+    ] {
+        let (code, stdout, stderr) = run_cli(&args);
+        assert_eq!(code, 0, "{args:?}: {stdout}{stderr}");
+        assert!(
+            stdout.starts_with(
+                "OpenID4VP authorization request object (plain JSON, not a signed JAR)\n"
+            ),
+            "{stdout}"
+        );
+        assert!(stdout.contains("  query: dcql_query present\n"), "{stdout}");
+        assert!(!stdout.contains("authoring warnings"), "{stdout}");
+    }
+    let again = json_of(&["inspect", &payload, "--json"], 0);
+    assert_eq!(again["payload"], jar["payload"]);
+    assert_eq!(again["nonce"], jar["nonce"]);
+
+    // The text output of the JAR itself is the one of before.
+    let (code, stdout, _) = run_cli(&["decode", "request", JAR_FIXTURE]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout
+            .starts_with("OpenID4VP authorization request / JAR (no signature verified)\n  typ: "),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("authoring warnings"), "{stdout}");
+
+    // Input that is neither a JSON object nor a compact JWT stays an error.
+    let (code, stdout, stderr) = run_cli(&["decode", "request", "[1, 2]"]);
+    assert_eq!(code, 1, "{stdout}");
+    assert!(stdout.is_empty(), "{stdout}");
+    assert!(
+        stderr.starts_with("Error: decode authorization request JAR\n"),
+        "{stderr}"
+    );
+}
+
+/// The `Detected:` line of `inspect` names the form of an authorization
+/// request and never contradicts the first line of the result: a plain
+/// request object is not called a JAR, a compact JWT is. Before, the line
+/// read `Detected: OpenID4VP authorization request (JAR)` for both, above a
+/// result that said "not a signed JAR".
+#[test]
+fn inspect_detected_line_names_the_form_of_an_authorization_request() {
+    const OBJECT: &str =
+        "Detected: OpenID4VP authorization request object (plain JSON, not a signed JAR)\n";
+    const JAR: &str = "Detected: OpenID4VP authorization request (JAR)\n";
+
+    // The three shapes that are read as a plain request object.
+    for request in [
+        json!({ "response_type": "vp_token" }),
+        json!({ "client_metadata": {} }),
+        json!({
+            "client_id": "x509_hash:example-not-a-real-hash",
+            "dcql_query": { "credentials": [three_claims_under("claims")] },
+        }),
+    ] {
+        let request = request.to_string();
+        for json_flag in [false, true] {
+            let mut args = vec!["inspect", request.as_str()];
+            if json_flag {
+                args.push("--json");
+            }
+            let (code, stdout, stderr) = run_cli(&args);
+            assert_eq!(code, 0, "{request}: {stdout}{stderr}");
+            assert_eq!(stderr, OBJECT, "{request}");
+            if json_flag {
+                let value: serde_json::Value = serde_json::from_str(&stdout).expect("json");
+                assert_eq!(value["artifact"], "authorization-request", "{request}");
+                assert_eq!(value["header"], serde_json::Value::Null, "{request}");
+            } else {
+                assert_eq!(
+                    stdout.lines().next(),
+                    Some("OpenID4VP authorization request object (plain JSON, not a signed JAR)"),
+                    "{request}"
+                );
+            }
+        }
+    }
+
+    // A signed JAR keeps the line and the first result line of before.
+    let (code, stdout, stderr) = run_cli(&["inspect", JAR_FIXTURE]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(stderr, JAR);
+    assert_eq!(
+        stdout.lines().next(),
+        Some("OpenID4VP authorization request / JAR (no signature verified)")
+    );
+
+    // So does a compact JWT that is recognised by its payload, not its `typ`.
+    let b64 = |v: &str| BASE64_URL_SAFE_NO_PAD.encode(v.as_bytes());
+    let jwt = format!(
+        "{}.{}.{}",
+        b64(&json!({ "alg": "ES256" }).to_string()),
+        b64(&json!({ "response_type": "vp_token" }).to_string()),
+        b64("not-a-signature")
+    );
+    let (code, stdout, stderr) = run_cli(&["inspect", &jwt]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(stderr, JAR);
+}
+
+/// A signed JAR whose `dcql_query` has a near-miss member: `inspect` and
+/// `decode request` print the warning for it as well.
+#[test]
+fn inspect_prints_the_authoring_warning_for_a_jar() {
+    let b64 = |v: &str| BASE64_URL_SAFE_NO_PAD.encode(v.as_bytes());
+    let header = json!({ "alg": "ES256", "typ": "oauth-authz-req+jwt" }).to_string();
+    let payload = json!({
+        "response_type": "vp_token",
+        "client_id": "x509_hash:example-not-a-real-hash",
+        "nonce": "n-0S6_WzA2Mj",
+        "dcql_query": { "credentials": [three_claims_under("claim")] },
+    })
+    .to_string();
+    let jar = format!(
+        "{}.{}.{}",
+        b64(&header),
+        b64(&payload),
+        b64("not-a-signature")
+    );
+    for args in [
+        vec!["inspect", jar.as_str()],
+        vec!["decode", "request", jar.as_str()],
+    ] {
+        let (code, stdout, stderr) = run_cli(&args);
+        assert_eq!(code, 0, "{args:?}: {stdout}{stderr}");
+        assert!(
+            stdout.starts_with(
+                "OpenID4VP authorization request / JAR (no signature verified)\n  typ: oauth-authz-req+jwt\n  alg: ES256\n  x5c present: false\n"
+            ),
+            "{stdout}"
+        );
+        assert!(
+            stdout.ends_with(&format!(
+                "  query: dcql_query present\n  authoring warnings: 1\n    {}\n",
+                claim_for_claims_line()
+            )),
+            "{stdout}"
+        );
+    }
+    let value = json_of(&["inspect", &jar, "--json"], 0);
+    assert_eq!(value["warnings"][0]["member"], "claim");
+    assert_eq!(value["header"]["typ"], "oauth-authz-req+jwt");
+}
+
+// --- wording, the baseline file reader, register --json ----------------------
+
+/// The first value of the line under the headline is the purpose text of
+/// the registration, not the purpose id of `--purpose`. The line says so,
+/// and says why it has no text. No `--json` member changes with it.
+#[test]
+fn registration_purpose_line_says_what_is_and_is_not_stated() {
+    // No registration given, with and without --purpose.
+    let (_, stdout, _) = run_cli(&["audit", "--request", "minimal"]);
+    assert_eq!(
+        stdout.lines().nth(1),
+        Some("Registration purpose: no registration given   Baseline: Event check-in")
+    );
+    let (_, stdout, _) = audit_age_gate("minimal");
+    assert_eq!(
+        stdout.lines().nth(1),
+        Some("Registration purpose: no registration given   Baseline: Age gate (over 18)")
+    );
+    let value = json_of(
+        &[
+            "audit",
+            "--request",
+            "minimal",
+            "--purpose",
+            "age_gate_18",
+            "--json",
+        ],
+        1,
+    );
+    assert_eq!(value["purpose"], serde_json::Value::Null);
+    assert_eq!(value["baseline_label"], "Age gate (over 18)");
+
+    // A registration certificate with a purpose text.
+    let cert = "examples/age-broad-registration.jwt";
+    let (_, stdout, _) = run_cli(&[
+        "audit",
+        "--request",
+        "minimal",
+        "--purpose",
+        "age_gate_18",
+        "--cert",
+        cert,
+    ]);
+    assert_eq!(
+        stdout.lines().nth(2),
+        Some("Registration purpose: Example Wine Shop: confirm the buyer is over 18   Baseline: Age gate (over 18)")
+    );
+    let value = json_of(
+        &[
+            "audit",
+            "--request",
+            "minimal",
+            "--purpose",
+            "age_gate_18",
+            "--cert",
+            cert,
+            "--json",
+        ],
+        1,
+    );
+    assert_eq!(
+        value["purpose"],
+        "Example Wine Shop: confirm the buyer is over 18"
+    );
+
+    // A registration certificate that states no purpose.
+    let no_purpose = unsigned_certificate(
+        "cert-no-purpose.jwt",
+        &json!({
+            "name": "Example Wine Shop",
+            "privacy_policy": "https://wine.example.org/privacy",
+            "support_uri": "support@wine.example.org",
+            "credentials": [{
+                "format": "dc+sd-jwt",
+                "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+                "claims": [{ "path": ["age_equal_or_over", "18"] }],
+            }],
+        }),
+    );
+    let args = [
+        "audit",
+        "--request",
+        "examples/age-minimal-request-sdjwt.json",
+        "--purpose",
+        "age_gate_18",
+        "--cert",
+        no_purpose.as_str(),
+    ];
+    let (code, stdout, stderr) = run_cli(&args);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(
+        stdout.lines().nth(2),
+        Some("Registration purpose: not stated in the registration   Baseline: Age gate (over 18)")
+    );
+    let mut json_args = vec!["--json"];
+    json_args.extend(args);
+    assert_eq!(json_of(&json_args, 0)["purpose"], serde_json::Value::Null);
+
+    // `check`: the body is the registration.
+    let (code, stdout, _) = run_cli(&["check", "examples/over.json"]);
+    assert_eq!(code, 1);
+    assert_eq!(
+        stdout.lines().nth(1),
+        Some("Registration purpose: Age verification   Baseline: Age gate (over 18)")
+    );
+
+    // The old label is gone from every one of these outputs.
+    for args in [
+        vec!["audit", "--request", "minimal"],
+        vec!["audit", "--request", "overask", "--cert", cert],
+        vec!["check", "examples/over.json"],
+    ] {
+        let (_, stdout, _) = run_cli(&args);
+        for line in stdout.lines() {
+            assert!(!line.starts_with("Purpose: "), "{args:?}: {line}");
+        }
+    }
+}
+
+/// A registration whose purpose text shows nothing (empty, white space, a
+/// character without width) states no purpose: the line says so instead of
+/// printing an empty value. `--json` carries the text unchanged.
+#[test]
+fn blank_registration_purpose_reads_as_not_stated() {
+    let dir = test_temp_dir("augenmass-cli-blank-purpose");
+    fs::create_dir_all(&dir).expect("create dir");
+    let body: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string("examples/over.json").expect("example"))
+            .expect("json");
+    for (name, content) in [
+        ("empty.json", ""),
+        ("space.json", "   "),
+        ("tab-newline.json", "\t\n"),
+        ("no-width.json", "\u{200b}"),
+    ] {
+        let mut blank = body.clone();
+        blank["purpose"] = json!([{ "lang": "en", "content": content }]);
+        let path = dir.join(name);
+        fs::write(&path, blank.to_string()).expect("write body");
+        let path = path.to_str().expect("utf8 path");
+
+        let (code, stdout, stderr) = run_cli(&["check", path]);
+        assert_eq!(code, 1, "{name}: {stdout}{stderr}");
+        assert_eq!(
+            stdout.lines().nth(1),
+            Some("Registration purpose: not stated in the registration   Baseline: Age gate (over 18)"),
+            "{name}"
+        );
+        let args = [
+            "check",
+            path,
+            "--baseline",
+            EXAMPLE_BASELINES,
+            "--purpose",
+            WINE,
+        ];
+        let (code, stdout, stderr) = run_cli(&args);
+        assert_eq!(code, 1, "{name}: {stdout}{stderr}");
+        assert_eq!(
+            stdout.lines().nth(1),
+            Some("Registration purpose: not stated in the registration   Baseline: Example Wine Shop: age check for an order of wine"),
+            "{name}"
+        );
+        // No member of `--json` changes: the text is there as written.
+        let mut json_args = vec!["--json"];
+        json_args.extend(args);
+        assert_eq!(
+            json_of(&json_args, 1)["report"]["purpose"],
+            content,
+            "{name}"
+        );
+    }
+
+    // A registration certificate with a blank purpose text, for `audit`.
+    let blank_cert = unsigned_certificate(
+        "cert-blank-purpose.jwt",
+        &json!({
+            "name": "Example Wine Shop",
+            "purpose": [{ "lang": "en", "content": "  " }],
+            "privacy_policy": "https://wine.example.org/privacy",
+            "support_uri": "support@wine.example.org",
+            "credentials": [{
+                "format": "dc+sd-jwt",
+                "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+                "claims": [{ "path": ["age_equal_or_over", "18"] }],
+            }],
+        }),
+    );
+    let (code, stdout, stderr) = run_cli(&[
+        "audit",
+        "--request",
+        "examples/age-minimal-request-sdjwt.json",
+        "--purpose",
+        "age_gate_18",
+        "--cert",
+        blank_cert.as_str(),
+    ]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert_eq!(
+        stdout.lines().nth(2),
+        Some("Registration purpose: not stated in the registration   Baseline: Age gate (over 18)")
+    );
+
+    // A purpose text with a visible character is printed as before.
+    let mut stated = body.clone();
+    stated["purpose"] = json!([{ "lang": "en", "content": " Example purpose " }]);
+    let path = dir.join("stated.json");
+    fs::write(&path, stated.to_string()).expect("write body");
+    let (_, stdout, _) = run_cli(&["check", path.to_str().expect("utf8 path")]);
+    assert_eq!(
+        stdout.lines().nth(1),
+        Some("Registration purpose:  Example purpose    Baseline: Age gate (over 18)")
+    );
+}
+
+/// A purpose text made only of characters that a display shows as nothing
+/// (the combining grapheme joiner U+034F, the variation selector U+FE0F and
+/// the other code points Unicode lists as default ignorable, and the blank
+/// Braille pattern) states no purpose either. Before, only five of these
+/// characters were treated so, and `Registration purpose:` was followed by a
+/// value that looked empty. `--json` carries the text unchanged.
+#[test]
+fn registration_purpose_of_characters_that_show_nothing_reads_as_not_stated() {
+    let body: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string("examples/over.json").expect("example"))
+            .expect("json");
+    let check = |content: &str| {
+        let mut changed = body.clone();
+        changed["purpose"] = json!([{ "lang": "en", "content": content }]);
+        let changed = changed.to_string();
+        let (code, stdout, stderr) = run_cli(&["check", &changed]);
+        assert_eq!(code, 1, "{content:?}: {stdout}{stderr}");
+        let line = stdout.lines().nth(1).expect("purpose line").to_string();
+        let report = json_of(&["--json", "check", &changed], 1);
+        assert_eq!(report["report"]["purpose"], content, "{content:?}");
+        line
+    };
+
+    for content in [
+        "\u{34f}",
+        "\u{fe0f}",
+        "\u{ad}",
+        "\u{180e}",
+        "\u{2064}",
+        "\u{2800}",
+        "\u{3164}",
+        "\u{e0020}",
+        " \u{34f}\u{fe0f}\u{200b} ",
+    ] {
+        assert_eq!(
+            check(content),
+            "Registration purpose: not stated in the registration   Baseline: Age gate (over 18)",
+            "{content:?}"
+        );
+    }
+
+    // A bidirectional formatting character is printed as its escape, which a
+    // reader sees, and a visible character next to an ignorable one is text.
+    assert_eq!(
+        check("\u{202e}"),
+        "Registration purpose: \\u{202e}   Baseline: Age gate (over 18)"
+    );
+    assert_eq!(
+        check("Example\u{fe0f}"),
+        "Registration purpose: Example\u{fe0f}   Baseline: Age gate (over 18)"
+    );
+}
+
+/// `legal_review` would be true only because the file says `reviewed`. The
+/// status and the reviewer are in the output; the member is not.
+#[test]
+fn baseline_json_has_no_legal_review_member() {
+    let minimal = "examples/age-minimal-request-sdjwt.json";
+    let (code, audit_json, _) = run_cli(&[
+        "audit",
+        "--request",
+        minimal,
+        "--baseline",
+        EXAMPLE_BASELINES,
+        "--purpose",
+        WINE,
+        "--json",
+    ]);
+    assert_eq!(code, 0);
+    let (code, check_json, _) = run_cli(&[
+        "check",
+        "examples/min.json",
+        "--baseline",
+        EXAMPLE_BASELINES,
+        "--purpose",
+        WINE,
+        "--json",
+    ]);
+    assert_eq!(code, 0);
+    for text in [&audit_json, &check_json] {
+        assert!(!text.contains("legal_review"), "{text}");
+    }
+    let audit: serde_json::Value = serde_json::from_str(&audit_json).expect("json");
+    let check: serde_json::Value = serde_json::from_str(&check_json).expect("json");
+    for baseline in [
+        &audit["baseline"],
+        &check["baseline"],
+        &check["report"]["baseline"],
+    ] {
+        assert_eq!(baseline["status"], "draft", "{baseline}");
+        assert_eq!(baseline["reviewer"], serde_json::Value::Null);
+        assert_eq!(baseline["notice"], "draft baseline, no legal review");
+    }
+    // The text output keeps its wording.
+    let (_, text, _) = audit_with_example(minimal, WINE);
+    assert!(text.contains(DRAFT_LINE), "{text}");
+}
+
+/// A baseline file that starts with a UTF-8 byte order mark is rejected, and
+/// the error names the mark.
+#[test]
+fn baseline_file_with_a_byte_order_mark_names_the_cause() {
+    let dir = test_temp_dir("augenmass-cli-bom");
+    fs::create_dir_all(&dir).expect("create dir");
+    let file = dir.join("baselines-bom.json");
+    let mut bytes = vec![0xEF, 0xBB, 0xBF];
+    bytes.extend(fs::read(EXAMPLE_BASELINES).expect("example"));
+    fs::write(&file, bytes).expect("write file");
+    let file = file.to_str().expect("utf8 path");
+    for args in [
+        vec![
+            "audit",
+            "--request",
+            "minimal",
+            "--baseline",
+            file,
+            "--purpose",
+            WINE,
+        ],
+        vec![
+            "check",
+            "examples/min.json",
+            "--baseline",
+            file,
+            "--purpose",
+            WINE,
+        ],
+        vec!["audit", "--request", "minimal", "--baseline", file],
+    ] {
+        let (code, stdout, stderr) = run_cli(&args);
+        assert_eq!(code, 1, "{args:?}: {stdout}{stderr}");
+        assert!(stdout.is_empty(), "{args:?}: {stdout}");
+        assert_eq!(
+            stderr,
+            "Error: baseline file baselines-bom.json: the document: starts with a UTF-8 byte order mark (the bytes EF BB BF); save the file as UTF-8 without a byte order mark\n",
+            "{args:?}"
+        );
+        assert!(!stderr.contains('\u{feff}'), "{args:?}");
+    }
+    let _ = fs::remove_dir_all(dir);
+}
+
+/// The overlap error quotes its paths as JSON arrays, as the other baseline
+/// output does: a character that is never printed raw is the JSON escape
+/// (six ASCII characters), not the raw character and not the Rust escape.
+#[test]
+fn baseline_overlap_error_quotes_paths_as_json() {
+    let path = "a\u{202e}b\u{2028}c";
+    let mut file = one_entry_baseline();
+    file["entries"][0]["claims"] = json!([{
+        "format": "dc+sd-jwt",
+        "vct_values": ["urn:example:test"],
+        "minimal": [{ "path": [path] }, { "path": [path] }],
+    }]);
+    file["entries"][0]["one_of"] = json!([]);
+    let file = baseline_file_in_temp("overlap.json", &file);
+    let (code, stdout, stderr) = run_cli(&["audit", "--request", "minimal", "--baseline", &file]);
+    assert_eq!(code, 1, "{stdout}{stderr}");
+    assert!(stdout.is_empty(), "{stdout}");
+
+    let quoted = r#"["a\u202eb\u2028c"]"#;
+    assert_eq!(
+        stderr,
+        format!(
+            "Error: baseline file overlap.json: entries[0] (example.test.age).claims[0]: the rows {quoted} and {quoted} overlap (both cover the path {quoted}); a requested claim must match at most one row of a block\n"
+        )
+    );
+    // These two are what a comparison of decoded values cannot give: an
+    // output with the raw characters decodes to the same path.
+    assert!(!stderr.contains('\u{202e}'), "{stderr:?}");
+    assert!(!stderr.contains('\u{2028}'), "{stderr:?}");
+    assert!(!stderr.contains("\\u{"), "{stderr}");
+    // And each quoted array is JSON with the path of the file.
+    let mut arrays = 0;
+    let mut rest = stderr.as_str();
+    while let Some(start) = rest.find("[\"") {
+        let end = start + rest[start..].find("\"]").expect("end of array") + 2;
+        let parsed: Vec<String> = serde_json::from_str(&rest[start..end]).expect("valid JSON");
+        assert_eq!(parsed, [path]);
+        arrays += 1;
+        rest = &rest[end..];
+    }
+    assert_eq!(arrays, 3, "{stderr}");
+}
+
+/// `--json` is a global flag and is accepted on `register`, where it has no
+/// effect: the command prints its text output. The result as JSON is in
+/// `check --json`.
+#[test]
+fn register_prints_text_with_and_without_json() {
+    for body in ["examples/min.json", "examples/over.json"] {
+        let body = repo_path(body);
+        let plain = isolated_output(&["register", &body], &[]);
+        assert!(!plain.1.trim_start().starts_with('{'), "{}", plain.1);
+        assert_eq!(isolated_output(&["register", &body, "--json"], &[]), plain);
+        assert_eq!(isolated_output(&["--json", "register", &body], &[]), plain);
+    }
+    let (code, stdout, _) = isolated_output(&["register", &repo_path("examples/min.json")], &[]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.ends_with("DRY RUN: nothing written. Re-run with --yes to write to clone.\n"),
+        "{stdout}"
+    );
+    // The outcome member is where the documents point to.
+    let value = json_of(&["check", "examples/min.json", "--json"], 0);
+    assert_eq!(value["outcome"], "ok");
 }

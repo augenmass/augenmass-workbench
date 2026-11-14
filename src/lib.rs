@@ -5,6 +5,11 @@
 //! engine lives in the sibling [`augenmass_core`] crate; everything here is the
 //! I/O shell around it (argument parsing, file and network I/O, rendering).
 
+// The print macros panic when the reader of the stream is gone, and the
+// exit code of a verdict would be lost. Everything is written through
+// `output` instead.
+#![cfg_attr(not(test), deny(clippy::print_stdout, clippy::print_stderr))]
+
 /// The relying party we register under for the demo. One relying party per
 /// entity, many certificates; never mint extra relying parties.
 pub const DEFAULT_RP_ID: &str = "2af138a8-59ea-4a84-aea3-666cafdb1369";

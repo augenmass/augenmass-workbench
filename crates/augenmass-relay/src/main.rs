@@ -6,7 +6,7 @@ mod registry;
 mod routes;
 mod tunnel;
 
-use std::io::IsTerminal;
+use std::io::{IsTerminal, Write};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -31,6 +31,10 @@ async fn main() -> anyhow::Result<()> {
                 .unwrap_or_else(|_| EnvFilter::new("warn,augenmass_relay=info")),
         )
         .with_ansi(std::io::stdout().is_terminal())
+        // The layer reports a failed write of a log line with a print macro,
+        // which panics when standard error is closed too. A log line is a
+        // note: a failed write is dropped.
+        .log_internal_errors(false)
         .try_init();
 
     let config = RelayConfig::from_env()?;
@@ -70,16 +74,31 @@ fn handle_early_cli() -> anyhow::Result<bool> {
         return Ok(false);
     }
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
-        print!("{}", help_text());
+        write_stdout(help_text())?;
         return Ok(true);
     }
     if args.iter().any(|arg| arg == "--version" || arg == "-V") {
-        println!("augenmass-relay {}", env!("CARGO_PKG_VERSION"));
+        write_stdout(&format!("augenmass-relay {}\n", env!("CARGO_PKG_VERSION")))?;
         return Ok(true);
     }
     anyhow::bail!(
         "augenmass-relay is configured through environment variables; run augenmass-relay --help"
     )
+}
+
+/// Write `text` to standard output. A reader that closed the pipe is not an
+/// error (the print macros would panic and exit with code 101); every other
+/// write error is returned.
+fn write_stdout(text: &str) -> anyhow::Result<()> {
+    let mut stdout = std::io::stdout().lock();
+    let written = match stdout.write_all(text.as_bytes()) {
+        Ok(()) => stdout.flush(),
+        Err(error) => Err(error),
+    };
+    match written {
+        Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
+        other => other.context("write standard output"),
+    }
 }
 
 fn help_text() -> &'static str {

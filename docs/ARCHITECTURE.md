@@ -220,9 +220,12 @@ work as gates in a pipeline without parsing output:
 - `check`: exit 1 on over-ask or a blocking format error; exit 3 when no
   judged claim asks for too much but a requested claim could not be judged
   (NOT EVALUATED); exit 0 if clean.
-- `audit`: exit 1 on over-ask; exit 3 when not evaluated; exit 0 when every
-  requested claim was judged and none asks for too much. An over-ask wins over
-  not evaluated.
+- `audit`: exit 1 on over-ask; exit 3 when not evaluated (a requested claim
+  could not be judged, or the DCQL query has a member that OpenID4VP 1.0 does
+  not define at its level and that resembles a defined one, for example `claim`
+  for `claims`); exit 0 when every requested claim was judged, none asks for
+  too much and the query has no such member. An over-ask wins over not
+  evaluated.
 - `verify presentation`, `verify request`, `verify trust`, `verify status`, `verify status-list`:
   exit 1 if not verified, untrusted, revoked, or on error; exit 0 on success.
 - `x509-hash --client-id`: exit 1 on mismatch.
@@ -245,7 +248,8 @@ augenmass verify presentation fixtures/presentations/erica-vp-VALID.sdjwt \
 ```
 
 Writes are conservative by default: `register` is a dry-run until `--yes`, and
-will not write past an over-ask warning without `--force`.
+will not write past an over-ask warning, or past a body that could not be
+evaluated, without `--force`.
 
 ## Reuse versus net-new
 
