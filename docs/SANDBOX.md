@@ -143,8 +143,8 @@ Requested claims:
   [ok]  age_equal_or_over.18         Within the purpose-minimal baseline.
 ```
 
-The released 0.4.1 binary labels the third line `Purpose:` where this build
-says `Registration purpose:`; the rest of this output is the same.
+Version 0.4.1 labels the third line `Purpose:` where version 0.5.0 says
+`Registration purpose:`; the rest of this output is the same.
 
 A request with a claim outside the certificate exits 1, with a row that names
 the registered scope. The recipe
@@ -199,7 +199,7 @@ about transfer. Run the steps in this order:
    limits of the recipe say how to compare the paths by hand.
 6. Repeat steps 1 to 5 whenever the request or the certificate changes.
 
-The released 0.4.1 binary differs in steps 2, 4 and 5. It has no exit code 3:
+Version 0.4.1 differs in steps 2, 4 and 5. It has no exit code 3:
 a request written with `claim` for `claims` gets `OK: No claims requested.`
 and exit 0 there, and a claim of a credential type that the baseline does not
 model is judged by its name as if it were a PID claim. A mistyped `<id>` is no
@@ -503,7 +503,7 @@ These guardrails apply to every `register` invocation:
 
 - Dry-run by default. `register` without `--yes` decodes, runs the over-ask and format gate, and prints the verdict, but writes nothing. The output ends with `DRY RUN: nothing written. Re-run with --yes to write to <target>.`
 - `--yes` is required to write. It confirms the write after the gate passes.
-- `--force` writes past an over-ask warning, or past a body that could not be evaluated, and requires `--yes`. On main, `--force` without `--yes` is a usage error (exit 2). Without `--force`, an over-asking body is refused (exit 1) on every target. A blocking format error is fatal regardless of `--force`.
+- `--force` writes past an over-ask warning, or past a body that could not be evaluated, and requires `--yes`. From version 0.5.0 on, `--force` without `--yes` is a usage error (exit 2). Without `--force`, an over-asking body is refused (exit 1) on every target. A blocking format error is fatal regardless of `--force`.
 - Demo fixtures and defaults use relying party id `2af138a8-59ea-4a84-aea3-666cafdb1369` ("Hackathon - Reza"). That id is the default for `--rp` on `list` and for `--rp` on `generate regbody`, and it is the `rpId` in `examples/min.json` and `examples/over.json`. Do not reuse it for a user's production relying party.
 - One relying party per entity, many certificates under it. Never mint additional relying parties; add certificates to the existing one.
 - Secrets hygiene. Never log, echo, or commit tokens, certs, or keys. The repo gitignores `.env*`, `secrets*.md`, `*.sqlite`, and `*signing-key*`. Review staged changes before any git operation.
@@ -601,7 +601,7 @@ The command exits 1, so CI catches it. To deliberately write the over-asking bod
 augenmass register examples/over.json --target clone --yes --force
 ```
 
-That reprints the same verdict, then writes with an explicit warning (`Warning: writing an over-asking registration because --force was given.`; on main the line continues with `A forced write that succeeds exits 0.`) and exits 0. Use `--force` only when over-asking is intentional and justified; the default refusal is the point of the gate.
+That reprints the same verdict, then writes with an explicit warning (`Warning: writing an over-asking registration because --force was given.`; from version 0.5.0 on the line continues with `A forced write that succeeds exits 0.`) and exits 0. Use `--force` only when over-asking is intentional and justified; the default refusal is the point of the gate.
 
 The same gate runs before a confirmed write to any target, so a body that the clone refuses will be refused against the sandbox too. Prove proportionality locally, then rehearse against the sandbox.
 

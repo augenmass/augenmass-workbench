@@ -1,7 +1,12 @@
 # Shipping status
 
-Note for `v0.4.1`: the body of this page records the state before the EUDI On
-presentation (`v0.3.0`) and is not rewritten. `v0.4.1` judges the mdoc age
+Note for `v0.5.0`: the body of this page records the state before the EUDI On
+presentation (`v0.3.0`) and is not rewritten. `v0.5.0` adds the result NOT
+EVALUATED with exit code 3 to `check`, `audit` and `register`, makes an unknown
+purpose id a usage error with exit code 2, states the credential types of the
+built-in baselines, adds `--baseline FILE`, warns about a DCQL member name that
+resembles a defined one, and keeps the exit code when the reader of the output
+closes it early. `v0.4.1` judges the mdoc age
 element `age_over_NN` like the SD-JWT VC claim `age_equal_or_over.NN`, prints
 the suggested minimal request in the spelling of the request, quotes ARF
 requirement RPRC_21 verbatim, prints a sandbox notice on stderr, and adds
@@ -11,8 +16,9 @@ claims as claims path pointers, segment by segment, states that a registration
 certificate is decoded and not verified, rejects a DCQL query with an empty
 `credential_sets` option, refreshed `Cargo.lock`, and runs the strict
 `check.yml` workflow on pushes and pull requests (see `CHANGELOG.md`). The
-committed plugin binaries are rebuilt from the `v0.4.1` release archives and
-carry these changes (see `docs/RELEASE.md`, "v0.4.1 release proof"). The German sandbox
+committed plugin binaries are the `v0.4.1` ones (see `docs/RELEASE.md`, "v0.4.1
+release proof") and stay until the bundle is rebuilt from the `v0.5.0` release
+archives in a follow-up change. The German sandbox
 registrar says on its landing page (read on 13 November 2026) that testing in it is possible until 19
 November 2026; see `docs/SANDBOX.md`.
 

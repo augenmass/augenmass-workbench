@@ -63,8 +63,8 @@ const KNOWN_FORMATS: &[&str] = &[
 /// and returns true if a blocking error was found (so the CLI exits non-zero).
 /// A member name that resembles a defined one (`dcql::ignored_members`) is a
 /// warning, listed before the other findings: a wallet ignores a member it
-/// does not know, so such a query is valid, and a warning alone does not
-/// change the result or the exit code.
+/// does not know, so the member alone does not make the query invalid, and a
+/// warning alone does not change the result or the exit code.
 pub fn dcql(input: &str, fmt: OutputFormat) -> Result<bool> {
     let value: Value = serde_json::from_str(input.trim()).context("DCQL is not JSON")?;
     let query = value.get("dcql_query").unwrap_or(&value);
@@ -177,10 +177,19 @@ fn validate_claim_path(
     format: Option<&str>,
     findings: &mut Vec<Finding>,
 ) {
-    // A claim may match by id instead of path, so a missing path is not an error.
+    // OpenID4VP 1.0, section 6.3: a claims query has the required member
+    // `path`, a non-empty array. The typed parse of `audit` rejects a claims
+    // query without it, so it is a blocking finding here too.
     let path = match claim.get("path") {
         Some(p) => p,
-        None => return,
+        None => {
+            findings.push(Finding::blocking(
+                "DCQL-PATH-MISSING",
+                format!("{label} has no member path"),
+                "a claims query needs the member path, a non-empty array of segments (OpenID4VP 1.0, section 6.3)",
+            ));
+            return;
+        }
     };
     let arr = match path.as_array() {
         Some(a) => a,
@@ -222,10 +231,10 @@ fn validate_claim_path(
         ));
     }
     if arr.is_empty() {
-        findings.push(Finding::warning(
+        findings.push(Finding::blocking(
             "DCQL-PATH-EMPTY",
             format!("{label}.path is an empty array"),
-            "an empty path selects the whole credential; usually you want a specific claim",
+            "a claim path is a non-empty array of segments (OpenID4VP 1.0, section 6.3)",
         ));
     }
 }
@@ -378,5 +387,38 @@ mod tests {
     fn good_mdoc_path_is_accepted() {
         let q = r#"{"credentials":[{"id":"mdl","format":"mso_mdoc","claims":[{"path":["org.iso.18013.5.1","family_name"]}]}]}"#;
         assert!(block_ids(q).is_empty());
+    }
+
+    /// OpenID4VP 1.0, section 6.3: `path` is a required member of a claims
+    /// query. A claims query without it, whatever else it holds, blocks.
+    #[test]
+    fn a_claims_query_without_a_path_blocks() {
+        for claim in [
+            r#"{}"#,
+            r#"{"id":"a"}"#,
+            r#"{"values":[1]}"#,
+            r#""given_name""#,
+        ] {
+            let q = format!(
+                r#"{{"credentials":[{{"id":"pid","format":"dc+sd-jwt","claims":[{claim}]}}]}}"#
+            );
+            assert_eq!(block_ids(&q), ["DCQL-PATH-MISSING"], "{q}");
+        }
+        let mdoc = r#"{"credentials":[{"id":"pid","format":"mso_mdoc","claims":[{"id":"a"}]}]}"#;
+        assert_eq!(block_ids(mdoc), ["DCQL-PATH-MISSING"]);
+        // One finding for each claims query, and a claims query with a path
+        // next to it is not reported.
+        let two = r#"{"credentials":[{"id":"pid","format":"dc+sd-jwt","claims":[{"path":["a"]},{"id":"b"},{}]}]}"#;
+        assert_eq!(block_ids(two), ["DCQL-PATH-MISSING", "DCQL-PATH-MISSING"]);
+    }
+
+    /// The same section: the value of `path` is a non-empty array.
+    #[test]
+    fn an_empty_path_blocks() {
+        let q = r#"{"credentials":[{"id":"pid","format":"dc+sd-jwt","claims":[{"path":[]}]}]}"#;
+        assert_eq!(block_ids(q), ["DCQL-PATH-EMPTY"]);
+        // An empty mdoc path keeps the finding it had: not two strings.
+        let mdoc = r#"{"credentials":[{"id":"pid","format":"mso_mdoc","claims":[{"path":[]}]}]}"#;
+        assert_eq!(block_ids(mdoc), ["DCQL-MDOC-PATH"]);
     }
 }

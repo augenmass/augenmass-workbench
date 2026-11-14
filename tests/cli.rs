@@ -1745,6 +1745,64 @@ fn doctor_reads_the_payload_query_when_the_top_level_has_none() {
     doctor_warns_exactly(&input, &[claim_for_claims_line()]);
 }
 
+/// A member `dcql_query` whose value is not a JSON object (`null`, a string,
+/// an array) holds no query, so `doctor` does not count it as a second query
+/// and does not prefix the warning of the one query with its place: the
+/// place, and the start of both messages, are the ones `validate dcql` gives.
+#[test]
+fn doctor_does_not_count_a_member_that_is_not_an_object_as_a_query() {
+    for other in [json!(null), json!("x"), json!([])] {
+        let top = json!({
+            "dcql_query": other,
+            "payload": {
+                "client_id": "x509_hash:abc",
+                "dcql_query": age_query_with_claims_under("claim"),
+            },
+        })
+        .to_string();
+        let value = doctor_warns_exactly(&top, &[claim_for_claims_line()]);
+        assert_eq!(value["warnings"][0]["place"], "credentials[0]");
+        for message in [
+            &value["warnings"][0]["message"],
+            &value["findings"][0]["message"],
+        ] {
+            let message = message.as_str().expect("message");
+            assert!(message.starts_with("credentials[0]: member"), "{message}");
+        }
+
+        let payload = json!({
+            "client_id": "x509_hash:abc",
+            "dcql_query": age_query_with_claims_under("claim"),
+            "payload": { "dcql_query": other },
+        })
+        .to_string();
+        let value = doctor_warns_exactly(&payload, &[claim_for_claims_line()]);
+        assert_eq!(value["warnings"][0]["place"], "credentials[0]");
+    }
+
+    // A warning about a member of the query object itself has the place
+    // `query`, not the name of the member the query was read from.
+    let query_level = json!({
+        "dcql_query": null,
+        "payload": { "client_id": "x509_hash:abc", "dcql_query": { "credential_set": [] } },
+    })
+    .to_string();
+    let value = json_of(&["doctor", &query_level, "--json"], 0);
+    assert_eq!(value["ok"], true);
+    assert_eq!(value["warnings"].as_array().expect("warnings").len(), 1);
+    assert_eq!(value["warnings"][0]["place"], "query");
+    for message in [
+        &value["warnings"][0]["message"],
+        &value["findings"][0]["message"],
+    ] {
+        let message = message.as_str().expect("message");
+        assert!(
+            message.starts_with("query: member \"credential_set\""),
+            "{message}"
+        );
+    }
+}
+
 /// A `dcql_query` in the header only is not the request's query: the OK
 /// lines stay.
 #[test]
@@ -6946,7 +7004,7 @@ fn validate_dcql_warns_on_a_near_miss_and_stays_valid() {
     }] } })
     .to_string();
     let (code, stdout, _) = run_cli(&["validate", "dcql", &paths]);
-    assert_eq!(code, 0, "{stdout}");
+    assert_eq!(code, 1, "{stdout}");
     assert!(
         stdout.contains(&near_miss_line(
             "credentials[0].claims[1]",
@@ -6956,7 +7014,80 @@ fn validate_dcql_warns_on_a_near_miss_and_stays_valid() {
         )),
         "{stdout}"
     );
-    assert!(stdout.ends_with("DCQL OK (warnings only).\n"), "{stdout}");
+    // The claims query that says `paths` has no `path`: a blocking finding,
+    // like `option` for `options` above.
+    assert!(
+        stdout.contains(
+            "  DCQL-PATH-MISSING [blocking]: credentials[0].claims[1] has no member path\n"
+        ),
+        "{stdout}"
+    );
+    assert!(stdout.ends_with("DCQL INVALID: at least one blocking error above.\n"));
+}
+
+/// `validate dcql` and `audit` agree on a claims query without the required
+/// member `path` and on an empty `path` (OpenID4VP 1.0, section 6.3):
+/// `validate dcql` lists a blocking finding and exits 1, `audit` stops with
+/// the parse error and exits 1. A query whose claims queries all have a
+/// non-empty path stays valid in both.
+#[test]
+fn validate_dcql_blocks_a_claims_query_without_a_path_like_audit() {
+    let query = |claims: serde_json::Value| {
+        json!({ "credentials": [{
+            "id": "pid", "format": "dc+sd-jwt",
+            "meta": { "vct_values": ["urn:eudi:pid:de:1"] },
+            "claims": claims,
+        }] })
+        .to_string()
+    };
+    for (claims, id, message) in [
+        (
+            json!([{ "id": "a" }]),
+            "DCQL-PATH-MISSING",
+            "credentials[0].claims[0] has no member path",
+        ),
+        (
+            json!([{ "path": ["age_equal_or_over", "18"] }, {}]),
+            "DCQL-PATH-MISSING",
+            "credentials[0].claims[1] has no member path",
+        ),
+        (
+            json!([{ "path": [] }]),
+            "DCQL-PATH-EMPTY",
+            "credentials[0].claims[0].path is an empty array",
+        ),
+    ] {
+        let request = query(claims);
+        let (code, stdout, stderr) = run_cli(&["validate", "dcql", &request]);
+        assert_eq!(code, 1, "{request}: {stdout}{stderr}");
+        assert!(
+            stdout.contains(&format!("  {id} [blocking]: {message}\n")),
+            "{request}: {stdout}"
+        );
+        assert!(
+            stdout.ends_with("DCQL INVALID: at least one blocking error above.\n"),
+            "{request}: {stdout}"
+        );
+        let value = json_of(&["validate", "dcql", &request, "--json"], 1);
+        assert_eq!(value["valid"], false, "{request}");
+        assert_eq!(value["findings"][0]["id"], id, "{request}");
+        assert_eq!(value["findings"][0]["severity"], "blocking", "{request}");
+
+        let (code, stdout, stderr) = audit_age_gate(&request);
+        assert_eq!(code, 1, "{request}: {stdout}{stderr}");
+        assert_eq!(stdout, "", "{request}");
+        assert!(stderr.contains("parse DCQL query"), "{request}: {stderr}");
+    }
+
+    let valid = query(json!([{ "path": ["age_equal_or_over", "18"] }]));
+    let (code, stdout, _) = run_cli(&["validate", "dcql", &valid]);
+    assert_eq!(code, 0, "{stdout}");
+    assert_eq!(
+        stdout,
+        "DCQL VALID: no structural or reference issues found.\n"
+    );
+    let (code, _, _) = audit_age_gate(&valid);
+    assert_eq!(code, 0);
 }
 
 #[test]
